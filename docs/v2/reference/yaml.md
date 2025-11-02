@@ -168,54 +168,71 @@ swarm:
 
 ### nodes
 
-> **⚠️ IMPORTANT: Node workflows are ONLY supported in Ruby DSL, NOT in YAML configuration.**
->
-> The documentation below describes the node structure for reference, but you cannot use nodes in YAML files.
-> To use node-based workflows, you must use the Ruby DSL. See [Ruby DSL Reference](./ruby-dsl.md#node-builder-dsl) for details.
-
-**Type:** Object (optional, **Ruby DSL only**)
-**Description:** Map of node names to node configurations. Enables multi-stage workflows.
+**Type:** Object (optional)
+**Description:** Map of node names to node configurations. Enables multi-stage workflows with multiple execution stages.
 **Format:** `{ node_name: node_config }`
 
-**Note:** This section is for reference only. YAML configuration does not support nodes.
+Nodes allow you to create workflows where different agent teams collaborate in sequence. Each node is an independent swarm execution that can receive input from previous nodes and pass output to subsequent nodes.
 
-```ruby
-# Ruby DSL only - NOT valid in YAML
-SwarmSDK.build do
-  node :planning do
-    agent(:architect)
-  end
+**Example:**
+```yaml
+nodes:
+  planning:
+    agents:
+      - agent: architect
+    output_command: "tee plan.txt"
 
-  node :implementation do
-    agent(:backend).delegates_to(:tester)
-    agent(:tester)
-    depends_on :planning
-  end
+  implementation:
+    agents:
+      - agent: backend
+        delegates_to: [tester]
+      - agent: tester
+    dependencies: [planning]
+    input_command: "cat plan.txt"
 
-  start_node :planning
-end
+  review:
+    agents:
+      - agent: reviewer
+    dependencies: [implementation]
 ```
+
+**Node configuration fields:**
+- `agents` - Array of agent configurations (optional for computation-only nodes)
+- `dependencies` - Array of prerequisite node names
+- `lead` - Override the lead agent for this node
+- `input_command` - Bash command to transform input before execution
+- `input_timeout` - Timeout for input_command (seconds, default: 60)
+- `output_command` - Bash command to transform output after execution
+- `output_timeout` - Timeout for output_command (seconds, default: 60)
 
 ---
 
 ### start_node
 
-> **⚠️ Note: Node workflows are Ruby DSL only, not supported in YAML.**
-
-**Type:** String (required if nodes defined, **Ruby DSL only**)
+**Type:** String (required if nodes defined)
 **Description:** Name of the starting node for workflow execution.
 
-**Note:** This field only applies to Ruby DSL. Not supported in YAML configuration.
-
-```ruby
-# Ruby DSL only - NOT valid in YAML
-SwarmSDK.build do
-  start_node :planning
-
-  node :planning do
-    agent(:architect)
-  end
-end
+**Example:**
+```yaml
+swarm:
+  name: "Dev Workflow"
+  lead: coordinator
+  agents:
+    coordinator:
+      description: "Coordinator"
+      model: "gpt-5"
+    backend:
+      description: "Backend dev"
+      model: "gpt-5"
+  nodes:
+    planning:
+      agents:
+        - agent: coordinator
+    implementation:
+      agents:
+        - agent: backend
+      dependencies: [planning]
+  start_node: planning  # Start with planning node
 ```
 
 ---
@@ -1397,14 +1414,9 @@ agents:
 
 ---
 
-## Node Configuration (**Ruby DSL Only**)
+## Node Configuration
 
-> **⚠️ CRITICAL: Nodes are NOT supported in YAML configuration.**
->
-> The following documentation is for reference only. To use node-based workflows, you MUST use the Ruby DSL.
-> See [Ruby DSL Reference](./ruby-dsl.md#node-builder-dsl) for working examples.
-
-Fields under each node in `swarm.nodes` (**Ruby DSL only**).
+Fields under each node in `swarm.nodes`.
 
 ### agents
 
@@ -1412,7 +1424,9 @@ Fields under each node in `swarm.nodes` (**Ruby DSL only**).
 **Default:** `[]`
 **Description:** List of agents participating in this node.
 
-**Format:** Array of objects with `agent` and optional `delegates_to`
+Nodes can have zero agents (computation-only nodes with transformers) or multiple agents working together. Each agent can have delegation configured and context preservation settings.
+
+**Format:** Array of objects with `agent`, optional `delegates_to`, and optional `reset_context`
 
 ```yaml
 nodes:
@@ -1422,6 +1436,7 @@ nodes:
         delegates_to: [tester, database]
       - agent: tester
         delegates_to: [database]
+        reset_context: false  # Preserve context from previous nodes
       - agent: database
 ```
 
@@ -1431,7 +1446,9 @@ nodes:
 
 **Type:** String (optional)
 **Default:** First agent in `agents` list
-**Description:** Lead agent for this node (overrides first agent).
+**Description:** Lead agent for this node (overrides default first agent).
+
+The lead agent receives the initial prompt and coordinates the node's execution.
 
 ```yaml
 nodes:
@@ -1439,7 +1456,7 @@ nodes:
     agents:
       - agent: backend
       - agent: reviewer
-    lead: reviewer  # Make reviewer the lead instead of backend
+    lead: reviewer  # reviewer leads instead of backend
 ```
 
 ---
@@ -1450,7 +1467,7 @@ nodes:
 **Default:** `[]`
 **Description:** List of prerequisite node names that must execute before this node.
 
-**Note:** In Ruby DSL, use the `depends_on` method. In YAML (if nodes were supported), the field name is `dependencies`.
+Dependencies create a directed acyclic graph (DAG) of node execution. A node waits for all its dependencies to complete before starting.
 
 ```yaml
 nodes:
@@ -1461,20 +1478,36 @@ nodes:
   implementation:
     agents:
       - agent: backend
-    dependencies: [planning]
+    dependencies: [planning]  # Runs after planning
 
   testing:
     agents:
       - agent: tester
-    dependencies: [implementation]
+    dependencies: [implementation]  # Runs after implementation
 ```
 
 ---
 
-### input
+### reset_context
 
-**Type:** String (optional, Ruby DSL only)
-**Description:** Ruby block for input transformation. Not supported in YAML - use `input_command` instead.
+**Type:** Boolean (optional, per-agent in node)
+**Default:** `true`
+**Description:** Whether to reset agent conversation context in this node.
+
+Set to `false` to preserve conversation history from previous nodes, enabling stateful multi-node workflows.
+
+```yaml
+nodes:
+  first:
+    agents:
+      - agent: architect
+
+  second:
+    agents:
+      - agent: architect
+        reset_context: false  # Preserve history from first node
+    dependencies: [first]
+```
 
 ---
 
@@ -1844,12 +1877,11 @@ swarm:
       parameters:
         temperature: 0.2
 
-  # Multi-stage workflow (optional)
+  # Multi-stage workflow
   nodes:
     planning:
       agents:
         - agent: coordinator
-
       output_command: "tee plan.txt"
 
     backend_implementation:
@@ -1858,7 +1890,6 @@ swarm:
           delegates_to: [database]
         - agent: database
       dependencies: [planning]
-
       input_command: "scripts/prepare-backend-context.sh"
       output_command: "scripts/save-backend-results.sh"
 
@@ -1866,14 +1897,12 @@ swarm:
       agents:
         - agent: frontend
       dependencies: [planning]
-
       input_command: "scripts/prepare-frontend-context.sh"
 
     review:
       agents:
         - agent: reviewer
       dependencies: [backend_implementation, frontend_implementation]
-
       input_command: "scripts/gather-changes.sh"
       output_command: "scripts/format-review.sh"
 
