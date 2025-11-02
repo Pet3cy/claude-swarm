@@ -1084,6 +1084,67 @@ Lead    ──┼──→ Security
 - **Hub and Spoke**: Parallel tasks coordinated by lead
 - **Specialist Pool**: Lead delegates to any specialist as needed
 
+#### Delegation Isolation Modes
+
+When multiple agents delegate to the same target agent, you can control whether they share conversation history or get isolated instances.
+
+**Problem this solves**: Without isolation, multiple agents delegating to the same target share conversation history, causing context mixing. For example, if both `frontend` and `backend` delegate to `tester`, the tester's conversation includes both delegations mixed together, making it confusing.
+
+**Solution: Isolated Instances (Default)**
+
+By default, each delegator gets its own isolated instance:
+
+```yaml
+agents:
+  tester:
+    description: "Testing agent"
+    # shared_across_delegations: false (default - isolated mode)
+
+  frontend:
+    description: "Frontend developer"
+    delegates_to: [tester]  # Gets tester@frontend
+
+  backend:
+    description: "Backend developer"
+    delegates_to: [tester]  # Gets tester@backend (separate instance)
+```
+
+**Result**:
+- `frontend` → `tester@frontend` (isolated conversation)
+- `backend` → `tester@backend` (separate isolated conversation)
+- No context mixing between frontend and backend's testing conversations
+
+**When to Use Shared Mode**
+
+For agents that benefit from seeing all delegation contexts:
+
+```yaml
+agents:
+  database:
+    description: "Database coordination agent"
+    shared_across_delegations: true  # Shared mode
+
+  frontend:
+    delegates_to: [database]
+
+  backend:
+    delegates_to: [database]
+```
+
+Both frontend and backend share the same database agent instance and conversation history.
+
+**Use shared mode for:**
+- Stateful coordination agents
+- Database agents maintaining transaction state
+- Agents that benefit from seeing all contexts
+
+**Memory Sharing (Always Enabled)**
+
+Regardless of isolation mode, **plugin storage is always shared** by base agent name:
+- `tester@frontend` and `tester@backend` share the same SwarmMemory storage
+- This allows delegation instances to share knowledge while maintaining separate conversations
+- Best of both worlds: isolated conversations + shared memory
+
 ### 3.5 Markdown Agent Files
 
 Define agents in separate markdown files for better organization:

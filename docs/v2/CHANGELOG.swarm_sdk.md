@@ -5,6 +5,40 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Per-Delegation Agent Instances**: Dual-mode delegation support with isolated and shared modes
+  - **New `shared_across_delegations` configuration** (default: `false`)
+    - `false` (default): Each delegator gets its own isolated instance with separate conversation history
+    - `true`: All delegators share the same primary agent instance (legacy behavior)
+  - **Prevents context mixing**: Multiple agents delegating to the same target no longer share conversation history by default
+  - **Instance naming**: Delegation instances follow `"delegate@delegator"` pattern (e.g., `"tester@frontend"`)
+  - **Memory sharing**: Plugin storage (SwarmMemory) shared by base name across all instances
+  - **Tool state isolation**: TodoWrite, ReadTracker, and other stateful tools isolated per instance
+  - **Nested delegation support**: Works correctly with multi-level delegation chains
+  - **Fiber-safe concurrency**: Added `Async::Semaphore` to `Chat.ask()` to prevent message corruption when multiple delegation instances call shared agents in parallel
+  - **Atomic caching**: NodeOrchestrator caches delegation instances together with primary agents for context preservation
+  - **Agent name validation**: Agent names cannot contain '@' character (reserved for delegation instances)
+  - **Automatic deduplication**: Duplicate entries in `delegates_to` are automatically removed
+  - **Comprehensive test coverage**: 17 new tests covering isolated mode, shared mode, nested delegation, cleanup, and more
+
+### Changed
+
+- **Breaking: Default delegation behavior changed**
+  - **Old behavior**: Multiple agents delegating to same target shared conversation history
+  - **New behavior**: Each delegator gets isolated instance with separate history (prevents context mixing)
+  - **Migration**: Add `shared_across_delegations: true` to agents that need the old shared behavior
+  - **Impact**: Existing swarms will see different behavior - agents no longer share delegation contexts by default
+
+### Fixed
+
+- **Node context preservation bug**: Fixed issue where `inject_cached_agents` would be overwritten by fresh initialization
+  - Added forced initialization before injection to ensure cached instances are preserved
+- **Nested delegation race condition**: Added per-instance semaphore to prevent concurrent `ask()` calls from corrupting shared agent message history
+- **Hash iteration bug**: Fixed "can't add key during iteration" error in nested delegation by using `.to_a`
+
 ## [2.1.2]
 
 ### Added

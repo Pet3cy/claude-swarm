@@ -44,12 +44,20 @@ module SwarmSDK
         :agent_permissions,
         :assume_model_exists,
         :hooks,
-        :memory
+        :memory,
+        :shared_across_delegations
 
       attr_accessor :bypass_permissions, :max_concurrent_tools
 
       def initialize(name, config = {})
         @name = name.to_sym
+
+        # Validate name doesn't contain '@' (reserved for delegation instances)
+        if @name.to_s.include?("@")
+          raise ConfigurationError,
+            "Agent names cannot contain '@' character (reserved for delegation instance naming). " \
+              "Agent: #{@name}"
+        end
 
         # BREAKING CHANGE: Hard error for plural form
         if config[:directories]
@@ -96,6 +104,9 @@ module SwarmSDK
         # (memory prompt needs to be appended if memory is enabled)
         @memory = parse_memory_config(config[:memory])
 
+        # Delegation isolation mode (default: false = isolated instances per delegation)
+        @shared_across_delegations = config[:shared_across_delegations] || false
+
         # Build system prompt after directory and memory are set
         @system_prompt = build_full_system_prompt(config[:system_prompt])
 
@@ -111,7 +122,7 @@ module SwarmSDK
         # Inject default write restrictions for security
         @tools = inject_default_write_permissions(@tools)
 
-        @delegates_to = Array(config[:delegates_to] || []).map(&:to_sym)
+        @delegates_to = Array(config[:delegates_to] || []).map(&:to_sym).uniq
         @mcp_servers = Array(config[:mcp_servers] || [])
 
         # Parse hooks configuration
@@ -181,6 +192,7 @@ module SwarmSDK
           assume_model_exists: @assume_model_exists,
           max_concurrent_tools: @max_concurrent_tools,
           hooks: @hooks,
+          shared_across_delegations: @shared_across_delegations,
           # Permissions are core SDK functionality (not plugin-specific)
           default_permissions: @default_permissions,
           permissions: @agent_permissions,

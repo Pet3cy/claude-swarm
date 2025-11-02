@@ -68,7 +68,7 @@ module SwarmSDK
     # Default tools available to all agents
     DEFAULT_TOOLS = ToolConfigurator::DEFAULT_TOOLS
 
-    attr_reader :name, :agents, :lead_agent, :mcp_clients
+    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances
 
     # Check if scratchpad tools are enabled
     #
@@ -147,6 +147,7 @@ module SwarmSDK
       # Agent definitions and instances
       @agent_definitions = {}
       @agents = {}
+      @delegation_instances = {} # { "delegate@delegator" => Agent::Chat }
       @agents_initialized = false
       @agent_contexts = {}
 
@@ -465,18 +466,23 @@ module SwarmSDK
     #
     # @return [void]
     def cleanup
-      return if @mcp_clients.empty?
+      # Check if there's anything to clean up
+      return if @mcp_clients.empty? && (!@delegation_instances || @delegation_instances.empty?)
 
+      # Stop MCP clients for all agents (primaries + delegations tracked by instance name)
       @mcp_clients.each do |agent_name, clients|
         clients.each do |client|
           client.stop if client.alive?
           RubyLLM.logger.debug("SwarmSDK: Stopped MCP client '#{client.name}' for agent #{agent_name}")
         rescue StandardError => e
-          RubyLLM.logger.error("SwarmSDK: Error stopping MCP client '#{client.name}' for agent #{agent_name}: #{e.message}")
+          RubyLLM.logger.error("SwarmSDK: Error stopping MCP client '#{client.name}': #{e.message}")
         end
       end
 
       @mcp_clients.clear
+
+      # Clear delegation instances (V7.0: Added for completeness)
+      @delegation_instances&.clear
     end
 
     # Register a named hook that can be referenced in agent configurations
@@ -548,38 +554,56 @@ module SwarmSDK
 
     # Emit agent_start events for all initialized agents
     def emit_agent_start_events
-      # Only emit if LogStream is enabled
       return unless LogStream.emitter
 
+      # Emit for PRIMARY agents
       @agents.each do |agent_name, chat|
-        agent_def = @agent_definitions[agent_name]
-
-        # Build plugin storage info for logging
-        plugin_storage_info = {}
-        @plugin_storages.each do |plugin_name, agent_storages|
-          next unless agent_storages.key?(agent_name)
-
-          plugin_storage_info[plugin_name] = {
-            enabled: true,
-            # Get additional info from agent definition if available
-            config: agent_def.respond_to?(plugin_name) ? extract_plugin_config_info(agent_def.public_send(plugin_name)) : nil,
-          }
-        end
-
-        LogStream.emit(
-          type: "agent_start",
-          agent: agent_name,
-          swarm_name: @name,
-          model: agent_def.model,
-          provider: agent_def.provider || "openai",
-          directory: agent_def.directory,
-          system_prompt: agent_def.system_prompt,
-          tools: chat.tools.keys,
-          delegates_to: agent_def.delegates_to,
-          plugin_storages: plugin_storage_info,
-          timestamp: Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        )
+        emit_agent_start_for(agent_name, chat, is_delegation: false)
       end
+
+      # Emit for DELEGATION instances
+      @delegation_instances.each do |instance_name, chat|
+        base_name = extract_base_name(instance_name)
+        emit_agent_start_for(instance_name.to_sym, chat, is_delegation: true, base_name: base_name)
+      end
+    end
+
+    # Helper for emitting agent_start event
+    def emit_agent_start_for(agent_name, chat, is_delegation:, base_name: nil)
+      base_name ||= agent_name
+      agent_def = @agent_definitions[base_name]
+
+      # Build plugin storage info using base name
+      plugin_storage_info = {}
+      @plugin_storages.each do |plugin_name, agent_storages|
+        next unless agent_storages.key?(base_name)
+
+        plugin_storage_info[plugin_name] = {
+          enabled: true,
+          config: agent_def.respond_to?(plugin_name) ? extract_plugin_config_info(agent_def.public_send(plugin_name)) : nil,
+        }
+      end
+
+      LogStream.emit(
+        type: "agent_start",
+        agent: agent_name,
+        swarm_name: @name,
+        model: agent_def.model,
+        provider: agent_def.provider || "openai",
+        directory: agent_def.directory,
+        system_prompt: agent_def.system_prompt,
+        tools: chat.tools.keys,
+        delegates_to: agent_def.delegates_to,
+        plugin_storages: plugin_storage_info,
+        is_delegation_instance: is_delegation,
+        base_agent: (base_name if is_delegation),
+        timestamp: Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+      )
+    end
+
+    # Extract base name from instance name
+    def extract_base_name(instance_name)
+      instance_name.to_s.split("@").first.to_sym
     end
 
     # Normalize tools to internal format (kept for add_agent)

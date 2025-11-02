@@ -26,7 +26,10 @@ module SwarmSDK
       @nodes = nodes
       @start_node = start_node
       @scratchpad_enabled = scratchpad_enabled
-      @agent_instance_cache = {} # Cache for preserving agent context across nodes
+      @agent_instance_cache = {
+        primary: {}, # { agent_name => Agent::Chat }
+        delegations: {}, # { "delegate@delegator" => Agent::Chat }
+      }
 
       validate!
       @execution_order = build_execution_order
@@ -540,18 +543,29 @@ module SwarmSDK
     # @param node [Node::Builder] Node configuration
     # @return [void]
     def cache_agent_instances(swarm, node)
-      return unless swarm.agents # Only cache if agents were initialized
+      return unless swarm.agents
 
       node.agent_configs.each do |config|
         agent_name = config[:agent]
         reset_context = config[:reset_context]
 
-        # Only cache if reset_context is false
+        # Only cache if reset_context: false
         next if reset_context
 
-        # Cache the agent instance
+        # Cache primary agent
         agent_instance = swarm.agents[agent_name]
-        @agent_instance_cache[agent_name] = agent_instance if agent_instance
+        @agent_instance_cache[:primary][agent_name] = agent_instance if agent_instance
+
+        # V7.0: Cache delegation instances atomically (together with primary)
+        agent_def = @agent_definitions[agent_name]
+        agent_def.delegates_to.each do |delegate_name|
+          delegation_key = "#{delegate_name}@#{agent_name}"
+          delegation_instance = swarm.delegation_instances[delegation_key]
+
+          if delegation_instance
+            @agent_instance_cache[:delegations][delegation_key] = delegation_instance
+          end
+        end
       end
     end
 
@@ -565,26 +579,58 @@ module SwarmSDK
     # @return [void]
     def inject_cached_agents(swarm, node)
       # Check if any agents need context preservation
-      has_preserved_agents = node.agent_configs.any? { |c| !c[:reset_context] && @agent_instance_cache[c[:agent]] }
-      return unless has_preserved_agents
+      has_preserved = node.agent_configs.any? do |c|
+        !c[:reset_context] && (
+          @agent_instance_cache[:primary][c[:agent]] ||
+          has_cached_delegations_for?(c[:agent])
+        )
+      end
+      return unless has_preserved
 
-      # Force agent initialization by accessing .agents (triggers lazy init)
-      # Then inject cached instances
+      # V7.0 CRITICAL FIX: Force initialization FIRST
+      # Without this, @agents will be replaced by initialize_all, losing our injected instances
+      swarm.agent(node.agent_configs.first[:agent]) # Triggers lazy init
+
+      # Now safely inject cached instances
       agents_hash = swarm.agents
+      delegation_hash = swarm.delegation_instances
 
+      # Inject cached PRIMARY agents
       node.agent_configs.each do |config|
         agent_name = config[:agent]
-        reset_context = config[:reset_context]
+        next if config[:reset_context]
 
-        # Skip if reset_context is true (want fresh instance)
-        next if reset_context
-
-        # Check if we have a cached instance
-        cached_agent = @agent_instance_cache[agent_name]
+        cached_agent = @agent_instance_cache[:primary][agent_name]
         next unless cached_agent
 
-        # Inject the cached instance (replace the freshly initialized one)
+        # Replace freshly initialized agent with cached instance
         agents_hash[agent_name] = cached_agent
+      end
+
+      # Inject cached DELEGATION instances (atomic with primary)
+      node.agent_configs.each do |config|
+        agent_name = config[:agent]
+        next if config[:reset_context]
+
+        agent_def = @agent_definitions[agent_name]
+
+        agent_def.delegates_to.each do |delegate_name|
+          delegation_key = "#{delegate_name}@#{agent_name}"
+          cached_delegation = @agent_instance_cache[:delegations][delegation_key]
+          next unless cached_delegation
+
+          # Replace freshly initialized delegation instance
+          # V7.0: Tool references intact - atomic caching preserves object graph
+          delegation_hash[delegation_key] = cached_delegation
+        end
+      end
+    end
+
+    def has_cached_delegations_for?(agent_name)
+      agent_def = @agent_definitions[agent_name]
+      agent_def.delegates_to.any? do |delegate_name|
+        delegation_key = "#{delegate_name}@#{agent_name}"
+        @agent_instance_cache[:delegations][delegation_key]
       end
     end
   end
