@@ -259,13 +259,31 @@ module SwarmSDK
 
       # Configure permissions for this agent
       #
-      # @example
+      # Supports two forms:
+      # 1. Block (DSL): permissions do ... end
+      # 2. Hash (YAML): permissions_from_hash({ Read: { allow_paths: [...] } })
+      #
+      # @example Block form (DSL)
       #   permissions do
       #     Write.allow_paths "backend/**/*"
       #     Write.deny_paths "backend/secrets/**"
       #   end
       def permissions(&block)
         @permissions_config = PermissionsBuilder.build(&block)
+      end
+
+      # Set permissions from hash (for YAML translation)
+      #
+      # @param hash [Hash] Permissions configuration hash
+      # @return [void]
+      #
+      # @example
+      #   permissions_from_hash({
+      #     Read: { deny_paths: ["secrets/**/*"] },
+      #     Write: { allowed_paths: ["output/**/*"] }
+      #   })
+      def permissions_from_hash(hash)
+        @permissions_config = hash || {}
       end
 
       # Configure delegation isolation mode
@@ -279,6 +297,17 @@ module SwarmSDK
       def shared_across_delegations(enabled)
         @shared_across_delegations = enabled
         self
+      end
+
+      # Set permissions directly from hash (for YAML translation)
+      #
+      # This is intentionally separate from permissions() to keep the DSL clean.
+      # Called by Configuration when translating YAML permissions.
+      #
+      # @param hash [Hash] Permissions configuration hash
+      # @return [void]
+      def permissions_hash=(hash)
+        @permissions_config = hash || {}
       end
 
       # Check if model has been explicitly set (not default)
