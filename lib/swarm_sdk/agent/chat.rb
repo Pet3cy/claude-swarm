@@ -230,63 +230,72 @@ module SwarmSDK
       # @param options [Hash] Additional options to pass to complete
       # @return [RubyLLM::Message] LLM response
       def ask(prompt, **options)
-        # Check if this is the first user message
-        is_first = SystemReminderInjector.first_message?(self)
+        # Serialize ask() calls to prevent message corruption from concurrent fibers
+        # Uses Async::Semaphore (not Mutex) because SwarmSDK runs in fiber context
+        # This protects against parallel delegation scenarios where multiple delegation
+        # instances call the same underlying primary agent (e.g., tester@frontend and
+        # tester@backend both calling database in parallel).
+        @ask_semaphore ||= Async::Semaphore.new(1)
 
-        if is_first
-          # Collect plugin reminders first
-          plugin_reminders = collect_plugin_reminders(prompt, is_first_message: true)
+        @ask_semaphore.acquire do
+          # Check if this is the first user message
+          is_first = SystemReminderInjector.first_message?(self)
 
-          # Build full prompt with embedded plugin reminders
-          full_prompt = prompt
-          plugin_reminders.each do |reminder|
-            full_prompt = "#{full_prompt}\n\n#{reminder}"
-          end
+          if is_first
+            # Collect plugin reminders first
+            plugin_reminders = collect_plugin_reminders(prompt, is_first_message: true)
 
-          # Inject first message reminders (includes system reminders + toolset + after)
-          # SystemReminderInjector will embed all reminders in the prompt via add_message
-          SystemReminderInjector.inject_first_message_reminders(self, full_prompt)
-
-          # Trigger user_prompt hook manually since we're bypassing the normal ask flow
-          if @hook_executor
-            hook_result = trigger_user_prompt(prompt)
-
-            # Check if hook halted execution
-            if hook_result[:halted]
-              # Return a halted message instead of calling LLM
-              return RubyLLM::Message.new(
-                role: :assistant,
-                content: hook_result[:halt_message],
-                model_id: model.id,
-              )
+            # Build full prompt with embedded plugin reminders
+            full_prompt = prompt
+            plugin_reminders.each do |reminder|
+              full_prompt = "#{full_prompt}\n\n#{reminder}"
             end
 
-            # NOTE: We ignore modified_prompt for first message since reminders already injected
+            # Inject first message reminders (includes system reminders + toolset + after)
+            # SystemReminderInjector will embed all reminders in the prompt via add_message
+            SystemReminderInjector.inject_first_message_reminders(self, full_prompt)
+
+            # Trigger user_prompt hook manually since we're bypassing the normal ask flow
+            if @hook_executor
+              hook_result = trigger_user_prompt(prompt)
+
+              # Check if hook halted execution
+              if hook_result[:halted]
+                # Return a halted message instead of calling LLM
+                return RubyLLM::Message.new(
+                  role: :assistant,
+                  content: hook_result[:halt_message],
+                  model_id: model.id,
+                )
+              end
+
+              # NOTE: We ignore modified_prompt for first message since reminders already injected
+            end
+
+            # Call complete to get LLM response
+            complete(**options)
+          else
+            # Build prompt with embedded reminders (if needed)
+            full_prompt = prompt
+
+            # Add periodic TodoWrite reminder if needed
+            if SystemReminderInjector.should_inject_todowrite_reminder?(self, @last_todowrite_message_index)
+              full_prompt = "#{full_prompt}\n\n#{SystemReminderInjector::TODOWRITE_PERIODIC_REMINDER}"
+              # Update tracking
+              @last_todowrite_message_index = SystemReminderInjector.find_last_todowrite_index(self)
+            end
+
+            # Collect plugin reminders and embed them
+            plugin_reminders = collect_plugin_reminders(full_prompt, is_first_message: false)
+            plugin_reminders.each do |reminder|
+              full_prompt = "#{full_prompt}\n\n#{reminder}"
+            end
+
+            # Normal ask behavior for subsequent messages
+            # This calls super which goes to HookIntegration's ask override
+            # HookIntegration will call add_message, and we'll extract reminders there
+            super(full_prompt, **options)
           end
-
-          # Call complete to get LLM response
-          complete(**options)
-        else
-          # Build prompt with embedded reminders (if needed)
-          full_prompt = prompt
-
-          # Add periodic TodoWrite reminder if needed
-          if SystemReminderInjector.should_inject_todowrite_reminder?(self, @last_todowrite_message_index)
-            full_prompt = "#{full_prompt}\n\n#{SystemReminderInjector::TODOWRITE_PERIODIC_REMINDER}"
-            # Update tracking
-            @last_todowrite_message_index = SystemReminderInjector.find_last_todowrite_index(self)
-          end
-
-          # Collect plugin reminders and embed them
-          plugin_reminders = collect_plugin_reminders(full_prompt, is_first_message: false)
-          plugin_reminders.each do |reminder|
-            full_prompt = "#{full_prompt}\n\n#{reminder}"
-          end
-
-          # Normal ask behavior for subsequent messages
-          # This calls super which goes to HookIntegration's ask override
-          # HookIntegration will call add_message, and we'll extract reminders there
-          super(full_prompt, **options)
         end
       end
 

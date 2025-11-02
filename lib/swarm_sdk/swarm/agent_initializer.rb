@@ -94,13 +94,123 @@ module SwarmSDK
         end
       end
 
-      # Pass 2: Register agent delegation tools
+      # Pass 2: Create delegation instances and wire delegation tools
       #
-      # Now that all agents exist, we can create delegation tools
-      # that allow agents to call each other.
+      # This pass has three sub-steps that must happen in order:
+      # 2a. Create delegation instances (ONLY for agents with shared_across_delegations: false)
+      # 2b. Wire primary agents to delegation instances OR shared primaries
+      # 2c. Wire delegation instances to their delegates (nested delegation support)
       def pass_2_register_delegation_tools
-        @agent_definitions.each do |name, agent_definition|
-          register_delegation_tools(@agents[name], agent_definition.delegates_to, agent_name: name)
+        tool_configurator = ToolConfigurator.new(@swarm, @scratchpad_storage, @plugin_storages)
+
+        # Sub-pass 2a: Create delegation instances for isolated agents
+        @agent_definitions.each do |delegator_name, delegator_def|
+          delegator_def.delegates_to.each do |delegate_base_name|
+            delegate_base_name = delegate_base_name.to_sym
+
+            unless @agent_definitions.key?(delegate_base_name)
+              raise ConfigurationError,
+                "Agent '#{delegator_name}' delegates to unknown agent '#{delegate_base_name}'"
+            end
+
+            delegate_definition = @agent_definitions[delegate_base_name]
+
+            # Check isolation mode of the DELEGATE agent
+            # If delegate wants to be shared, skip instance creation (use primary)
+            next if delegate_definition.shared_across_delegations
+
+            # Create unique delegation instance (isolated mode)
+            instance_name = "#{delegate_base_name}@#{delegator_name}"
+
+            # V7.0: Use existing register_all_tools (no new method needed!)
+            delegation_chat = create_agent_chat_for_delegation(
+              instance_name: instance_name,
+              base_name: delegate_base_name,
+              agent_definition: delegate_definition,
+              tool_configurator: tool_configurator,
+            )
+
+            # Store in delegation_instances hash
+            @swarm.delegation_instances[instance_name] = delegation_chat
+          end
+        end
+
+        # Sub-pass 2b: Wire primary agents to delegation instances OR shared primaries
+        @agent_definitions.each do |delegator_name, delegator_def|
+          delegator_chat = @agents[delegator_name]
+
+          delegator_def.delegates_to.each do |delegate_base_name|
+            delegate_definition = @agent_definitions[delegate_base_name]
+
+            # Determine which chat instance to use
+            target_chat = if delegate_definition.shared_across_delegations
+              # Shared mode: use primary agent (old behavior)
+              @agents[delegate_base_name]
+            else
+              # Isolated mode: use delegation instance
+              instance_name = "#{delegate_base_name}@#{delegator_name}"
+              @swarm.delegation_instances[instance_name]
+            end
+
+            # Create delegation tool pointing to chosen instance
+            tool = create_delegation_tool(
+              name: delegate_base_name.to_s,
+              description: delegate_definition.description,
+              delegate_chat: target_chat, # ← Isolated instance OR shared primary
+              agent_name: delegator_name,
+              delegating_chat: delegator_chat,
+            )
+
+            delegator_chat.with_tool(tool)
+          end
+        end
+
+        # Sub-pass 2c: Wire delegation instances to their delegates (nested delegation)
+        # Convert to array first to avoid "can't add key during iteration" error
+        @swarm.delegation_instances.to_a.each do |instance_name, delegation_chat|
+          base_name = extract_base_name(instance_name)
+          delegate_definition = @agent_definitions[base_name]
+
+          # Register delegation tools for THIS instance's delegates_to
+          delegate_definition.delegates_to.each do |nested_delegate_name|
+            nested_delegate_name = nested_delegate_name.to_sym
+
+            unless @agents.key?(nested_delegate_name)
+              raise ConfigurationError,
+                "Delegation instance '#{instance_name}' delegates to unknown agent '#{nested_delegate_name}'"
+            end
+
+            nested_definition = @agent_definitions[nested_delegate_name]
+
+            # Determine target: shared primary OR isolated instance
+            target_chat = if nested_definition.shared_across_delegations
+              # Shared mode: point to primary (semaphore-protected)
+              @agents[nested_delegate_name]
+            else
+              # Isolated mode: delegation instances also get isolated nested delegates
+              # Create unique instance for this delegation chain
+              nested_instance_name = "#{nested_delegate_name}@#{instance_name}"
+
+              # Check if already created in 2a (if delegator also delegates to this agent)
+              @swarm.delegation_instances[nested_instance_name] ||= create_agent_chat_for_delegation(
+                instance_name: nested_instance_name,
+                base_name: nested_delegate_name,
+                agent_definition: nested_definition,
+                tool_configurator: tool_configurator,
+              )
+            end
+
+            # Create delegation tool
+            nested_tool = create_delegation_tool(
+              name: nested_delegate_name.to_s,
+              description: nested_definition.description,
+              delegate_chat: target_chat, # ← Isolated OR shared
+              agent_name: instance_name.to_sym,
+              delegating_chat: delegation_chat,
+            )
+
+            delegation_chat.with_tool(nested_tool)
+          end
         end
       end
 
@@ -109,31 +219,44 @@ module SwarmSDK
       # Create Agent::Context for each agent to track delegations and metadata.
       # This is needed regardless of whether logging is enabled.
       def pass_3_setup_contexts
+        # Setup contexts for PRIMARY agents
         @agents.each do |agent_name, chat|
-          agent_definition = @agent_definitions[agent_name]
-          delegate_tool_names = agent_definition.delegates_to.map do |delegate_name|
-            "DelegateTaskTo#{delegate_name.to_s.capitalize}"
-          end
-
-          # Create agent context
-          context = Agent::Context.new(
-            name: agent_name,
-            delegation_tools: delegate_tool_names,
-            metadata: {},
-          )
-          @agent_contexts[agent_name] = context
-
-          # Always set agent context (needed for delegation tracking)
-          chat.setup_context(context) if chat.respond_to?(:setup_context)
-
-          # Configure logging callbacks if logging is enabled
-          next unless LogStream.emitter
-
-          chat.setup_logging if chat.respond_to?(:setup_logging)
-
-          # Emit validation warnings for this agent
-          emit_validation_warnings(agent_name, agent_definition)
+          setup_agent_context(agent_name, @agent_definitions[agent_name], chat, is_delegation: false)
         end
+
+        # Setup contexts for DELEGATION instances
+        @swarm.delegation_instances.each do |instance_name, chat|
+          base_name = extract_base_name(instance_name)
+          agent_definition = @agent_definitions[base_name]
+          setup_agent_context(instance_name.to_sym, agent_definition, chat, is_delegation: true)
+        end
+      end
+
+      # Setup context for an agent (primary or delegation instance)
+      def setup_agent_context(agent_name, agent_definition, chat, is_delegation: false)
+        delegate_tool_names = agent_definition.delegates_to.map do |delegate_name|
+          "DelegateTaskTo#{delegate_name.to_s.capitalize}"
+        end
+
+        context = Agent::Context.new(
+          name: agent_name,
+          delegation_tools: delegate_tool_names,
+          metadata: { is_delegation_instance: is_delegation },
+        )
+
+        # Store context (only for primaries)
+        @agent_contexts[agent_name] = context unless is_delegation
+
+        # Always set agent context on chat
+        chat.setup_context(context) if chat.respond_to?(:setup_context)
+
+        # Configure logging if enabled
+        return unless LogStream.emitter
+
+        chat.setup_logging if chat.respond_to?(:setup_logging)
+
+        # Emit validation warnings (only for primaries, not each delegation instance)
+        emit_validation_warnings(agent_name, agent_definition) unless is_delegation
       end
 
       # Emit validation warnings as log events
@@ -166,16 +289,27 @@ module SwarmSDK
       #
       # Setup the callback system for each agent, integrating with RubyLLM callbacks.
       def pass_4_configure_hooks
+        # Configure hooks for PRIMARY agents
         @agents.each do |agent_name, chat|
-          agent_definition = @agent_definitions[agent_name]
-
-          # Configure callback system (integrates with RubyLLM callbacks)
-          chat.setup_hooks(
-            registry: @hook_registry,
-            agent_definition: agent_definition,
-            swarm: @swarm,
-          ) if chat.respond_to?(:setup_hooks)
+          configure_hooks_for_agent(agent_name, chat)
         end
+
+        # Configure hooks for DELEGATION instances
+        @swarm.delegation_instances.each do |instance_name, chat|
+          configure_hooks_for_agent(instance_name.to_sym, chat)
+        end
+      end
+
+      # Configure hooks for an agent (primary or delegation instance)
+      def configure_hooks_for_agent(agent_name, chat)
+        base_name = extract_base_name(agent_name)
+        agent_definition = @agent_definitions[base_name]
+
+        chat.setup_hooks(
+          registry: @hook_registry,
+          agent_definition: agent_definition,
+          swarm: @swarm,
+        ) if chat.respond_to?(:setup_hooks)
       end
 
       # Pass 5: Apply YAML hooks
@@ -185,13 +319,24 @@ module SwarmSDK
       def pass_5_apply_yaml_hooks
         return unless @config_for_hooks
 
+        # Apply YAML hooks to PRIMARY agents
         @agents.each do |agent_name, chat|
-          agent_def = @config_for_hooks.agents[agent_name]
-          next unless agent_def&.hooks
-
-          # Apply agent-specific hooks via Hooks::Adapter
-          Hooks::Adapter.apply_agent_hooks(chat, agent_name, agent_def.hooks, @swarm.name)
+          apply_yaml_hooks_for_agent(agent_name, chat)
         end
+
+        # Apply YAML hooks to DELEGATION instances
+        @swarm.delegation_instances.each do |instance_name, chat|
+          apply_yaml_hooks_for_agent(instance_name.to_sym, chat)
+        end
+      end
+
+      # Apply YAML hooks for an agent (primary or delegation instance)
+      def apply_yaml_hooks_for_agent(agent_name, chat)
+        base_name = extract_base_name(agent_name)
+        agent_def = @config_for_hooks.agents[base_name]
+        return unless agent_def&.hooks
+
+        Hooks::Adapter.apply_agent_hooks(chat, agent_name, agent_def.hooks, @swarm.name)
       end
 
       # Create Agent::Chat instance with rate limiting
@@ -222,6 +367,50 @@ module SwarmSDK
           mcp_configurator = McpConfigurator.new(@swarm)
           mcp_configurator.register_mcp_servers(chat, agent_definition.mcp_servers, agent_name: agent_name)
         end
+
+        chat
+      end
+
+      # Create a delegation-specific instance of an agent
+      #
+      # V7.0: Simplified - just calls register_all_tools with instance_name
+      #
+      # @param instance_name [String] Unique instance name ("base@delegator")
+      # @param base_name [Symbol] Base agent name (for definition lookup)
+      # @param agent_definition [Agent::Definition] Base agent definition
+      # @param tool_configurator [ToolConfigurator] Shared tool configurator
+      # @return [Agent::Chat] Delegation-specific chat instance
+      def create_agent_chat_for_delegation(instance_name:, base_name:, agent_definition:, tool_configurator:)
+        # Create chat with instance_name for isolated conversation + tool state
+        chat = Agent::Chat.new(
+          definition: agent_definition.to_h,
+          agent_name: instance_name.to_sym, # Full instance name for isolation
+          global_semaphore: @global_semaphore,
+        )
+
+        # Set provider agent name for logging
+        chat.provider.agent_name = instance_name if chat.provider.respond_to?(:agent_name=)
+
+        # V7.0 SIMPLIFIED: Just call register_all_tools with instance_name!
+        # Base name extraction happens automatically in create_plugin_tool
+        tool_configurator.register_all_tools(
+          chat: chat,
+          agent_name: instance_name.to_sym,
+          agent_definition: agent_definition,
+        )
+
+        # Register MCP servers (tracked by instance_name automatically)
+        if agent_definition.mcp_servers.any?
+          mcp_configurator = McpConfigurator.new(@swarm)
+          mcp_configurator.register_mcp_servers(
+            chat,
+            agent_definition.mcp_servers,
+            agent_name: instance_name,
+          )
+        end
+
+        # Notify plugins (use instance_name, plugins extract base_name if needed)
+        notify_plugins_agent_initialized(instance_name.to_sym, chat, agent_definition, tool_configurator)
 
         chat
       end
@@ -328,6 +517,22 @@ module SwarmSDK
           # Notify plugin
           plugin.on_agent_initialized(agent_name: agent_name, agent: chat, context: context)
         end
+      end
+
+      # Extract base agent name from instance name
+      #
+      # @param instance_name [Symbol, String] Instance name (may be delegation instance)
+      # @return [Symbol] Base agent name
+      def extract_base_name(instance_name)
+        instance_name.to_s.split("@").first.to_sym
+      end
+
+      # Check if instance name is a delegation instance
+      #
+      # @param instance_name [Symbol, String] Instance name
+      # @return [Boolean] True if delegation instance (contains '@')
+      def delegation_instance?(instance_name)
+        instance_name.to_s.include?("@")
       end
     end
   end

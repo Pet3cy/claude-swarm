@@ -182,17 +182,17 @@ swarm:
 ```ruby
 # Ruby DSL only - NOT valid in YAML
 SwarmSDK.build do
-  nodes:
-    planning:
-      agents:
-        - agent: architect
+  node :planning do
+    agent(:architect)
+  end
 
-    implementation:
-      agents:
-        - agent: backend
-          delegates_to: [tester]
-        - agent: tester
-      dependencies: [planning]
+  node :implementation do
+    agent(:backend).delegates_to(:tester)
+    agent(:tester)
+    depends_on :planning
+  end
+
+  start_node :planning
 end
 ```
 
@@ -211,9 +211,10 @@ end
 # Ruby DSL only - NOT valid in YAML
 SwarmSDK.build do
   start_node :planning
-  nodes:
-    planning:
-      # ...
+
+  node :planning do
+    agent(:architect)
+  end
 end
 ```
 
@@ -454,6 +455,60 @@ agents:
   coordinator:
     delegates_to: [frontend, backend, reviewer]
 ```
+
+---
+
+### shared_across_delegations
+
+**Type:** Boolean (optional)
+**Default:** `false`
+**Description:** Control whether multiple agents share the same instance when delegating to this agent.
+
+**Values:**
+- `false` (default): Create isolated instances per delegator (recommended)
+- `true`: Share the same instance across all delegators
+
+**Behavior:**
+
+By default, when multiple agents delegate to the same target, each gets its own isolated instance with separate conversation history. This prevents context mixing.
+
+**Isolated Mode Example (default):**
+```yaml
+agents:
+  tester:
+    description: "Testing agent"
+    # shared_across_delegations: false (default)
+
+  frontend:
+    delegates_to: [tester]  # Gets tester@frontend
+
+  backend:
+    delegates_to: [tester]  # Gets tester@backend (separate)
+```
+
+**Shared Mode Example (opt-in):**
+```yaml
+agents:
+  database:
+    description: "Database coordination agent"
+    shared_across_delegations: true  # All delegators share this
+
+  frontend:
+    delegates_to: [database]  # Gets shared database primary
+
+  backend:
+    delegates_to: [database]  # Gets same shared database
+```
+
+**Memory Sharing:**
+
+Plugin storage (like SwarmMemory) is always shared by base agent name:
+- `tester@frontend` and `tester@backend` share memory storage
+- Only conversation history and tool state are isolated
+
+**When to use:**
+- **Shared mode**: Stateful coordination, database agents, shared context needs
+- **Isolated mode (default)**: Testing different codebases, reviewing different PRs, preventing context mixing
 
 ---
 

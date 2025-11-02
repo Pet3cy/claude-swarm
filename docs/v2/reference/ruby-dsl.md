@@ -671,6 +671,87 @@ delegates_to :frontend  # Cumulative - adds to existing list
 
 ---
 
+### shared_across_delegations
+
+Control whether multiple agents share the same instance when delegating to this agent.
+
+**Signature:**
+```ruby
+shared_across_delegations(enabled) → self
+```
+
+**Parameters:**
+- `enabled` (Boolean, required):
+  - `false` (default): Create isolated instances per delegator (recommended)
+  - `true`: Share the same instance across all delegators
+
+**Default:** `false` (isolated mode)
+
+**Description:**
+
+By default, when multiple agents delegate to the same target agent, each delegator gets its own isolated instance with a separate conversation history. This prevents context mixing and ensures clean delegation boundaries.
+
+**Isolated Mode (default):**
+```
+frontend → tester@frontend (isolated instance)
+backend  → tester@backend  (isolated instance)
+```
+
+**Shared Mode (opt-in):**
+```
+frontend → database (shared primary)
+backend  → database (shared primary)
+```
+
+**When to use shared mode:**
+- Stateful coordination agents that need shared state
+- Database agents that maintain transaction state
+- Agents that benefit from seeing all delegation contexts
+
+**When to use isolated mode (default):**
+- Testing agents that analyze different codebases
+- Review agents that evaluate different PRs
+- Any agent where context mixing would be problematic
+
+**Example:**
+```ruby
+# Default: isolated instances (recommended)
+agent :tester do
+  description "Testing agent"
+  # Each delegator gets separate tester instance
+end
+
+# Opt-in: shared instance
+agent :database do
+  description "Database coordination agent"
+  shared_across_delegations true  # All delegators share this instance
+end
+
+# Usage
+agent :frontend do
+  delegates_to :tester    # Gets tester@frontend
+  delegates_to :database  # Gets shared database
+end
+
+agent :backend do
+  delegates_to :tester    # Gets tester@backend (separate from frontend's)
+  delegates_to :database  # Gets same shared database as frontend
+end
+```
+
+**Memory Sharing:**
+
+Plugin storage (like SwarmMemory) is **always shared** by base agent name, regardless of isolation mode:
+- `tester@frontend` and `tester@backend` share the same memory storage
+- Only conversation history and tool state (TodoWrite, etc.) are isolated
+- This allows instances to share knowledge while maintaining separate conversations
+
+**Concurrency Protection:**
+
+When using shared mode, SwarmSDK automatically serializes concurrent calls to the same agent instance using fiber-safe semaphores. This prevents message corruption when multiple delegation instances call the same shared agent in parallel.
+
+---
+
 ### memory
 
 Configure persistent memory storage for this agent.

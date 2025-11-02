@@ -52,6 +52,7 @@ module SwarmSDK
         @permissions_config = {}
         @default_permissions = {} # Set by SwarmBuilder from all_agents
         @memory_config = nil
+        @shared_across_delegations = nil # nil = not set (will default to false in Definition)
       end
 
       # Set/get agent model
@@ -267,6 +268,19 @@ module SwarmSDK
         @permissions_config = PermissionsBuilder.build(&block)
       end
 
+      # Configure delegation isolation mode
+      #
+      # @param enabled [Boolean] If true, allows sharing instances across delegations (old behavior)
+      #                          If false (default), creates isolated instances per delegation
+      # @return [self] Returns self for method chaining
+      #
+      # @example
+      #   shared_across_delegations true  # Allow sharing (old behavior)
+      def shared_across_delegations(enabled)
+        @shared_across_delegations = enabled
+        self
+      end
+
       # Check if model has been explicitly set (not default)
       #
       # Used by Swarm::Builder to determine if all_agents model should apply.
@@ -374,6 +388,7 @@ module SwarmSDK
         agent_config[:permissions] = @permissions_config if @permissions_config.any?
         agent_config[:default_permissions] = @default_permissions if @default_permissions.any?
         agent_config[:memory] = @memory_config if @memory_config
+        agent_config[:shared_across_delegations] = @shared_across_delegations unless @shared_across_delegations.nil?
 
         # Convert DSL hooks to HookDefinition format
         agent_config[:hooks] = convert_hooks_to_definitions if @hooks.any?

@@ -139,6 +139,47 @@ Delegation is how agents collaborate. When an agent is configured with `delegate
 
 Delegation creates flexible collaboration patterns without rigid workflows.
 
+#### Delegation Isolation Modes
+
+When multiple agents delegate to the same target, you can control whether they share the same conversation history or get isolated instances:
+
+**Isolated Mode (Default - Recommended):**
+```yaml
+agents:
+  tester:
+    description: "Testing agent"
+    # shared_across_delegations: false (default)
+
+  frontend:
+    delegates_to: [tester]  # Gets tester@frontend (isolated)
+
+  backend:
+    delegates_to: [tester]  # Gets tester@backend (separate)
+```
+
+Each delegator gets its own isolated instance with separate conversation history. This prevents context mixing and ensures clean boundaries.
+
+**Shared Mode (Opt-in):**
+```yaml
+agents:
+  database:
+    description: "Database coordination agent"
+    shared_across_delegations: true
+
+  frontend:
+    delegates_to: [database]  # Shares same database instance
+
+  backend:
+    delegates_to: [database]  # Shares same database instance
+```
+
+All delegators share the same agent instance and conversation history. Use this for stateful coordination or when context sharing is beneficial.
+
+**Key Points:**
+- **Memory is always shared**: SwarmMemory and other plugin storage is shared by base agent name across all instances
+- **Only conversation history differs**: Isolated mode separates conversations, but knowledge is shared
+- **Choose based on use case**: Use isolated (default) for independent tasks, shared for coordination
+
 ### Tools
 
 Tools are functions agents call to interact with the world. SwarmSDK provides:

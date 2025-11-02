@@ -229,15 +229,21 @@ module SwarmSDK
         plugin = PluginRegistry.plugin_for_tool(tool_name)
         raise ConfigurationError, "Tool #{tool_name} is not provided by any plugin" unless plugin
 
-        # Get plugin storage for this agent
+        # V7.0: Extract base name for storage lookup (handles delegation instances)
+        # For primary agents: :tester → :tester (no change)
+        # For delegation instances: "tester@frontend" → :tester (extracts base)
+        base_name = agent_name.to_s.split("@").first.to_sym
+
+        # Get plugin storage using BASE NAME (shared across instances)
         plugin_storages = @plugin_storages[plugin.name] || {}
-        storage = plugin_storages[agent_name]
+        storage = plugin_storages[base_name] # ← Changed from agent_name to base_name
 
         # Build context for tool creation
+        # Pass full agent_name for tool state tracking (TodoWrite, ReadTracker, etc.)
         context = {
-          agent_name: agent_name,
+          agent_name: agent_name, # Full instance name for tool's use
           directory: directory,
-          storage: storage,
+          storage: storage, # Shared storage by base name
           agent_definition: agent_definition,
           chat: chat,
           tool_configurator: self,
