@@ -333,10 +333,14 @@ module SwarmSDK
       # Apply YAML hooks for an agent (primary or delegation instance)
       def apply_yaml_hooks_for_agent(agent_name, chat)
         base_name = extract_base_name(agent_name)
-        agent_def = @config_for_hooks.agents[base_name]
-        return unless agent_def&.hooks
+        agent_config = @config_for_hooks.agents[base_name]
+        return unless agent_config
 
-        Hooks::Adapter.apply_agent_hooks(chat, agent_name, agent_def.hooks, @swarm.name)
+        # Configuration.agents now returns hashes, not Definitions
+        hooks = agent_config.is_a?(Hash) ? agent_config[:hooks] : agent_config.hooks
+        return unless hooks&.any?
+
+        Hooks::Adapter.apply_agent_hooks(chat, agent_name, hooks, @swarm.name)
       end
 
       # Create Agent::Chat instance with rate limiting

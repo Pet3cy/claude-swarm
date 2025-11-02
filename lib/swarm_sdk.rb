@@ -84,6 +84,10 @@ module SwarmSDK
       begin
         config = Configuration.new(yaml_content, base_dir: base_dir)
         config.load_and_validate
+
+        # Build swarm to trigger DSL validation
+        # This catches errors from Agent::Definition, Builder, etc.
+        config.to_swarm
       rescue ConfigurationError, CircularDependencyError => e
         errors << parse_configuration_error(e)
       rescue StandardError => e
@@ -235,7 +239,7 @@ module SwarmSDK
     def hooks_configured?(config)
       config.swarm_hooks.any? ||
         config.all_agents_hooks.any? ||
-        config.agents.any? { |_, agent_def| agent_def.hooks&.any? }
+        config.agents.any? { |_, agent_config| agent_config[:hooks]&.any? }
     end
 
     # Parse configuration error and extract structured information

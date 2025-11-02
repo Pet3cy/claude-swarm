@@ -4,7 +4,7 @@ module SwarmSDK
   class Configuration
     ENV_VAR_WITH_DEFAULT_PATTERN = /\$\{([^:}]+)(:=([^}]*))?\}/
 
-    attr_reader :swarm_name, :lead_agent, :agents, :all_agents_config, :swarm_hooks, :all_agents_hooks, :scratchpad_enabled
+    attr_reader :swarm_name, :lead_agent, :agents, :all_agents_config, :swarm_hooks, :all_agents_hooks, :scratchpad_enabled, :nodes, :start_node
 
     class << self
       # Load configuration from YAML file
@@ -41,10 +41,12 @@ module SwarmSDK
 
       @yaml_content = yaml_content
       @base_dir = Pathname.new(base_dir).expand_path
-      @agents = {}
+      @agents = {} # Parsed agent configs (hashes, not Definitions)
       @all_agents_config = {} # Settings applied to all agents
       @swarm_hooks = {} # Swarm-level hooks (swarm_start, swarm_stop)
       @all_agents_hooks = {} # Hooks applied to all agents
+      @nodes = {} # Parsed node configs (hashes)
+      @start_node = nil # Starting node for workflows
     end
 
     def load_and_validate
@@ -61,6 +63,7 @@ module SwarmSDK
       load_hooks_config
       validate_swarm
       load_agents
+      load_nodes
       detect_circular_dependencies
       self
     rescue Psych::SyntaxError => e
@@ -72,32 +75,45 @@ module SwarmSDK
     end
 
     def connections_for(agent_name)
-      @agents[agent_name]&.delegates_to || []
+      agent_config = @agents[agent_name]
+      return [] unless agent_config
+
+      # Extract delegates_to from hash and convert to symbols
+      delegates = agent_config[:delegates_to] || []
+      Array(delegates).map(&:to_sym)
     end
 
-    # Convert configuration to Swarm instance using Ruby API
+    # Convert configuration to Swarm or NodeOrchestrator using DSL
     #
-    # This method bridges YAML configuration to the Ruby API, making YAML
-    # a thin convenience layer over the programmatic interface.
+    # This method translates YAML configuration to Ruby DSL calls.
+    # The DSL (Swarm::Builder) handles all validation, merging, and construction.
     #
-    # @return [Swarm] Configured swarm instance
+    # @return [Swarm, NodeOrchestrator] Configured swarm or orchestrator
     def to_swarm
-      swarm = Swarm.new(
-        name: @swarm_name,
-        global_concurrency: Swarm::DEFAULT_GLOBAL_CONCURRENCY,
-        default_local_concurrency: Swarm::DEFAULT_LOCAL_CONCURRENCY,
-        scratchpad_enabled: @scratchpad_enabled,
-      )
+      builder = Swarm::Builder.new
 
-      # Add all agents - pass definitions directly
-      @agents.each do |_name, agent_def|
-        swarm.add_agent(agent_def)
+      # Translate basic swarm config to DSL
+      builder.name(@swarm_name)
+      builder.lead(@lead_agent)
+      builder.use_scratchpad(@scratchpad_enabled)
+
+      # Translate all_agents config to DSL (if present)
+      translate_all_agents(builder) if @all_agents_config.any?
+
+      # Translate agents to DSL
+      translate_agents(builder)
+
+      # Translate swarm-level hooks to DSL (if present)
+      translate_swarm_hooks(builder) if @swarm_hooks.any?
+
+      # Translate nodes to DSL (if present)
+      if @nodes.any?
+        translate_nodes(builder)
+        builder.start_node(@start_node)
       end
 
-      # Set lead agent
-      swarm.lead = @lead_agent
-
-      swarm
+      # Build the swarm or orchestrator (DSL decides based on presence of nodes)
+      builder.build_swarm
     end
 
     private
@@ -182,28 +198,30 @@ module SwarmSDK
         # 1. String: assistant: "agents/assistant.md" (file path)
         # 2. Hash with agent_file: assistant: { agent_file: "..." }
         # 3. Hash with inline definition: assistant: { description: "...", model: "..." }
+        # 4. nil: Invalid (will be caught when building swarm)
 
-        if agent_config.is_a?(String)
+        parsed_config = if agent_config.nil?
+          # Null config - store empty hash, will fail during swarm building
+          {}
+        elsif agent_config.is_a?(String)
           # Format 1: Direct file path as string
-          file_path = agent_config
-          merged_config = merge_all_agents_config({})
-          @agents[name] = load_agent_from_file(name, file_path, merged_config)
+          { agent_file: agent_config }
+        elsif agent_config.is_a?(Hash) && agent_config[:agent_file]
+          # Format 2: Hash with agent_file key
+          agent_config
         else
-          # Format 2 or 3: Hash configuration
-          agent_config ||= {}
-
-          # Merge all_agents_config into agent config
-          # Agent-specific config overrides all_agents config
-          merged_config = merge_all_agents_config(agent_config)
-
-          @agents[name] = if agent_config[:agent_file]
-            # Format 2: Hash with agent_file key
-            load_agent_from_file(name, agent_config[:agent_file], merged_config)
-          else
-            # Format 3: Inline definition
-            Agent::Definition.new(name, merged_config)
-          end
+          # Format 3: Inline definition
+          agent_config || {}
         end
+
+        # Validate required fields for inline definitions (strict validation for YAML)
+        # File-based agents are validated when loaded
+        if parsed_config[:agent_file].nil? && parsed_config[:description].nil?
+          raise ConfigurationError,
+            "Agent '#{name}' missing required 'description' field"
+        end
+
+        @agents[name] = parsed_config
       end
 
       unless @agents.key?(@lead_agent)
@@ -211,76 +229,268 @@ module SwarmSDK
       end
     end
 
-    # Merge all_agents config with agent-specific config
-    # Agent config takes precedence over all_agents config
-    #
-    # Merge strategy:
-    # - Arrays (tools, delegates_to): Concatenate
-    # - Hashes (parameters, headers): Merge (agent values override)
-    # - Scalars (model, provider, base_url, timeout, coding_agent): Agent overrides
-    #
-    # @param agent_config [Hash] Agent-specific configuration
-    # @return [Hash] Merged configuration
-    def merge_all_agents_config(agent_config)
-      merged = @all_agents_config.dup
+    def load_nodes
+      return unless @config[:swarm][:nodes]
 
-      # For arrays, concatenate
-      # For hashes, merge (agent values override)
-      # For scalars, agent value overrides
-      agent_config.each do |key, value|
-        case key
-        when :tools
-          # Concatenate tools: all_agents.tools + agent.tools
-          merged[:tools] = Array(merged[:tools]) + Array(value)
-        when :delegates_to
-          # Concatenate delegates_to
-          merged[:delegates_to] = Array(merged[:delegates_to]) + Array(value)
-        when :parameters
-          # Merge parameters: all_agents.parameters + agent.parameters
-          # Agent values override all_agents values for same keys
-          merged[:parameters] = (merged[:parameters] || {}).merge(value || {})
-        when :headers
-          # Merge headers: all_agents.headers + agent.headers
-          # Agent values override all_agents values for same keys
-          merged[:headers] = (merged[:headers] || {}).merge(value || {})
-        when :disable_default_tools
-          # Convert array elements to symbols if it's an array
-          merged[key] = value.is_a?(Array) ? value.map(&:to_sym) : value
-        else
-          # For everything else (model, provider, base_url, timeout, coding_agent, etc.),
-          # agent value overrides all_agents value
-          merged[key] = value
+      @nodes = Utils.symbolize_keys(@config[:swarm][:nodes])
+      @start_node = @config[:swarm][:start_node]&.to_sym
+
+      # Validate start_node is required if nodes defined
+      if @nodes.any? && !@start_node
+        raise ConfigurationError, "start_node required when nodes are defined"
+      end
+
+      # Validate start_node exists
+      if @start_node && !@nodes.key?(@start_node)
+        raise ConfigurationError, "start_node '#{@start_node}' not found in nodes"
+      end
+
+      # Basic node structure validation
+      @nodes.each do |node_name, node_config|
+        unless node_config.is_a?(Hash)
+          raise ConfigurationError, "Node '#{node_name}' must be a hash"
+        end
+
+        # Validate agents if present (optional for agent-less nodes)
+        if node_config[:agents]
+          unless node_config[:agents].is_a?(Array)
+            raise ConfigurationError, "Node '#{node_name}' agents must be an array"
+          end
+
+          # Validate each agent config
+          node_config[:agents].each do |agent_config|
+            unless agent_config.is_a?(Hash) && agent_config[:agent]
+              raise ConfigurationError,
+                "Node '#{node_name}' agents must be hashes with 'agent' key"
+            end
+
+            # Validate agent exists in swarm agents
+            agent_sym = agent_config[:agent].to_sym
+            unless @agents.key?(agent_sym)
+              raise ConfigurationError,
+                "Node '#{node_name}' references undefined agent '#{agent_config[:agent]}'"
+            end
+          end
+        end
+
+        # Validate dependencies if present
+        next unless node_config[:dependencies]
+        unless node_config[:dependencies].is_a?(Array)
+          raise ConfigurationError, "Node '#{node_name}' dependencies must be an array"
+        end
+
+        # Validate each dependency exists
+        node_config[:dependencies].each do |dep|
+          dep_sym = dep.to_sym
+          unless @nodes.key?(dep_sym)
+            raise ConfigurationError,
+              "Node '#{node_name}' depends on undefined node '#{dep}'"
+          end
         end
       end
-
-      # Pass all_agents permissions as default_permissions for backward compat with AgentDefinition
-      if @all_agents_config[:permissions]
-        merged[:default_permissions] = @all_agents_config[:permissions]
-      end
-
-      merged
     end
 
-    def load_agent_from_file(name, file_path, merged_config)
-      agent_file_path = resolve_agent_file_path(file_path)
+    # Translate all_agents configuration to DSL
+    #
+    # @param builder [Swarm::Builder] DSL builder instance
+    # @return [void]
+    def translate_all_agents(builder)
+      # Capture instance variables for block scope
+      all_agents_cfg = @all_agents_config
+      all_agents_hks = @all_agents_hooks
 
-      unless File.exist?(agent_file_path)
-        raise ConfigurationError, "Agent file not found: #{agent_file_path}"
+      builder.all_agents do
+        # Translate each all_agents field to DSL method calls
+        tools(*all_agents_cfg[:tools]) if all_agents_cfg[:tools]&.any?
+        model(all_agents_cfg[:model]) if all_agents_cfg[:model]
+        provider(all_agents_cfg[:provider]) if all_agents_cfg[:provider]
+        base_url(all_agents_cfg[:base_url]) if all_agents_cfg[:base_url]
+        api_version(all_agents_cfg[:api_version]) if all_agents_cfg[:api_version]
+        timeout(all_agents_cfg[:timeout]) if all_agents_cfg[:timeout]
+        parameters(all_agents_cfg[:parameters]) if all_agents_cfg[:parameters]
+        headers(all_agents_cfg[:headers]) if all_agents_cfg[:headers]
+        coding_agent(all_agents_cfg[:coding_agent]) unless all_agents_cfg[:coding_agent].nil?
+        disable_default_tools(all_agents_cfg[:disable_default_tools]) unless all_agents_cfg[:disable_default_tools].nil?
+
+        # Translate all_agents hooks
+        if all_agents_hks.any?
+          all_agents_hks.each do |event, hook_specs|
+            Array(hook_specs).each do |spec|
+              matcher = spec[:matcher]
+              hook(event, matcher: matcher, command: spec[:command], timeout: spec[:timeout]) if spec[:type] == "command"
+            end
+          end
+        end
+
+        # Permissions - set directly as hash (YAML doesn't use DSL block syntax)
+        self.permissions_hash = all_agents_cfg[:permissions] if all_agents_cfg[:permissions]
       end
+    end
 
-      content = File.read(agent_file_path)
-      # Parse markdown and merge with YAML config
-      agent_def_from_file = MarkdownParser.parse(content, name)
+    # Translate agents to DSL
+    #
+    # @param builder [Swarm::Builder] DSL builder instance
+    # @return [void]
+    def translate_agents(builder)
+      @agents.each do |name, agent_config|
+        translate_agent(builder, name, agent_config)
+      rescue ConfigurationError => e
+        # Re-raise with agent context for better error messages
+        raise ConfigurationError, "Error in swarm.agents.#{name}: #{e.message}"
+      end
+    end
 
-      # Merge: YAML config overrides markdown file (YAML takes precedence)
-      # This allows YAML to override any settings from the markdown file
-      final_config = agent_def_from_file.to_h.compact.merge(merged_config.compact)
+    # Translate single agent to DSL
+    #
+    # @param builder [Swarm::Builder] DSL builder instance
+    # @param name [Symbol] Agent name
+    # @param config [Hash] Agent configuration
+    # @return [void]
+    def translate_agent(builder, name, config)
+      if config[:agent_file]
+        # Load from file
+        agent_file_path = resolve_agent_file_path(config[:agent_file])
 
-      Agent::Definition.new(name, final_config)
+        unless File.exist?(agent_file_path)
+          raise ConfigurationError, "Agent file not found: #{agent_file_path}"
+        end
+
+        content = File.read(agent_file_path)
+
+        # Check if there are overrides besides agent_file
+        overrides = config.except(:agent_file)
+
+        if overrides.any?
+          # Load from markdown with DSL overrides
+          builder.agent(name, content, &create_agent_config_block(overrides))
+        else
+          # Load from markdown only
+          builder.agent(name, content)
+        end
+      else
+        # Inline definition - translate to DSL
+        builder.agent(name, &create_agent_config_block(config))
+      end
     rescue StandardError => e
-      raise ConfigurationError, "Error loading agent '#{name}' from file '#{file_path}': #{e.message}"
+      raise ConfigurationError, "Error loading agent '#{name}': #{e.message}"
     end
 
+    # Create a block that configures an agent builder with the given config
+    #
+    # Returns a proc that can be passed to builder.agent
+    #
+    # @param config [Hash] Agent configuration hash
+    # @return [Proc] Block that configures agent builder
+    def create_agent_config_block(config)
+      proc do
+        description(config[:description]) if config[:description]
+        model(config[:model]) if config[:model]
+        provider(config[:provider]) if config[:provider]
+        base_url(config[:base_url]) if config[:base_url]
+        api_version(config[:api_version]) if config[:api_version]
+        context_window(config[:context_window]) if config[:context_window]
+        system_prompt(config[:system_prompt]) if config[:system_prompt]
+        directory(config[:directory]) if config[:directory]
+        timeout(config[:timeout]) if config[:timeout]
+        parameters(config[:parameters]) if config[:parameters]
+        headers(config[:headers]) if config[:headers]
+        coding_agent(config[:coding_agent]) unless config[:coding_agent].nil?
+        bypass_permissions(config[:bypass_permissions]) if config[:bypass_permissions]
+        disable_default_tools(config[:disable_default_tools]) unless config[:disable_default_tools].nil?
+        shared_across_delegations(config[:shared_across_delegations]) unless config[:shared_across_delegations].nil?
+
+        # Tools
+        if config[:tools]&.any?
+          tool_names = config[:tools].map { |t| t.is_a?(Hash) ? t[:name] : t }
+          tools(*tool_names)
+        end
+
+        # Delegation
+        delegates_to(*config[:delegates_to]) if config[:delegates_to]&.any?
+
+        # MCP servers
+        config[:mcp_servers]&.each do |server|
+          mcp_server(server[:name], **server.except(:name))
+        end
+
+        # Hooks (YAML-style command hooks)
+        config[:hooks]&.each do |event, hook_specs|
+          Array(hook_specs).each do |spec|
+            matcher = spec[:matcher]
+            hook(event, matcher: matcher, command: spec[:command], timeout: spec[:timeout]) if spec[:type] == "command"
+          end
+        end
+
+        # Memory
+        if config[:memory]
+          memory do
+            directory(config[:memory][:directory]) if config[:memory][:directory]
+            adapter(config[:memory][:adapter]) if config[:memory][:adapter]
+            mode(config[:memory][:mode]) if config[:memory][:mode]
+          end
+        end
+
+        # Permissions - set directly as hash (YAML doesn't use DSL block syntax)
+        self.permissions_hash = config[:permissions] if config[:permissions]
+      end
+    end
+
+    # Translate swarm-level hooks to DSL
+    #
+    # @param builder [Swarm::Builder] Swarm builder instance
+    # @return [void]
+    def translate_swarm_hooks(builder)
+      @swarm_hooks.each do |event, hook_specs|
+        Array(hook_specs).each do |spec|
+          if spec[:type] == "command"
+            builder.hook(event, command: spec[:command], timeout: spec[:timeout])
+          end
+        end
+      end
+    end
+
+    # Translate nodes to DSL
+    #
+    # @param builder [Swarm::Builder] Swarm builder instance
+    # @return [void]
+    def translate_nodes(builder)
+      @nodes.each do |node_name, node_config|
+        builder.node(node_name) do
+          # Translate agents
+          node_config[:agents]&.each do |agent_config|
+            agent_name = agent_config[:agent].to_sym
+            delegates = agent_config[:delegates_to] || []
+            reset_ctx = agent_config.key?(:reset_context) ? agent_config[:reset_context] : true
+
+            if delegates.any?
+              agent(agent_name, reset_context: reset_ctx).delegates_to(*delegates)
+            else
+              agent(agent_name, reset_context: reset_ctx)
+            end
+          end
+
+          # Translate dependencies
+          depends_on(*node_config[:dependencies]) if node_config[:dependencies]&.any?
+
+          # Translate lead override
+          lead(node_config[:lead].to_sym) if node_config[:lead]
+
+          # Translate transformers
+          if node_config[:input_command]
+            input_command(node_config[:input_command], timeout: node_config[:input_timeout] || 60)
+          end
+
+          if node_config[:output_command]
+            output_command(node_config[:output_command], timeout: node_config[:output_timeout] || 60)
+          end
+        end
+      end
+    end
+
+    # Resolve agent file path relative to base_dir
+    #
+    # @param file_path [String] Relative or absolute file path
+    # @return [String] Resolved absolute path
     def resolve_agent_file_path(file_path)
       return file_path if Pathname.new(file_path).absolute?
 

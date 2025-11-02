@@ -33,6 +33,7 @@ module SwarmSDK
         @parameters = nil
         @headers = nil
         @coding_agent = nil
+        @disable_default_tools = nil
       end
 
       # Set model for all agents
@@ -75,6 +76,15 @@ module SwarmSDK
         @coding_agent = enabled
       end
 
+      # Disable default tools for all agents
+      #
+      # @param value [Boolean, Array<Symbol>]
+      #   - true: Disable ALL default tools
+      #   - Array of symbols: Disable specific tools (e.g., [:Think, :TodoWrite])
+      def disable_default_tools(value)
+        @disable_default_tools = value
+      end
+
       # Add tools that all agents will have
       def tools(*tool_names)
         @tools_list.concat(tool_names)
@@ -108,7 +118,11 @@ module SwarmSDK
 
       # Configure permissions for all agents
       #
-      # @example
+      # Supports two forms:
+      # 1. Block form (DSL): permissions do ... end
+      # 2. Direct hash (internal/YAML): set_permissions_hash(hash)
+      #
+      # @example Block form
       #   permissions do
       #     Write.allow_paths "tmp/**/*"
       #     Write.deny_paths "tmp/secrets/**"
@@ -116,6 +130,17 @@ module SwarmSDK
       #   end
       def permissions(&block)
         @permissions_config = PermissionsBuilder.build(&block)
+      end
+
+      # Set permissions directly from hash (for YAML translation)
+      #
+      # This is intentionally separate from permissions() to keep the DSL clean.
+      # Called by Configuration when translating YAML permissions.
+      #
+      # @param hash [Hash] Permissions configuration hash
+      # @return [void]
+      def permissions_hash=(hash)
+        @permissions_config = hash || {}
       end
 
       # Convert to hash for merging with agent configs
@@ -131,6 +156,7 @@ module SwarmSDK
           parameters: @parameters,
           headers: @headers,
           coding_agent: @coding_agent,
+          disable_default_tools: @disable_default_tools,
           tools: @tools_list,
           permissions: @permissions_config,
         }.compact
