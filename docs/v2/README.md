@@ -61,7 +61,7 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
 
 ### YAML Configuration
 - **[YAML Configuration Reference](reference/yaml.md)**
-  Complete YAML structure: agents, tools, permissions, hooks, MCP servers
+  Complete YAML structure: agents, tools, permissions, hooks, nodes, MCP servers
 
 ### SwarmMemory
 - **[SwarmMemory Technical Details](reference/swarm_memory_technical_details.md)**
@@ -296,7 +296,7 @@ A persistent memory system for agents with semantic search capabilities:
 | **Permissions** | [Tutorial Part 2](guides/complete-tutorial.md#permissions-system) | [YAML Ref](reference/yaml.md#permissions-configuration) |
 | **Delegation** | [Tutorial Part 3](guides/complete-tutorial.md#part-3-agent-collaboration) | [Ruby DSL Ref](reference/ruby-dsl.md#delegates_to) |
 | **Hooks** | [Tutorial Part 4](guides/complete-tutorial.md#part-4-hooks-system) | [YAML Ref](reference/yaml.md#hooks-configuration) |
-| **Workflows** | [Tutorial Part 5](guides/complete-tutorial.md#part-5-node-workflows) | [Ruby DSL Ref](reference/ruby-dsl.md#node-builder-dsl) |
+| **Workflows** | [Tutorial Part 5](guides/complete-tutorial.md#part-5-node-workflows) | [YAML Ref](reference/yaml.md#nodes) · [Ruby DSL Ref](reference/ruby-dsl.md#node-builder-dsl) |
 | **MCP Servers** | [Tutorial Part 6](guides/complete-tutorial.md#mcp-server-integration) | [YAML Ref](reference/yaml.md#mcp_servers) |
 | **Memory** | [SwarmMemory Guide](guides/swarm-memory.md) | [Technical Details](reference/swarm_memory_technical_details.md) |
 | **Memory Adapters** | [Adapter Guide](guides/memory-adapters.md) | [Technical Details](reference/swarm_memory_technical_details.md) |
