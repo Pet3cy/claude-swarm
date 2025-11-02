@@ -25,6 +25,7 @@ loader.push_dir("#{__dir__}/swarm_sdk", namespace: SwarmSDK)
 loader.inflector = Zeitwerk::GemInflector.new(__FILE__)
 loader.inflector.inflect(
   "cli" => "CLI",
+  "mcp" => "MCP",
   "openai_with_responses" => "OpenAIWithResponses",
 )
 loader.setup
