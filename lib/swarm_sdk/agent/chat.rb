@@ -150,6 +150,7 @@ module SwarmSDK
         raise StateError, "Agent context not set. Call setup_context first." unless @agent_context
 
         @context_tracker.setup_logging
+        inject_llm_instrumentation
       end
 
       # Emit model lookup warning if one occurred during initialization
@@ -806,6 +807,79 @@ module SwarmSDK
       end
 
       private
+
+      # Inject LLM instrumentation middleware for API request/response logging
+      #
+      # This middleware captures HTTP requests/responses to LLM providers and
+      # emits structured events via LogStream. Only injected when logging is enabled.
+      #
+      # @return [void]
+      def inject_llm_instrumentation
+        # Safety checks
+        return unless @provider
+
+        faraday_conn = @provider.connection&.connection
+        return unless faraday_conn
+
+        # Get provider name for logging
+        provider_name = @provider.class.name.split("::").last.downcase
+
+        # Inject middleware at beginning of stack (position 0)
+        # This ensures we capture raw requests before any transformations
+        # Use fully qualified name to ensure Zeitwerk loads it
+        faraday_conn.builder.insert(
+          0,
+          SwarmSDK::Agent::LLMInstrumentationMiddleware,
+          on_request: method(:handle_llm_api_request),
+          on_response: method(:handle_llm_api_response),
+          provider_name: provider_name,
+        )
+
+        RubyLLM.logger.debug("SwarmSDK: Injected LLM instrumentation middleware for agent #{@agent_name}")
+      rescue StandardError => e
+        # Don't fail initialization if instrumentation fails
+        RubyLLM.logger.error("SwarmSDK: Failed to inject LLM instrumentation: #{e.message}")
+      end
+
+      # Handle LLM API request event
+      #
+      # Emits llm_api_request event via LogStream with request details.
+      #
+      # @param data [Hash] Request data from middleware
+      # @return [void]
+      def handle_llm_api_request(data)
+        return unless LogStream.emitter
+
+        LogStream.emit(
+          type: "llm_api_request",
+          agent: @agent_name,
+          swarm_id: @agent_context&.swarm_id,
+          parent_swarm_id: @agent_context&.parent_swarm_id,
+          **data,
+        )
+      rescue StandardError => e
+        RubyLLM.logger.error("SwarmSDK: Error emitting llm_api_request event: #{e.message}")
+      end
+
+      # Handle LLM API response event
+      #
+      # Emits llm_api_response event via LogStream with response details.
+      #
+      # @param data [Hash] Response data from middleware
+      # @return [void]
+      def handle_llm_api_response(data)
+        return unless LogStream.emitter
+
+        LogStream.emit(
+          type: "llm_api_response",
+          agent: @agent_name,
+          swarm_id: @agent_context&.swarm_id,
+          parent_swarm_id: @agent_context&.parent_swarm_id,
+          **data,
+        )
+      rescue StandardError => e
+        RubyLLM.logger.error("SwarmSDK: Error emitting llm_api_response event: #{e.message}")
+      end
 
       # Call LLM with retry logic for transient failures
       #
