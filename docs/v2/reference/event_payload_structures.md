@@ -16,6 +16,15 @@ For composable swarms, events include hierarchical swarm IDs:
 - Child swarm: `swarm_id: "main/code_review"`, `parent_swarm_id: "main"`
 - Grandchild: `swarm_id: "main/code_review/security"`, `parent_swarm_id: "main/code_review"`
 
+**Agent Identification:**
+Most events include an `agent` field (Symbol) that identifies which agent emitted the event:
+- **Primary agents**: Simple name like `:backend`, `:frontend`
+- **Delegation instances**: Compound name like `:"backend@lead"`, `:"backend@frontend"`
+  - Format: `:"target@delegator"` where target is the delegated-to agent and delegator is the delegating agent
+  - Created when multiple agents delegate to the same target (unless `shared_across_delegations: true`)
+  - Each instance has isolated conversation history and tool state
+  - See the `agent_start` event documentation for more details
+
 ## Event Types
 
 ### 1. swarm_start
@@ -83,7 +92,7 @@ Emitted once per agent when agents are initialized (lazy initialization).
 {
   type: "agent_start",
   timestamp: "2025-01-15T10:30:46Z",
-  agent: :backend,                             # Agent name
+  agent: :backend,                             # Agent name (or delegation instance name)
   swarm_id: "main",                            # Swarm ID
   parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   swarm_name: "Development Team",
@@ -98,13 +107,54 @@ Emitted once per agent when agents are initialized (lazy initialization).
       enabled: true,
       config: { directory: ".swarm/backend-memory" }
     }
-  }
+  },
+  is_delegation_instance: false,               # True if this is a delegation instance
+  base_agent: nil                              # Base agent name (if delegation instance)
 }
 ```
 
 **Field Locations**:
 - Root level: All fields including `swarm_id` and `parent_swarm_id`
 - Nested in `plugin_storages`: Per-plugin configuration
+
+**Delegation Instances:**
+
+When multiple agents delegate to the same target agent, SwarmSDK creates isolated instances by default (controlled by `shared_across_delegations` config). These instances have unique names and separate state:
+
+```ruby
+# Primary agent
+{
+  type: "agent_start",
+  agent: :backend,
+  is_delegation_instance: false,
+  base_agent: nil,
+  ...
+}
+
+# Delegation instance (when lead delegates to backend)
+{
+  type: "agent_start",
+  agent: :"backend@lead",              # Format: target@delegator
+  is_delegation_instance: true,
+  base_agent: :backend,                # Original agent definition
+  ...
+}
+
+# Another delegation instance (when frontend delegates to backend)
+{
+  type: "agent_start",
+  agent: :"backend@frontend",          # Separate isolated instance
+  is_delegation_instance: true,
+  base_agent: :backend,
+  ...
+}
+```
+
+**Key Points:**
+- Each delegation instance has **isolated conversation history** and **separate tool state**
+- All instances use the **same configuration** (model, tools, prompts) from the base agent
+- The `agent` field shows the full instance name for proper tracking
+- Set `shared_across_delegations: true` on the base agent to share one instance across all delegators
 
 ---
 
@@ -528,6 +578,23 @@ Emitted before sending HTTP request to LLM API provider (only when logging is en
 - HTTP-level details (method, URL, headers) are not included to reduce noise
 - Captures the exact request sent to the LLM API
 
+**Delegation Instance Example:**
+
+When a delegation instance makes an LLM API call, the `agent` field shows the full instance name:
+
+```ruby
+{
+  type: "llm_api_request",
+  agent: :"backend@lead",           # Delegation instance identifier
+  swarm_id: "main",
+  parent_swarm_id: nil,
+  provider: "openai",
+  body: { ... }
+}
+```
+
+This allows you to track which specific delegation instance (and therefore which delegation path) triggered the API call.
+
 ---
 
 ### 17. llm_api_response
@@ -621,6 +688,7 @@ Emitted after receiving HTTP response from LLM API provider (only when logging i
 3. **Prompt Location**: For `user_prompt` events, the prompt is in `metadata.prompt`, NOT at root level
 4. **Metadata Deduplication**: `agent_step` and `agent_stop` events have minimal metadata because most fields are promoted to root level (see `swarm.rb:723` and `swarm.rb:744`)
 5. **LLM API Events**: `llm_api_request` and `llm_api_response` events are only emitted when logging is enabled and capture the raw LLM API communication for debugging and monitoring
+6. **Delegation Instances**: The `agent` field can be either a simple agent name (`:backend`) or a delegation instance name (`:"backend@lead"`). Delegation instances are created automatically when multiple agents delegate to the same target (unless `shared_across_delegations: true`). Each instance has isolated state and appears as a distinct agent in all events, allowing you to track behavior and costs per delegation path.
 
 ---
 
