@@ -18,7 +18,7 @@ module SwarmSDK
   #   )
   #   result = orchestrator.execute("Build auth system")
   class NodeOrchestrator
-    attr_reader :swarm_name, :nodes, :start_node
+    attr_reader :swarm_name, :nodes, :start_node, :agent_definitions, :agent_instance_cache
     attr_writer :swarm_id
     attr_accessor :swarm_registry_config
 
@@ -236,6 +236,59 @@ module SwarmSDK
       # Reset logging state for next execution
       LogCollector.reset!
       LogStream.reset!
+    end
+
+    # Create snapshot of current workflow state
+    #
+    # Returns a Snapshot object containing agent conversations and context state
+    # from all nodes that have been executed. The snapshot captures the state of
+    # agents in the agent_instance_cache (both primary and delegation instances).
+    #
+    # Configuration (agent definitions, nodes, transformers) stays in your code
+    # and is NOT included in snapshots.
+    #
+    # NOTE: For NodeOrchestrator, scratchpad is NOT snapshotted because each
+    # mini-swarm creates its own fresh scratchpad per node execution. There is
+    # no persistent scratchpad state to snapshot.
+    #
+    # @return [Snapshot] Snapshot object with convenient serialization methods
+    #
+    # @example Save snapshot to JSON file
+    #   orchestrator = NodeOrchestrator.new(...)
+    #   orchestrator.execute("Build feature")
+    #   snapshot = orchestrator.snapshot
+    #   snapshot.write_to_file("workflow_session.json")
+    def snapshot
+      StateSnapshot.new(self).snapshot
+    end
+
+    # Restore workflow state from snapshot
+    #
+    # Accepts a Snapshot object, hash, or JSON string. Validates compatibility
+    # between snapshot and current orchestrator configuration. Restores agent
+    # conversations that exist in the agent_instance_cache.
+    #
+    # The orchestrator must be created with the SAME configuration (agent definitions,
+    # nodes) as when the snapshot was created. Only conversation state is restored.
+    #
+    # For agents with reset_context: false, restored conversations will be injected
+    # during node execution. Agents not in cache yet will be skipped (they haven't
+    # been used yet, so there's nothing to restore).
+    #
+    # @param snapshot [Snapshot, Hash, String] Snapshot object, hash, or JSON string
+    # @return [RestoreResult] Result with warnings about skipped agents
+    #
+    # @example Restore from Snapshot object
+    #   orchestrator = NodeOrchestrator.new(...)  # Same config as snapshot
+    #   snapshot = Snapshot.from_file("workflow_session.json")
+    #   result = orchestrator.restore(snapshot)
+    #   if result.success?
+    #     puts "All agents restored"
+    #   else
+    #     puts result.summary
+    #   end
+    def restore(snapshot)
+      StateRestorer.new(self, snapshot).restore
     end
 
     private

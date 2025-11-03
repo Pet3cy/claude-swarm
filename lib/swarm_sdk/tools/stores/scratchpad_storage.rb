@@ -218,6 +218,51 @@ module SwarmSDK
         def size
           @entries.size
         end
+
+        # Get all entries with content for snapshot
+        #
+        # Thread-safe method that returns a copy of all entries.
+        # Used by snapshot/restore functionality.
+        #
+        # @return [Hash] { path => Entry }
+        def all_entries
+          @mutex.synchronize do
+            @entries.dup
+          end
+        end
+
+        # Restore entries from snapshot
+        #
+        # Restores entries directly without using write() to preserve timestamps.
+        # This ensures entry ordering and metadata accuracy after restore.
+        #
+        # @param entries_data [Hash] { path => { content:, title:, updated_at:, size: } }
+        # @return [void]
+        def restore_entries(entries_data)
+          @mutex.synchronize do
+            entries_data.each do |path, data|
+              # Handle both symbol and string keys from JSON
+              content = data[:content] || data["content"]
+              title = data[:title] || data["title"]
+              updated_at_str = data[:updated_at] || data["updated_at"]
+
+              # Parse timestamp from ISO8601 string
+              updated_at = Time.parse(updated_at_str)
+
+              # Create entry with preserved timestamp
+              entry = Entry.new(
+                content: content,
+                title: title,
+                updated_at: updated_at,
+                size: content.bytesize,
+              )
+
+              # Update storage
+              @entries[path] = entry
+              @total_size += entry.size
+            end
+          end
+        end
       end
     end
   end

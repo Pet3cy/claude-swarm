@@ -696,7 +696,15 @@ module SwarmSDK
       # This is needed for setting agent_name and other provider-specific settings.
       #
       # @return [RubyLLM::Provider::Base] Provider instance
-      attr_reader :provider, :global_semaphore, :local_semaphore, :real_model_info, :context_tracker, :context_manager
+      attr_reader :provider, :global_semaphore, :local_semaphore, :real_model_info, :context_tracker, :context_manager, :agent_context, :last_todowrite_message_index, :active_skill_path
+
+      # Setters for snapshot/restore
+      attr_writer :last_todowrite_message_index, :active_skill_path
+
+      # Expose messages array (inherited from RubyLLM::Chat but not publicly accessible)
+      #
+      # @return [Array<RubyLLM::Message>] Conversation messages
+      attr_reader :messages
 
       # Get context window limit for the current model
       #
