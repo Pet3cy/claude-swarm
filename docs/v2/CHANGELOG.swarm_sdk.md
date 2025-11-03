@@ -44,6 +44,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Automatic deduplication**: Duplicate entries in `delegates_to` are automatically removed
   - **Comprehensive test coverage**: 17 new tests covering isolated mode, shared mode, nested delegation, cleanup, and more
 
+- **YAML-to-DSL Internal Refactor**: Configuration class now uses DSL internally for swarm construction
+  - **New `Configuration.to_swarm` implementation**: Translates YAML to Ruby DSL calls instead of direct API
+  - **Better separation of concerns**: YAML parsing separated from swarm building logic
+  - **Node workflow support in YAML**: Full support for multi-stage node-based workflows
+  - **Improved translation methods**: `translate_agents`, `translate_all_agents`, `translate_nodes`, `translate_swarm_hooks`
+  - **Stricter validation**: Agent descriptions now required in YAML (caught earlier with better error messages)
+  - **Test coverage**: Added `yaml_node_support_test.rb` with comprehensive node workflow tests
+
+- **YAML Hooks & Permissions**: Fixed and improved YAML configuration for hooks and permissions
+  - **Hooks now work correctly**: Fixed translation from YAML to DSL
+  - **Permissions properly translated**: Complex permission configurations now work in YAML
+  - **Documentation improvements**: Updated YAML reference with correct examples
+  - **Cleaner agent builder**: Removed redundant hook/permission handling code
+
 ### Changed
 
 - **Breaking: Default delegation behavior changed**
@@ -52,14 +66,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Migration**: Add `shared_across_delegations: true` to agents that need the old shared behavior
   - **Impact**: Existing swarms will see different behavior - agents no longer share delegation contexts by default
 
+- **YAML Configuration Loading**: Improved YAML parsing and validation
+  - **Stricter validation**: Required fields now validated earlier with better error messages
+  - **Better error context**: Error messages include field paths and agent names
+  - **Node workflow validation**: Full validation for node dependencies and transformers
+
 ### Fixed
 
 - **Node context preservation bug**: Fixed issue where `inject_cached_agents` would be overwritten by fresh initialization
   - Added forced initialization before injection to ensure cached instances are preserved
 - **Nested delegation race condition**: Added per-instance semaphore to prevent concurrent `ask()` calls from corrupting shared agent message history
 - **Hash iteration bug**: Fixed "can't add key during iteration" error in nested delegation by using `.to_a`
+- **YAML hooks translation**: Fixed hooks not being properly translated from YAML to DSL
+- **YAML permissions handling**: Fixed permissions configurations not working correctly in YAML
 
-## [2.1.2]
+## [2.1.3]
 
 ### Added
 
