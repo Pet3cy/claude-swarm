@@ -164,6 +164,8 @@ module SwarmSDK
         LogStream.emit(
           type: "model_lookup_warning",
           agent: agent_name,
+          swarm_id: @agent_context&.swarm_id,
+          parent_swarm_id: @agent_context&.parent_swarm_id,
           model: @model_lookup_error[:model],
           error_message: @model_lookup_error[:error_message],
           suggestions: @model_lookup_error[:suggestions].map { |s| { id: s.id, name: s.name, context_window: s.context_window } },
@@ -219,6 +221,17 @@ module SwarmSDK
       # @return [Boolean] True if a skill has been loaded
       def skill_loaded?
         !@active_skill_path.nil?
+      end
+
+      # Clear conversation history
+      #
+      # Removes all messages from the conversation history and clears tool executions.
+      # Used by composable swarms when keep_context: false is specified.
+      #
+      # @return [void]
+      def clear_conversation
+        @messages.clear if @messages.respond_to?(:clear)
+        @context_manager&.clear_ephemeral
       end
 
       # Override ask to inject system reminders and periodic TodoWrite reminders
@@ -811,6 +824,8 @@ module SwarmSDK
               LogStream.emit(
                 type: "llm_retry_exhausted",
                 agent: @agent_name,
+                swarm_id: @agent_context&.swarm_id,
+                parent_swarm_id: @agent_context&.parent_swarm_id,
                 model: @model&.id,
                 attempts: attempts,
                 error_class: e.class.name,
@@ -823,6 +838,8 @@ module SwarmSDK
             LogStream.emit(
               type: "llm_retry_attempt",
               agent: @agent_name,
+              swarm_id: @agent_context&.swarm_id,
+              parent_swarm_id: @agent_context&.parent_swarm_id,
               model: @model&.id,
               attempt: attempts,
               max_retries: max_retries,

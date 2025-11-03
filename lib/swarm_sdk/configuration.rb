@@ -4,7 +4,7 @@ module SwarmSDK
   class Configuration
     ENV_VAR_WITH_DEFAULT_PATTERN = /\$\{([^:}]+)(:=([^}]*))?\}/
 
-    attr_reader :swarm_name, :lead_agent, :agents, :all_agents_config, :swarm_hooks, :all_agents_hooks, :scratchpad_enabled, :nodes, :start_node
+    attr_reader :swarm_name, :swarm_id, :lead_agent, :agents, :all_agents_config, :swarm_hooks, :all_agents_hooks, :scratchpad_enabled, :nodes, :start_node, :external_swarms
 
     class << self
       # Load configuration from YAML file
@@ -41,10 +41,12 @@ module SwarmSDK
 
       @yaml_content = yaml_content
       @base_dir = Pathname.new(base_dir).expand_path
+      @swarm_id = nil # Optional swarm ID from YAML
       @agents = {} # Parsed agent configs (hashes, not Definitions)
       @all_agents_config = {} # Settings applied to all agents
       @swarm_hooks = {} # Swarm-level hooks (swarm_start, swarm_stop)
       @all_agents_hooks = {} # Hooks applied to all agents
+      @external_swarms = {} # External swarms for composable swarms
       @nodes = {} # Parsed node configs (hashes)
       @start_node = nil # Starting node for workflows
     end
@@ -93,9 +95,27 @@ module SwarmSDK
       builder = Swarm::Builder.new
 
       # Translate basic swarm config to DSL
+      builder.id(@swarm_id) if @swarm_id
       builder.name(@swarm_name)
       builder.lead(@lead_agent)
       builder.use_scratchpad(@scratchpad_enabled)
+
+      # Translate external swarms
+      if @external_swarms&.any?
+        builder.swarms do
+          @external_swarms.each do |name, config|
+            source = config[:source]
+            case source[:type]
+            when :file
+              register(name, file: source[:value], keep_context: config[:keep_context])
+            when :yaml
+              register(name, yaml: source[:value], keep_context: config[:keep_context])
+            else
+              raise ConfigurationError, "Unknown source type: #{source[:type]}"
+            end
+          end
+        end
+      end
 
       # Translate all_agents config to DSL (if present)
       translate_all_agents(builder) if @all_agents_config.any?
@@ -186,8 +206,46 @@ module SwarmSDK
       raise ConfigurationError, "No agents defined" if swarm[:agents].empty?
 
       @swarm_name = swarm[:name]
+      @swarm_id = swarm[:id] # Optional - will auto-generate if missing
       @lead_agent = swarm[:lead].to_sym # Convert to symbol for consistency
       @scratchpad_enabled = swarm[:use_scratchpad].nil? ? true : swarm[:use_scratchpad] # Default: enabled
+
+      # Load external swarms for composable swarms
+      load_external_swarms(swarm[:swarms]) if swarm[:swarms]
+    end
+
+    def load_external_swarms(swarms_config)
+      @external_swarms = {}
+      swarms_config.each do |name, config|
+        # Determine source type: file, yaml string, or inline swarm definition
+        source = if config[:file]
+          # File path - resolve relative to base_dir
+          file_path = if config[:file].start_with?("/")
+            config[:file]
+          else
+            (@base_dir / config[:file]).to_s
+          end
+          { type: :file, value: file_path }
+        elsif config[:yaml]
+          # YAML string provided directly
+          { type: :yaml, value: config[:yaml] }
+        elsif config[:swarm]
+          # Inline swarm definition - convert to YAML string
+          inline_config = {
+            version: 2,
+            swarm: config[:swarm],
+          }
+          yaml_string = Utils.hash_to_yaml(inline_config)
+          { type: :yaml, value: yaml_string }
+        else
+          raise ConfigurationError, "Swarm '#{name}' must specify either 'file:', 'yaml:', or 'swarm:' (inline definition)"
+        end
+
+        @external_swarms[name.to_sym] = {
+          source: source,
+          keep_context: config.fetch(:keep_context, true),
+        }
+      end
     end
 
     def load_agents
@@ -517,8 +575,12 @@ module SwarmSDK
       path.push(agent_name)
       connections_for(agent_name).each do |connection|
         connection_sym = connection.to_sym # Convert to symbol for lookup
+
+        # Skip external swarms - they are not local agents and don't have circular dependency issues
+        next if @external_swarms.key?(connection_sym)
+
         unless @agents.key?(connection_sym)
-          raise ConfigurationError, "Agent '#{agent_name}' has connection to unknown agent '#{connection}'"
+          raise ConfigurationError, "Agent '#{agent_name}' delegates to unknown target '#{connection}' (not a local agent or registered swarm)"
         end
 
         detect_cycle_from(connection_sym, visited, path)

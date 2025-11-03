@@ -19,13 +19,17 @@ module SwarmSDK
   #   result = orchestrator.execute("Build auth system")
   class NodeOrchestrator
     attr_reader :swarm_name, :nodes, :start_node
+    attr_writer :swarm_id
+    attr_accessor :swarm_registry_config
 
-    def initialize(swarm_name:, agent_definitions:, nodes:, start_node:, scratchpad_enabled: true)
+    def initialize(swarm_name:, agent_definitions:, nodes:, start_node:, swarm_id: nil, scratchpad_enabled: true)
       @swarm_name = swarm_name
+      @swarm_id = swarm_id
       @agent_definitions = agent_definitions
       @nodes = nodes
       @start_node = start_node
       @scratchpad_enabled = scratchpad_enabled
+      @swarm_registry_config = [] # External swarms config (if using composable swarms)
       @agent_instance_cache = {
         primary: {}, # { agent_name => Agent::Chat }
         delegations: {}, # { "delegate@delegator" => Agent::Chat }
@@ -354,10 +358,24 @@ module SwarmSDK
     # @param node [Node::Builder] Node configuration
     # @return [Swarm] Configured swarm instance
     def build_swarm_for_node(node)
+      # Build hierarchical swarm_id if parent has one (nil auto-generates)
+      node_swarm_id = @swarm_id ? "#{@swarm_id}/node:#{node.name}" : nil
+
       swarm = Swarm.new(
         name: "#{@swarm_name}:#{node.name}",
+        swarm_id: node_swarm_id,
+        parent_swarm_id: @swarm_id,
         scratchpad_enabled: @scratchpad_enabled,
       )
+
+      # Setup swarm registry if external swarms are registered
+      if @swarm_registry_config&.any?
+        registry = SwarmRegistry.new(parent_swarm_id: node_swarm_id || swarm.swarm_id)
+        @swarm_registry_config.each do |reg|
+          registry.register(reg[:name], source: reg[:source], keep_context: reg[:keep_context])
+        end
+        swarm.swarm_registry = registry
+      end
 
       # Add each agent specified in this node
       node.agent_configs.each do |config|

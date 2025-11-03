@@ -110,6 +110,7 @@ module SwarmSDK
     def test_agent_context_tracks_delegations_in_logging
       context = Agent::Context.new(
         name: :coordinator,
+        swarm_id: "test_swarm",
         delegation_tools: ["DelegateToBackend", "DelegateToFrontend"],
       )
 
@@ -126,7 +127,7 @@ module SwarmSDK
     end
 
     def test_context_warnings_tracked_in_agent_context
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       # First hit returns true
       assert(context.hit_warning_threshold?(80))

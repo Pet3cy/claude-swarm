@@ -241,7 +241,7 @@ module SwarmSDK
       assert_equal(:invalid_reference, error[:type])
       assert_equal("swarm.agents.backend.delegates_to", error[:field])
       assert_equal("backend", error[:agent])
-      assert_match(/Agent 'backend' has connection to unknown agent 'nonexistent'/, error[:message])
+      assert_match(/Agent 'backend' delegates to unknown target 'nonexistent'/, error[:message])
     end
 
     def test_validate_invalid_yaml_syntax

@@ -18,6 +18,10 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
 - **[Getting Started with SwarmCLI](guides/quick-start-cli.md)** ⭐ START HERE
   Command-line interface: interactive REPL and automation modes
 
+### For Advanced Features
+- **[Composable Swarms Guide](guides/composable-swarms.md)** ⭐ NEW
+  Build reusable swarm components: file/YAML/inline registration, hierarchical composition, keep_context control
+
 ---
 
 ## 📖 Comprehensive Tutorial
@@ -69,7 +73,17 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
 
 ---
 
-## 🛠️ Integration Guides
+## 🛠️ Feature Guides
+
+### Composable Swarms
+- **[Composable Swarms Guide](guides/composable-swarms.md)** ⭐ NEW
+  Build reusable swarm components that can be composed together:
+  - Three registration methods (file, YAML string, inline block)
+  - Hierarchical composition and deep nesting
+  - Context control (keep_context: true/false)
+  - Circular dependency detection
+  - Event tracking with swarm_id hierarchy
+  - Use cases: specialized teams, dynamic loading, gems, testing
 
 ### SwarmMemory
 - **[SwarmMemory Guide](guides/swarm-memory.md)** ⭐ NEW
@@ -128,6 +142,7 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
 - **Agents**: [Getting Started](guides/getting-started.md#core-concepts) | [Tutorial Part 1](guides/complete-tutorial.md#part-1-fundamentals)
 - **Tools**: [Tutorial Part 2](guides/complete-tutorial.md#part-2-tools-and-permissions)
 - **Delegation**: [Tutorial Part 3](guides/complete-tutorial.md#part-3-agent-collaboration)
+- **Composable Swarms**: [Ruby DSL Ref](reference/ruby-dsl.md#swarms) | [YAML Ref](reference/yaml.md#swarms) ⭐ NEW
 - **Hooks**: [Tutorial Part 4](guides/complete-tutorial.md#part-4-hooks-system)
 - **Node Workflows**: [Tutorial Part 5](guides/complete-tutorial.md#part-5-node-workflows)
 
@@ -180,6 +195,9 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
 **Add persistent memory to agents**
 → [SwarmMemory Guide](guides/swarm-memory.md)
 
+**Build composable/reusable swarm teams** ⭐ NEW
+→ [Composable Swarms Guide](guides/composable-swarms.md)
+
 **Build a SwarmSDK plugin**
 → [Plugin System Guide](guides/plugins.md)
 
@@ -204,6 +222,7 @@ docs/v2/
 │   ├── getting-started.md             # SDK quick start (YAML + Ruby DSL)
 │   ├── quick-start-cli.md             # CLI quick start
 │   ├── complete-tutorial.md           # 100% feature coverage tutorial
+│   ├── composable-swarms.md           # Composable swarms guide ⭐ NEW
 │   ├── swarm-memory.md                # SwarmMemory guide ⭐
 │   ├── plugins.md                     # Plugin system guide ⭐
 │   ├── memory-adapters.md             # Adapter development ⭐
@@ -236,8 +255,9 @@ docs/v2/
 
 ### Path 2: Intermediate → Advanced
 1. [Complete Tutorial Parts 4-6](guides/complete-tutorial.md) - Hooks, workflows, advanced config
-2. [Rails Integration](guides/rails-integration.md) - Production integration patterns
-3. [Complete Tutorial Parts 7-8](guides/complete-tutorial.md) - Production features and best practices
+2. [Composable Swarms Guide](guides/composable-swarms.md) ⭐ NEW - Build reusable swarm teams
+3. [Rails Integration](guides/rails-integration.md) - Production integration patterns
+4. [Complete Tutorial Parts 7-8](guides/complete-tutorial.md) - Production features and best practices
 
 ### Path 3: SwarmMemory Deep Dive
 1. [SwarmMemory Guide](guides/swarm-memory.md) - Installation, memory tools, usage patterns
@@ -260,7 +280,8 @@ docs/v2/
 A Ruby framework for orchestrating multiple AI agents that work together as a team. Each agent has:
 - **Role**: Specialized expertise (backend developer, code reviewer, etc.)
 - **Tools**: Capabilities (Read files, Write files, Run bash commands, etc.)
-- **Delegation**: Ability to delegate subtasks to other agents
+- **Delegation**: Ability to delegate subtasks to other agents or swarms
+- **Composable Swarms**: Build hierarchies by delegating to reusable swarm components ⭐ NEW
 - **Hooks**: Custom logic that runs at key points in execution
 
 ### SwarmCLI
@@ -295,6 +316,7 @@ A persistent memory system for agents with semantic search capabilities:
 | **Tools** | [Tutorial Part 2](guides/complete-tutorial.md#part-2-tools-and-permissions) | [YAML Ref](reference/yaml.md#tools) |
 | **Permissions** | [Tutorial Part 2](guides/complete-tutorial.md#permissions-system) | [YAML Ref](reference/yaml.md#permissions-configuration) |
 | **Delegation** | [Tutorial Part 3](guides/complete-tutorial.md#part-3-agent-collaboration) | [Ruby DSL Ref](reference/ruby-dsl.md#delegates_to) |
+| **Composable Swarms** ⭐ | [Composable Swarms Guide](guides/composable-swarms.md) | [Ruby DSL Ref](reference/ruby-dsl.md#swarms) · [YAML Ref](reference/yaml.md#swarms) |
 | **Hooks** | [Tutorial Part 4](guides/complete-tutorial.md#part-4-hooks-system) | [YAML Ref](reference/yaml.md#hooks-configuration) |
 | **Workflows** | [Tutorial Part 5](guides/complete-tutorial.md#part-5-node-workflows) | [YAML Ref](reference/yaml.md#nodes) · [Ruby DSL Ref](reference/ruby-dsl.md#node-builder-dsl) |
 | **MCP Servers** | [Tutorial Part 6](guides/complete-tutorial.md#mcp-server-integration) | [YAML Ref](reference/yaml.md#mcp_servers) |

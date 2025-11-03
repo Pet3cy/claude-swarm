@@ -5,13 +5,13 @@ require "test_helper"
 module SwarmSDK
   class AgentContextTest < Minitest::Test
     def test_initialize_sets_name
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       assert_equal(:backend, context.name)
     end
 
     def test_initialize_converts_name_to_symbol
-      context = Agent::Context.new(name: "backend")
+      context = Agent::Context.new(name: "backend", swarm_id: "test_swarm")
 
       assert_equal(:backend, context.name)
     end
@@ -19,6 +19,7 @@ module SwarmSDK
     def test_initialize_sets_delegation_tools
       context = Agent::Context.new(
         name: :backend,
+        swarm_id: "test_swarm",
         delegation_tools: ["DelegateToDatabase", "DelegateToAuth"],
       )
 
@@ -30,6 +31,7 @@ module SwarmSDK
     def test_initialize_converts_delegation_tools_to_strings
       context = Agent::Context.new(
         name: :backend,
+        swarm_id: "test_swarm",
         delegation_tools: [:database, :auth],
       )
 
@@ -39,13 +41,13 @@ module SwarmSDK
 
     def test_initialize_sets_metadata
       metadata = { role: "backend", version: "1.0" }
-      context = Agent::Context.new(name: :backend, metadata: metadata)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm", metadata: metadata)
 
       assert_equal(metadata, context.metadata)
     end
 
     def test_track_delegation_records_call
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       context.track_delegation(call_id: "call_123", target: "DelegateToDatabase")
 
@@ -54,19 +56,19 @@ module SwarmSDK
     end
 
     def test_delegation_returns_false_for_unknown_call
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       refute(context.delegation?(call_id: "unknown"))
     end
 
     def test_delegation_target_returns_nil_for_unknown_call
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       assert_nil(context.delegation_target(call_id: "unknown"))
     end
 
     def test_clear_delegation_removes_tracking
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       context.track_delegation(call_id: "call_123", target: "DelegateToDatabase")
 
@@ -81,6 +83,7 @@ module SwarmSDK
     def test_delegation_tool_checks_tool_name
       context = Agent::Context.new(
         name: :backend,
+        swarm_id: "test_swarm",
         delegation_tools: ["DelegateToDatabase"],
       )
 
@@ -89,7 +92,7 @@ module SwarmSDK
     end
 
     def test_hit_warning_threshold_returns_true_first_time
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       result = context.hit_warning_threshold?(80)
 
@@ -97,7 +100,7 @@ module SwarmSDK
     end
 
     def test_hit_warning_threshold_returns_false_second_time
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       context.hit_warning_threshold?(80) # First hit
       result = context.hit_warning_threshold?(80) # Second hit
@@ -106,7 +109,7 @@ module SwarmSDK
     end
 
     def test_warning_threshold_hit_tracks_hit_thresholds
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       refute(context.warning_threshold_hit?(80))
 
@@ -116,7 +119,7 @@ module SwarmSDK
     end
 
     def test_warning_threshold_hit_tracks_multiple_thresholds
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       context.hit_warning_threshold?(80)
       context.hit_warning_threshold?(90)
@@ -127,7 +130,7 @@ module SwarmSDK
     end
 
     def test_warning_thresholds_hit_reader_returns_set
-      context = Agent::Context.new(name: :backend)
+      context = Agent::Context.new(name: :backend, swarm_id: "test_swarm")
 
       assert_instance_of(Set, context.warning_thresholds_hit)
       assert_empty(context.warning_thresholds_hit)
@@ -136,6 +139,7 @@ module SwarmSDK
     def test_delegation_tools_reader_returns_set
       context = Agent::Context.new(
         name: :backend,
+        swarm_id: "test_swarm",
         delegation_tools: ["DelegateToDatabase"],
       )
 

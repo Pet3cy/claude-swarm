@@ -69,6 +69,8 @@ module SwarmSDK
           agent_name: agent_name,
           swarm: @swarm,
           hook_registry: @hook_registry,
+          call_stack: @swarm.delegation_call_stack,
+          swarm_registry: @swarm.swarm_registry,
           delegating_chat: delegating_chat,
         )
       end
@@ -135,33 +137,52 @@ module SwarmSDK
           end
         end
 
-        # Sub-pass 2b: Wire primary agents to delegation instances OR shared primaries
+        # Sub-pass 2b: Wire primary agents to delegation instances OR shared primaries OR registered swarms
         @agent_definitions.each do |delegator_name, delegator_def|
           delegator_chat = @agents[delegator_name]
 
           delegator_def.delegates_to.each do |delegate_base_name|
-            delegate_definition = @agent_definitions[delegate_base_name]
+            delegate_base_name_str = delegate_base_name.to_s
 
-            # Determine which chat instance to use
-            target_chat = if delegate_definition.shared_across_delegations
-              # Shared mode: use primary agent (old behavior)
-              @agents[delegate_base_name]
+            # Check if target is a registered swarm
+            if @swarm.swarm_registry&.registered?(delegate_base_name_str)
+              # Create delegation tool for swarm
+              tool = create_delegation_tool(
+                name: delegate_base_name_str,
+                description: "External swarm: #{delegate_base_name_str}",
+                delegate_chat: nil, # Swarm delegation - no direct chat
+                agent_name: delegator_name,
+                delegating_chat: delegator_chat,
+              )
+
+              delegator_chat.with_tool(tool)
+            elsif @agent_definitions.key?(delegate_base_name)
+              # Delegate to local agent
+              delegate_definition = @agent_definitions[delegate_base_name]
+
+              # Determine which chat instance to use
+              target_chat = if delegate_definition.shared_across_delegations
+                # Shared mode: use primary agent (old behavior)
+                @agents[delegate_base_name]
+              else
+                # Isolated mode: use delegation instance
+                instance_name = "#{delegate_base_name}@#{delegator_name}"
+                @swarm.delegation_instances[instance_name]
+              end
+
+              # Create delegation tool pointing to chosen instance
+              tool = create_delegation_tool(
+                name: delegate_base_name.to_s,
+                description: delegate_definition.description,
+                delegate_chat: target_chat, # ← Isolated instance OR shared primary
+                agent_name: delegator_name,
+                delegating_chat: delegator_chat,
+              )
+
+              delegator_chat.with_tool(tool)
             else
-              # Isolated mode: use delegation instance
-              instance_name = "#{delegate_base_name}@#{delegator_name}"
-              @swarm.delegation_instances[instance_name]
+              raise ConfigurationError, "Agent '#{delegator_name}' delegates to unknown target '#{delegate_base_name_str}' (not a local agent or registered swarm)"
             end
-
-            # Create delegation tool pointing to chosen instance
-            tool = create_delegation_tool(
-              name: delegate_base_name.to_s,
-              description: delegate_definition.description,
-              delegate_chat: target_chat, # ← Isolated instance OR shared primary
-              agent_name: delegator_name,
-              delegating_chat: delegator_chat,
-            )
-
-            delegator_chat.with_tool(tool)
           end
         end
 
@@ -173,43 +194,57 @@ module SwarmSDK
 
           # Register delegation tools for THIS instance's delegates_to
           delegate_definition.delegates_to.each do |nested_delegate_name|
-            nested_delegate_name = nested_delegate_name.to_sym
+            nested_delegate_name_sym = nested_delegate_name.to_sym
+            nested_delegate_name_str = nested_delegate_name.to_s
 
-            unless @agents.key?(nested_delegate_name)
-              raise ConfigurationError,
-                "Delegation instance '#{instance_name}' delegates to unknown agent '#{nested_delegate_name}'"
-            end
-
-            nested_definition = @agent_definitions[nested_delegate_name]
-
-            # Determine target: shared primary OR isolated instance
-            target_chat = if nested_definition.shared_across_delegations
-              # Shared mode: point to primary (semaphore-protected)
-              @agents[nested_delegate_name]
-            else
-              # Isolated mode: delegation instances also get isolated nested delegates
-              # Create unique instance for this delegation chain
-              nested_instance_name = "#{nested_delegate_name}@#{instance_name}"
-
-              # Check if already created in 2a (if delegator also delegates to this agent)
-              @swarm.delegation_instances[nested_instance_name] ||= create_agent_chat_for_delegation(
-                instance_name: nested_instance_name,
-                base_name: nested_delegate_name,
-                agent_definition: nested_definition,
-                tool_configurator: tool_configurator,
+            # Check if target is a registered swarm
+            if @swarm.swarm_registry&.registered?(nested_delegate_name_str)
+              # Create delegation tool for swarm
+              nested_tool = create_delegation_tool(
+                name: nested_delegate_name_str,
+                description: "External swarm: #{nested_delegate_name_str}",
+                delegate_chat: nil, # Swarm delegation - no direct chat
+                agent_name: instance_name.to_sym,
+                delegating_chat: delegation_chat,
               )
+
+              delegation_chat.with_tool(nested_tool)
+            elsif @agent_definitions.key?(nested_delegate_name_sym)
+              # Delegate to local agent
+              nested_definition = @agent_definitions[nested_delegate_name_sym]
+
+              # Determine target: shared primary OR isolated instance
+              target_chat = if nested_definition.shared_across_delegations
+                # Shared mode: point to primary (semaphore-protected)
+                @agents[nested_delegate_name_sym]
+              else
+                # Isolated mode: delegation instances also get isolated nested delegates
+                # Create unique instance for this delegation chain
+                nested_instance_name = "#{nested_delegate_name}@#{instance_name}"
+
+                # Check if already created in 2a (if delegator also delegates to this agent)
+                @swarm.delegation_instances[nested_instance_name] ||= create_agent_chat_for_delegation(
+                  instance_name: nested_instance_name,
+                  base_name: nested_delegate_name_sym,
+                  agent_definition: nested_definition,
+                  tool_configurator: tool_configurator,
+                )
+              end
+
+              # Create delegation tool
+              nested_tool = create_delegation_tool(
+                name: nested_delegate_name.to_s,
+                description: nested_definition.description,
+                delegate_chat: target_chat, # ← Isolated OR shared
+                agent_name: instance_name.to_sym,
+                delegating_chat: delegation_chat,
+              )
+
+              delegation_chat.with_tool(nested_tool)
+            else
+              raise ConfigurationError,
+                "Delegation instance '#{instance_name}' delegates to unknown target '#{nested_delegate_name_str}' (not a local agent or registered swarm)"
             end
-
-            # Create delegation tool
-            nested_tool = create_delegation_tool(
-              name: nested_delegate_name.to_s,
-              description: nested_definition.description,
-              delegate_chat: target_chat, # ← Isolated OR shared
-              agent_name: instance_name.to_sym,
-              delegating_chat: delegation_chat,
-            )
-
-            delegation_chat.with_tool(nested_tool)
           end
         end
       end
@@ -240,6 +275,8 @@ module SwarmSDK
 
         context = Agent::Context.new(
           name: agent_name,
+          swarm_id: @swarm.swarm_id,
+          parent_swarm_id: @swarm.parent_swarm_id,
           delegation_tools: delegate_tool_names,
           metadata: { is_delegation_instance: is_delegation },
         )
@@ -430,25 +467,38 @@ module SwarmSDK
         return if delegate_names.empty?
 
         delegate_names.each do |delegate_name|
-          delegate_name = delegate_name.to_sym
+          delegate_name_sym = delegate_name.to_sym
+          delegate_name_str = delegate_name.to_s
 
-          unless @agents.key?(delegate_name)
-            raise ConfigurationError, "Agent delegates to unknown agent '#{delegate_name}'"
+          # Check if target is a local agent
+          if @agents.key?(delegate_name_sym)
+            # Delegate to local agent
+            delegate_agent = @agents[delegate_name_sym]
+            delegate_definition = @agent_definitions[delegate_name_sym]
+
+            tool = create_delegation_tool(
+              name: delegate_name_str,
+              description: delegate_definition.description,
+              delegate_chat: delegate_agent,
+              agent_name: agent_name,
+              delegating_chat: chat,
+            )
+
+            chat.with_tool(tool)
+          elsif @swarm.swarm_registry&.registered?(delegate_name_str)
+            # Delegate to registered swarm
+            tool = create_delegation_tool(
+              name: delegate_name_str,
+              description: "External swarm: #{delegate_name_str}",
+              delegate_chat: nil, # Swarm delegation - no direct chat
+              agent_name: agent_name,
+              delegating_chat: chat,
+            )
+
+            chat.with_tool(tool)
+          else
+            raise ConfigurationError, "Agent '#{agent_name}' delegates to unknown target '#{delegate_name_str}' (not a local agent or registered swarm)"
           end
-
-          # Create a tool that delegates to the specified agent
-          delegate_agent = @agents[delegate_name]
-          delegate_definition = @agent_definitions[delegate_name]
-
-          tool = create_delegation_tool(
-            name: delegate_name.to_s,
-            description: delegate_definition.description,
-            delegate_chat: delegate_agent,
-            agent_name: agent_name,
-            delegating_chat: chat,
-          )
-
-          chat.with_tool(tool)
         end
       end
 

@@ -45,14 +45,23 @@ module SwarmSDK
       end
 
       def initialize
+        @swarm_id = nil
         @swarm_name = nil
         @lead_agent = nil
         @agents = {}
         @all_agents_config = nil
         @swarm_hooks = []
+        @swarm_registry_config = [] # NEW - stores register() calls for composable swarms
         @nodes = {}
         @start_node = nil
         @scratchpad_enabled = true # Default: enabled
+      end
+
+      # Set swarm ID
+      #
+      # @param swarm_id [String] Unique identifier for this swarm
+      def id(swarm_id)
+        @swarm_id = swarm_id
       end
 
       # Set swarm name
@@ -70,6 +79,21 @@ module SwarmSDK
       # @param enabled [Boolean] Whether to enable scratchpad tools
       def use_scratchpad(enabled)
         @scratchpad_enabled = enabled
+      end
+
+      # Register external swarms for composable swarms
+      #
+      # @example
+      #   swarms do
+      #     register "code_review", file: "./swarms/code_review.rb"
+      #     register "testing", file: "./swarms/testing.yml", keep_context: false
+      #   end
+      #
+      # @yield Block containing register() calls
+      def swarms(&block)
+        builder = SwarmRegistryBuilder.new
+        builder.instance_eval(&block)
+        @swarm_registry_config = builder.registrations
       end
 
       # Define an agent with fluent API or load from markdown content
@@ -310,8 +334,22 @@ module SwarmSDK
       #
       # @return [Swarm] Configured swarm instance
       def build_single_swarm
-        # Create swarm using SDK
-        swarm = Swarm.new(name: @swarm_name, scratchpad_enabled: @scratchpad_enabled)
+        # Validate swarm_id is set if external swarms are registered (required for composable swarms)
+        if @swarm_registry_config.any? && @swarm_id.nil?
+          raise ConfigurationError, "Swarm id must be set using id(...) when using composable swarms"
+        end
+
+        # Create swarm using SDK (swarm_id auto-generates if nil)
+        swarm = Swarm.new(name: @swarm_name, swarm_id: @swarm_id, scratchpad_enabled: @scratchpad_enabled)
+
+        # Setup swarm registry if external swarms are registered
+        if @swarm_registry_config.any?
+          registry = SwarmRegistry.new(parent_swarm_id: @swarm_id)
+          @swarm_registry_config.each do |reg|
+            registry.register(reg[:name], source: reg[:source], keep_context: reg[:keep_context])
+          end
+          swarm.swarm_registry = registry
+        end
 
         # Merge all_agents config into each agent (including file-loaded ones)
         merge_all_agents_config_into_agents if @all_agents_config
@@ -375,13 +413,19 @@ module SwarmSDK
         end
 
         # Create node orchestrator
-        NodeOrchestrator.new(
+        orchestrator = NodeOrchestrator.new(
           swarm_name: @swarm_name,
+          swarm_id: @swarm_id,
           agent_definitions: agent_definitions,
           nodes: @nodes,
           start_node: @start_node,
           scratchpad_enabled: @scratchpad_enabled,
         )
+
+        # Pass swarm registry config to orchestrator if external swarms registered
+        orchestrator.swarm_registry_config = @swarm_registry_config if @swarm_registry_config.any?
+
+        orchestrator
       end
 
       # Merge all_agents configuration into each agent
@@ -581,6 +625,79 @@ module SwarmSDK
         else
           base
         end
+      end
+    end
+
+    # Helper class for swarms block in DSL
+    #
+    # Provides a clean API for registering external swarms within the swarms { } block.
+    # Supports three registration methods:
+    # 1. File path: register "name", file: "./swarm.rb"
+    # 2. YAML string: register "name", yaml: "version: 2\n..."
+    # 3. Inline block: register "name" do ... end
+    #
+    # @example From file
+    #   swarms do
+    #     register "code_review", file: "./swarms/code_review.rb"
+    #   end
+    #
+    # @example From YAML string
+    #   swarms do
+    #     yaml_content = File.read("testing.yml")
+    #     register "testing", yaml: yaml_content, keep_context: false
+    #   end
+    #
+    # @example Inline block
+    #   swarms do
+    #     register "testing", keep_context: false do
+    #       id "testing_team"
+    #       name "Testing Team"
+    #       lead :tester
+    #       agent :tester do
+    #         model "gpt-4o-mini"
+    #         system "You test code"
+    #       end
+    #     end
+    #   end
+    #
+    class SwarmRegistryBuilder
+      attr_reader :registrations
+
+      def initialize
+        @registrations = []
+      end
+
+      # Register a swarm from file, YAML string, or inline block
+      #
+      # @param name [String, Symbol] Registration name
+      # @param file [String, nil] Path to swarm file (.rb or .yml)
+      # @param yaml [String, nil] YAML content string
+      # @param keep_context [Boolean] Whether to preserve conversation state (default: true)
+      # @yield Optional block for inline swarm definition
+      # @raise [ArgumentError] If neither file, yaml, nor block provided
+      def register(name, file: nil, yaml: nil, keep_context: true, &block)
+        # Validate that exactly one source is provided
+        sources = [file, yaml, block].compact
+        if sources.empty?
+          raise ArgumentError, "register '#{name}' requires either file:, yaml:, or a block"
+        elsif sources.size > 1
+          raise ArgumentError, "register '#{name}' accepts only one of: file:, yaml:, or block (got #{sources.size})"
+        end
+
+        # Determine source type and store
+        source = if file
+          { type: :file, value: file }
+        elsif yaml
+          { type: :yaml, value: yaml }
+        else
+          { type: :block, value: block }
+        end
+
+        @registrations << {
+          name: name.to_s,
+          source: source,
+          keep_context: keep_context,
+        }
       end
     end
   end

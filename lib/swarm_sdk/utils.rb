@@ -45,6 +45,24 @@ module SwarmSDK
           obj
         end
       end
+
+      # Convert hash to YAML string
+      #
+      # Converts a Ruby hash to a YAML string. Useful for creating inline
+      # swarm definitions from hash configurations.
+      #
+      # @param hash [Hash] Hash to convert
+      # @return [String] YAML string representation
+      #
+      # @example
+      #   config = { version: 2, swarm: { name: "Test" } }
+      #   Utils.hash_to_yaml(config)
+      #   # => "---\nversion: 2\nswarm:\n  name: Test\n"
+      def hash_to_yaml(hash)
+        # Convert symbols to strings for valid YAML
+        stringified = stringify_keys(hash)
+        stringified.to_yaml
+      end
     end
   end
 end

@@ -33,15 +33,19 @@ module SwarmSDK
       # Threshold at which automatic compression is triggered
       COMPRESSION_THRESHOLD = 60
 
-      attr_reader :name, :delegation_tools, :metadata, :warning_thresholds_hit
+      attr_reader :name, :delegation_tools, :metadata, :warning_thresholds_hit, :swarm_id, :parent_swarm_id
 
       # Initialize a new agent context
       #
       # @param name [Symbol, String] Agent name
+      # @param swarm_id [String] Swarm ID for event tracking
+      # @param parent_swarm_id [String, nil] Parent swarm ID (nil for root swarms)
       # @param delegation_tools [Array<String>] Names of tools that are delegations
       # @param metadata [Hash] Optional metadata about the agent
-      def initialize(name:, delegation_tools: [], metadata: {})
+      def initialize(name:, swarm_id:, parent_swarm_id: nil, delegation_tools: [], metadata: {})
         @name = name.to_sym
+        @swarm_id = swarm_id
+        @parent_swarm_id = parent_swarm_id
         @delegation_tools = Set.new(delegation_tools.map(&:to_s))
         @metadata = metadata
         @delegation_call_ids = Set.new

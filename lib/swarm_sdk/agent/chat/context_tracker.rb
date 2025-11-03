@@ -82,6 +82,8 @@ module SwarmSDK
             LogStream.emit(
               type: "context_limit_warning",
               agent: @agent_context.name,
+              swarm_id: @agent_context.swarm_id,
+              parent_swarm_id: @agent_context.parent_swarm_id,
               model: @chat.model.id,
               threshold: "#{threshold}%",
               current_usage: "#{current_percentage}%",
@@ -163,6 +165,8 @@ module SwarmSDK
                 LogStream.emit(
                   type: "delegation_result",
                   agent: @agent_context.name,
+                  swarm_id: @agent_context.swarm_id,
+                  parent_swarm_id: @agent_context.parent_swarm_id,
                   delegate_from: delegate_from,
                   tool_call_id: message.tool_call_id,
                   result: serialize_result(message.content),
@@ -186,6 +190,8 @@ module SwarmSDK
               LogStream.emit(
                 type: "agent_delegation",
                 agent: @agent_context.name,
+                swarm_id: @agent_context.swarm_id,
+                parent_swarm_id: @agent_context.parent_swarm_id,
                 tool_call_id: tool_call.id,
                 delegate_to: agent_name,
                 arguments: tool_call.arguments,
@@ -301,6 +307,8 @@ module SwarmSDK
         LogStream.emit(
           type: "context_compression",
           agent: @agent_context.name,
+          swarm_id: @agent_context.swarm_id,
+          parent_swarm_id: @agent_context.parent_swarm_id,
           total_messages: @chat.messages.size,
           messages_compressed: messages_compressed,
           tokens_before: tokens_before,
