@@ -26,6 +26,7 @@ loader.inflector = Zeitwerk::GemInflector.new(__FILE__)
 loader.inflector.inflect(
   "cli" => "CLI",
   "openai_with_responses" => "OpenAIWithResponses",
+  "llm_instrumentation_middleware" => "LLMInstrumentationMiddleware",
 )
 loader.setup
 

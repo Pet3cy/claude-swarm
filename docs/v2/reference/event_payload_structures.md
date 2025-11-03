@@ -485,6 +485,113 @@ Emitted when all LLM API retry attempts are exhausted.
 
 ---
 
+### 16. llm_api_request
+
+Emitted before sending HTTP request to LLM API provider (only when logging is enabled).
+
+**Location**: `lib/swarm_sdk/agent/llm_instrumentation_middleware.rb:57-68`
+
+```ruby
+{
+  type: "llm_api_request",
+  timestamp: "2025-01-15T10:31:15Z",
+  agent: "backend",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
+  provider: "openai",                          # Provider name (e.g., "anthropic", "openai")
+  body: {                                      # Complete request payload
+    model: "gpt-5",
+    messages: [
+      { role: "system", content: "You are..." },
+      { role: "user", content: "Build authentication" }
+    ],
+    temperature: 0.7,
+    max_tokens: 4096,
+    tools: [                                   # Tool definitions (if any)
+      {
+        name: "Read",
+        description: "Read a file",
+        input_schema: { ... }
+      }
+    ]
+  }
+}
+```
+
+**Field Locations**:
+- Root level: `type`, `timestamp`, `agent`, `swarm_id`, `parent_swarm_id`, `provider`, `body`
+- Nested in `body`: Complete LLM request payload (model, messages, parameters, tools)
+
+**Notes**:
+- Only emitted when logging is enabled (`swarm.execute` with block)
+- Body structure varies by provider (OpenAI, Anthropic, etc.)
+- HTTP-level details (method, URL, headers) are not included to reduce noise
+- Captures the exact request sent to the LLM API
+
+---
+
+### 17. llm_api_response
+
+Emitted after receiving HTTP response from LLM API provider (only when logging is enabled).
+
+**Location**: `lib/swarm_sdk/agent/llm_instrumentation_middleware.rb:77-101`
+
+```ruby
+{
+  type: "llm_api_response",
+  timestamp: "2025-01-15T10:31:17Z",
+  agent: "backend",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
+  provider: "openai",                          # Provider name
+  body: {                                      # Complete response payload
+    id: "chatcmpl-123",
+    object: "chat.completion",
+    created: 1642234567,
+    model: "gpt-5",
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "I'll implement the authentication system...",
+          tool_calls: [...]
+        },
+        finish_reason: "tool_calls"
+      }
+    ],
+    usage: {
+      prompt_tokens: 1850,
+      completion_tokens: 156,
+      total_tokens: 2006
+    }
+  },
+  duration_seconds: 2.145,                     # Request duration
+  usage: {                                     # Extracted from body
+    input_tokens: 1850,
+    output_tokens: 156,
+    total_tokens: 2006
+  },
+  model: "gpt-5",                              # Extracted from body
+  finish_reason: "tool_calls"                  # Extracted from body
+}
+```
+
+**Field Locations**:
+- Root level: `type`, `timestamp`, `agent`, `swarm_id`, `parent_swarm_id`, `provider`, `body`, `duration_seconds`, `usage`, `model`, `finish_reason`
+- Nested in `body`: Complete LLM response payload (varies by provider)
+- Nested in `usage`: Token counts (extracted from body for convenience)
+
+**Notes**:
+- Only emitted when logging is enabled (`swarm.execute` with block)
+- `usage`, `model`, and `finish_reason` are extracted from the body for convenience
+- Body structure varies by provider (OpenAI, Anthropic, etc.)
+- HTTP-level details (status, headers) are not included to reduce noise
+- Captures the exact response received from the LLM API
+- Duration includes full round-trip time (request + network + response)
+
+---
+
 ## Summary: Field Location Guide
 
 ### Always at Root Level
@@ -504,6 +611,8 @@ Emitted when all LLM API retry attempts are exhausted.
 | `user_prompt` | model, provider, message_count, tools, delegates_to | metadata.* (includes prompt) |
 | `tool_call` | tool_call_id, tool | arguments.*, metadata.* |
 | `tool_result` | tool_call_id, tool, result | metadata.* |
+| `llm_api_request` | provider | body.* |
+| `llm_api_response` | provider, duration_seconds, usage, model, finish_reason | body.*, usage.* |
 
 ### Important Notes
 
@@ -511,6 +620,7 @@ Emitted when all LLM API retry attempts are exhausted.
 2. **Tool Calls**: Nested as array of objects in `tool_calls` field within `agent_step` events
 3. **Prompt Location**: For `user_prompt` events, the prompt is in `metadata.prompt`, NOT at root level
 4. **Metadata Deduplication**: `agent_step` and `agent_stop` events have minimal metadata because most fields are promoted to root level (see `swarm.rb:723` and `swarm.rb:744`)
+5. **LLM API Events**: `llm_api_request` and `llm_api_response` events are only emitted when logging is enabled and capture the raw LLM API communication for debugging and monitoring
 
 ---
 
@@ -521,3 +631,4 @@ Emitted when all LLM API retry attempts are exhausted.
 - **Agent Events**: `lib/swarm_sdk/agent/chat/context_tracker.rb` - Agent-level event tracking
 - **Hook Integration**: `lib/swarm_sdk/agent/chat/hook_integration.rb` - User prompt event preparation
 - **Logging Helpers**: `lib/swarm_sdk/agent/chat/logging_helpers.rb` - Tool call/result formatting
+- **LLM Instrumentation**: `lib/swarm_sdk/agent/llm_instrumentation_middleware.rb` - LLM API request/response capture
