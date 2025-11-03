@@ -60,6 +60,31 @@ swarm:
 
 Fields under the `swarm` key.
 
+### id
+
+**Type:** String (optional)
+**Description:** Unique swarm identifier.
+
+**When required:**
+- **Required** when using composable swarms (`swarms:` section)
+- **Optional** otherwise (auto-generates if omitted)
+
+**Purpose:**
+- Hierarchical swarm tracking in events (`swarm_id`, `parent_swarm_id`)
+- Building parent/child relationships in composable swarms
+- Identifying swarms in logs and monitoring
+
+If omitted and not using composable swarms, an ID is auto-generated from the swarm name with a random suffix.
+
+```yaml
+swarm:
+  id: development_team
+  id: code_review_v2
+  id: main_app
+```
+
+---
+
 ### name
 
 **Type:** String (required)
@@ -70,6 +95,94 @@ swarm:
   name: "Development Team"
   name: "Code Review Swarm"
 ```
+
+---
+
+### swarms
+
+**Type:** Object (optional)
+**Description:** External swarms to register for composable swarms feature.
+**Format:** `{ swarm_name: swarm_config }`
+
+**Enables delegation to other swarms as if they were agents.** A swarm IS an agent - delegating to a child swarm is identical to delegating to an agent. The child swarm's lead agent serves as its public interface.
+
+**Configuration per swarm:**
+- `file` (String): Path to swarm file (.rb or .yml)
+- `yaml` (String): YAML configuration content (for dynamic loading)
+- `swarm` (Object): Inline swarm definition
+- `keep_context` (Boolean, optional): Preserve conversation (default: true)
+
+**Rules:**
+- Exactly ONE of `file`, `yaml`, or `swarm` must be provided
+- `id` must be set on parent swarm when using `swarms:`
+
+**Example - From Files:**
+```yaml
+swarm:
+  id: main_app
+  name: "Main Application"
+  lead: backend
+
+  swarms:
+    code_review:
+      file: "./swarms/code_review.rb"
+      keep_context: true
+
+    testing:
+      file: "./swarms/testing.yml"
+      keep_context: false
+
+  agents:
+    backend:
+      delegates_to:
+        - code_review
+        - testing
+```
+
+**Example - Inline Definition:**
+```yaml
+swarm:
+  id: main_app
+  name: "Main Application"
+  lead: backend
+
+  swarms:
+    # File reference
+    code_review:
+      file: "./swarms/code_review.rb"
+
+    # Inline definition - no file needed!
+    testing:
+      keep_context: false
+      swarm:
+        id: testing_team
+        name: "Testing Team"
+        lead: tester
+        agents:
+          tester:
+            description: "Test specialist"
+            model: gpt-4o-mini
+            system: "You test code"
+            tools:
+              - Think
+              - Bash
+
+  agents:
+    backend:
+      description: "Backend developer"
+      delegates_to:
+        - code_review
+        - testing
+```
+
+**Hierarchical IDs:**
+Sub-swarms automatically get hierarchical IDs:
+- Parent swarm: `main_app`
+- Sub-swarms: `main_app/code_review`, `main_app/testing`
+
+**Keep Context:**
+- `keep_context: true` (default): Swarm maintains conversation history
+- `keep_context: false`: Swarm context resets after each delegation
 
 ---
 

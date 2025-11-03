@@ -9,6 +9,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Composable Swarms**: Build reusable swarm components that can be composed together
+  - **New `id()` DSL method**: Set unique swarm identifier (required when using composable swarms)
+  - **New `swarms {}` DSL block**: Register external swarms for delegation
+  - **New `register()` method**: Three registration methods:
+    - `register "name", file: "./swarm.rb"` - Load from file
+    - `register "name", yaml: yaml_string` - Load from YAML string
+    - `register "name" { ... }` - Define inline with DSL block
+  - **`keep_context` parameter**: Control conversation persistence per swarm (default: true)
+  - **Hierarchical swarm IDs**: Parent/child tracking (e.g., `main/code_review/security`)
+  - **Transparent delegation**: Use swarms in `delegates_to` like regular agents
+  - **Lazy loading & caching**: Sub-swarms loaded on first access and cached
+  - **Circular dependency detection**: Runtime prevention of infinite delegation loops
+  - **Event tracking**: All events include `swarm_id` and `parent_swarm_id` fields
+  - **SwarmRegistry class**: Manages sub-swarm lifecycle and cleanup
+  - **SwarmLoader class**: Multi-source loader (files, YAML strings, blocks)
+  - **Deep nesting support**: Unlimited levels of swarm composition
+  - **Cleanup cascade**: Proper resource cleanup through hierarchy
+  - **YAML support**: `id:` and `swarms:` sections with file/inline definitions
+  - **Comprehensive tests**: 36 new tests, 100% pass rate
+
 - **Per-Delegation Agent Instances**: Dual-mode delegation support with isolated and shared modes
   - **New `shared_across_delegations` configuration** (default: `false`)
     - `false` (default): Each delegator gets its own isolated instance with separate conversation history

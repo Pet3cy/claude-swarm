@@ -327,8 +327,17 @@ module SwarmSDK
           field: "swarm.lead",
         )
 
-      # Unknown agent in connections
+      # Unknown agent in connections (old format)
       when /Agent '([^']+)' has connection to unknown agent '([^']+)'/i
+        agent_name = Regexp.last_match(1)
+        error_hash.merge!(
+          type: :invalid_reference,
+          field: "swarm.agents.#{agent_name}.delegates_to",
+          agent: agent_name,
+        )
+
+      # Unknown agent in connections (new format with composable swarms)
+      when /Agent '([^']+)' delegates to unknown target '([^']+)'/i
         agent_name = Regexp.last_match(1)
         error_hash.merge!(
           type: :invalid_reference,

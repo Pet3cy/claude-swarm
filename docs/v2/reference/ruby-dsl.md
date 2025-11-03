@@ -126,6 +126,39 @@ Updates RubyLLM's model registry to ensure latest model information is available
 
 Methods available in the `SwarmSDK.build` block.
 
+### id
+
+Set the swarm ID (unique identifier).
+
+**Signature:**
+```ruby
+id(swarm_id) → void
+```
+
+**Parameters:**
+- `swarm_id` (String, required): Unique swarm identifier
+
+**When required:**
+- **Required** when using composable swarms (`swarms {}` block)
+- **Optional** otherwise (auto-generates if omitted)
+
+**Description:**
+Sets a unique identifier for the swarm. This ID is used for:
+- Hierarchical swarm tracking in events (`swarm_id`, `parent_swarm_id`)
+- Building parent/child relationships in composable swarms
+- Identifying swarms in logs and monitoring
+
+If omitted and not using composable swarms, an ID is auto-generated from the swarm name with a random suffix (e.g., `"development_team_a3f2b1c8"`).
+
+**Example:**
+```ruby
+id "development_team"
+id "code_review_v2"
+id "main_app"
+```
+
+---
+
 ### name
 
 Set the swarm name.
@@ -142,6 +175,161 @@ name(swarm_name) → void
 ```ruby
 name "Development Team"
 name "Code Review Swarm"
+```
+
+---
+
+### swarms
+
+Register external swarms for composable swarms feature.
+
+**Signature:**
+```ruby
+swarms(&block) → void
+```
+
+**Parameters:**
+- `block` (required): Block containing `register()` calls
+
+**Description:**
+Enables composable swarms - the ability to delegate to other swarms as if they were agents. Each registered swarm can be referenced in `delegates_to` just like regular agents.
+
+**A swarm IS an agent** - delegating to a child swarm is identical to delegating to an agent. The child swarm's lead agent serves as its public interface.
+
+**Three registration methods:**
+1. **File path**: Load from .rb or .yml file
+2. **YAML string**: Pass YAML content directly
+3. **Inline block**: Define swarm inline with Ruby DSL
+
+**Example:**
+```ruby
+swarms do
+  # Method 1: From file
+  register "code_review", file: "./swarms/code_review.rb"
+
+  # Method 2: From YAML string
+  yaml_content = File.read("testing.yml")
+  register "testing", yaml: yaml_content, keep_context: false
+
+  # Method 3: Inline block
+  register "deployment" do
+    id "deploy_team"
+    name "Deployment Team"
+    lead :deployer
+
+    agent :deployer do
+      model "gpt-4o"
+      system "You handle deployments"
+    end
+  end
+end
+```
+
+---
+
+### swarms.register
+
+Register a sub-swarm within the `swarms {}` block.
+
+**Signature:**
+```ruby
+register(name, file: nil, yaml: nil, keep_context: true, &block) → void
+```
+
+**Parameters:**
+- `name` (String, required): Registration name for the swarm
+- `file` (String, optional): Path to swarm file (.rb or .yml)
+- `yaml` (String, optional): YAML configuration content
+- `keep_context` (Boolean, optional): Preserve conversation between calls (default: true)
+- `block` (Proc, optional): Inline swarm definition
+
+**Rules:**
+- Exactly ONE of `file:`, `yaml:`, or `&block` must be provided
+- Cannot provide multiple sources (raises ArgumentError)
+- Must provide at least one source (raises ArgumentError)
+
+**Description:**
+Registers a sub-swarm that can be delegated to like a regular agent. The swarm is lazy-loaded on first access and cached for reuse.
+
+**Keep Context:**
+- `keep_context: true` (default): Swarm maintains conversation history across delegations
+- `keep_context: false`: Swarm context is reset after each delegation completes
+
+**Hierarchical IDs:**
+Sub-swarms automatically get hierarchical IDs: `"parent_id/registration_name"`
+
+**Example - From File:**
+```ruby
+swarms do
+  register "code_review", file: "./swarms/code_review.rb"
+  register "testing", file: "./swarms/testing.yml", keep_context: false
+end
+```
+
+**Example - From YAML String:**
+```ruby
+# Load YAML from anywhere (API, database, etc.)
+yaml_config = HTTP.get("https://api.example.com/swarms/testing.yml").body
+
+swarms do
+  register "testing", yaml: yaml_config, keep_context: false
+end
+```
+
+**Example - Inline Block:**
+```ruby
+swarms do
+  register "testing", keep_context: false do
+    id "testing_team"
+    name "Testing Team"
+    lead :tester
+
+    agent :tester do
+      model "gpt-4o-mini"
+      description "Test specialist"
+      system "You write and run tests"
+      tools :Think, :Bash
+    end
+
+    agent :qa do
+      model "gpt-4o"
+      description "QA specialist"
+      system "You validate quality"
+    end
+  end
+end
+```
+
+**Example - Mixing Sources:**
+```ruby
+swarms do
+  # From file
+  register "code_review", file: "./swarms/code_review.rb"
+
+  # From YAML string (fetched dynamically)
+  testing_yaml = SwarmConfig.find("testing").yaml_content
+  register "testing", yaml: testing_yaml
+
+  # Inline definition
+  register "deployment" do
+    id "deploy_team"
+    name "Deployment"
+    lead :deployer
+    agent :deployer do
+      model "gpt-4o"
+      system "Deploy code"
+    end
+  end
+end
+```
+
+**Usage with Delegation:**
+```ruby
+agent :backend do
+  # Delegate to both local agents and registered swarms
+  delegates_to "database", "code_review", "testing"
+  # backend can delegate to database (local agent) and code_review/testing (swarms)
+end
 ```
 
 ---

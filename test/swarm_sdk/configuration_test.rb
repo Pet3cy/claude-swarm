@@ -196,7 +196,7 @@ module SwarmSDK
           Configuration.load_file(path)
         end
 
-        assert_match(/connection to unknown agent/i, error.message)
+        assert_match(/delegates to unknown target/i, error.message)
       end
     end
 
@@ -576,7 +576,7 @@ module SwarmSDK
       end
     rescue ConfigurationError => e
       # Expected error about unknown agent
-      assert_match(/connection to unknown agent/i, e.message)
+      assert_match(/delegates to unknown target/i, e.message)
     end
 
     def test_non_hash_yaml_raises_error

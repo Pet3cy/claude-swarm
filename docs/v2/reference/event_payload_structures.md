@@ -2,7 +2,19 @@
 
 This document describes the exact structure of all SwarmSDK event payloads emitted via `LogStream.emit()`.
 
-All events automatically include a `timestamp` field (ISO8601 format) added by `LogStream.emit()`.
+## Common Fields
+
+All events automatically include these fields:
+
+- `timestamp` (String): ISO8601 format timestamp, added by `LogStream.emit()`
+- `swarm_id` (String): Unique identifier for the swarm that emitted this event
+- `parent_swarm_id` (String | nil): Parent swarm ID (null for root swarms)
+
+**Hierarchical Tracking:**
+For composable swarms, events include hierarchical swarm IDs:
+- Root swarm: `swarm_id: "main"`, `parent_swarm_id: null`
+- Child swarm: `swarm_id: "main/code_review"`, `parent_swarm_id: "main"`
+- Grandchild: `swarm_id: "main/code_review/security"`, `parent_swarm_id: "main/code_review"`
 
 ## Event Types
 
@@ -17,6 +29,8 @@ Emitted when `Swarm.execute()` is called, before any agent execution begins.
   type: "swarm_start",
   timestamp: "2025-01-15T10:30:45Z",          # Auto-added by LogStream
   agent: :lead_agent_name,                     # Lead agent name (for consistency)
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   swarm_name: "Development Team",              # Swarm name
   lead_agent: :lead_agent_name,                # Lead agent name
   prompt: "Build authentication system"        # User's task prompt
@@ -24,7 +38,7 @@ Emitted when `Swarm.execute()` is called, before any agent execution begins.
 ```
 
 **Field Locations**:
-- Root level: `type`, `timestamp`, `agent`, `swarm_name`, `lead_agent`, `prompt`
+- Root level: `type`, `timestamp`, `agent`, `swarm_id`, `parent_swarm_id`, `swarm_name`, `lead_agent`, `prompt`
 - No nested metadata
 
 ---
@@ -39,6 +53,8 @@ Emitted when swarm execution completes (success or error).
 {
   type: "swarm_stop",
   timestamp: "2025-01-15T10:35:22Z",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   swarm_name: "Development Team",
   lead_agent: :lead_agent_name,
   last_agent: "backend",                       # Agent that produced final response
@@ -52,7 +68,7 @@ Emitted when swarm execution completes (success or error).
 ```
 
 **Field Locations**:
-- Root level: All fields are at root level
+- Root level: All fields including `swarm_id` and `parent_swarm_id`
 - No nested metadata for this event
 
 ---
@@ -68,6 +84,8 @@ Emitted once per agent when agents are initialized (lazy initialization).
   type: "agent_start",
   timestamp: "2025-01-15T10:30:46Z",
   agent: :backend,                             # Agent name
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   swarm_name: "Development Team",
   model: "gpt-5",                              # Model ID
   provider: "openai",                          # Provider name
@@ -85,7 +103,7 @@ Emitted once per agent when agents are initialized (lazy initialization).
 ```
 
 **Field Locations**:
-- Root level: All fields except plugin configs
+- Root level: All fields including `swarm_id` and `parent_swarm_id`
 - Nested in `plugin_storages`: Per-plugin configuration
 
 ---
@@ -101,6 +119,8 @@ Emitted when an agent completes with a final response (no more tool calls).
   type: "agent_stop",
   timestamp: "2025-01-15T10:31:20Z",
   agent: "backend",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   model: "gpt-5",
   content: "I've implemented the auth system",  # Final response text
   tool_calls: nil,                              # Always nil for agent_stop
@@ -127,7 +147,7 @@ Emitted when an agent completes with a final response (no more tool calls).
 ```
 
 **Field Locations**:
-- Root level: `type`, `timestamp`, `agent`, `model`, `content`, `tool_calls`, `finish_reason`, `tool_executions`, `metadata`
+- Root level: `type`, `timestamp`, `agent`, `swarm_id`, `parent_swarm_id`, `model`, `content`, `tool_calls`, `finish_reason`, `tool_executions`, `metadata`
 - Nested in `usage`: All token counts, costs, and context tracking
 - Nested in `metadata`: Minimal (most fields promoted to root)
 
@@ -329,7 +349,7 @@ Emitted when context usage crosses threshold percentages (60%, 80%, 90%, 95%).
 
 ### 11. agent_delegation
 
-Emitted when an agent delegates work to another agent.
+Emitted when an agent delegates work to another agent or swarm.
 
 **Location**: `lib/swarm_sdk/agent/chat/context_tracker.rb:186-193`
 
@@ -338,14 +358,18 @@ Emitted when an agent delegates work to another agent.
   type: "agent_delegation",
   timestamp: "2025-01-15T10:31:30Z",
   agent: "backend",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   tool_call_id: "call_xyz789",
-  delegate_to: "frontend",                     # Target agent name
+  delegate_to: "frontend",                     # Target agent or swarm name
   arguments: {                                 # Delegation parameters
     prompt: "Build the login UI"
   },
   metadata: {}                                 # Agent context metadata
 }
 ```
+
+**Note**: `delegate_to` can be either a local agent name or a registered swarm name when using composable swarms.
 
 ---
 
@@ -360,12 +384,40 @@ Emitted when a delegated task completes and returns to the delegating agent.
   type: "delegation_result",
   timestamp: "2025-01-15T10:32:15Z",
   agent: "backend",                            # Agent that delegated
-  delegate_from: "frontend",                   # Agent that was delegated to
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
+  delegate_from: "frontend",                   # Agent or swarm that was delegated to
   tool_call_id: "call_xyz789",                 # Matches delegation tool_call_id
   result: "Login UI implemented",              # Result from delegate
   metadata: {}                                 # Agent context metadata
 }
 ```
+
+---
+
+### 12a. delegation_circular_dependency
+
+Emitted when circular delegation is detected (prevents infinite loops).
+
+**Location**: `lib/swarm_sdk/tools/delegate.rb:192-200`
+
+```ruby
+{
+  type: "delegation_circular_dependency",
+  timestamp: "2025-01-15T10:31:45Z",
+  agent: "agent_b",                            # Agent attempting delegation
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
+  target: "agent_a",                           # Target that would create cycle
+  call_stack: ["agent_a", "agent_b"]           # Current delegation chain
+}
+```
+
+**Description**: Emitted when runtime circular dependency detection prevents an infinite delegation loop. The delegation is blocked and an error message is returned to the LLM.
+
+**Example Scenarios:**
+- Agent A → Agent B → Agent A (circular within swarm)
+- Swarm S1 → Swarm S2 → Swarm S1 (circular across swarms)
 
 ---
 

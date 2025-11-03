@@ -68,7 +68,8 @@ module SwarmSDK
     # Default tools available to all agents
     DEFAULT_TOOLS = ToolConfigurator::DEFAULT_TOOLS
 
-    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions
+    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions, :swarm_id, :parent_swarm_id, :swarm_registry
+    attr_accessor :delegation_call_stack
 
     # Check if scratchpad tools are enabled
     #
@@ -116,15 +117,25 @@ module SwarmSDK
     # Initialize a new Swarm
     #
     # @param name [String] Human-readable swarm name
+    # @param swarm_id [String, nil] Optional swarm ID (auto-generated if not provided)
+    # @param parent_swarm_id [String, nil] Optional parent swarm ID (nil for root swarms)
     # @param global_concurrency [Integer] Max concurrent LLM calls across entire swarm
     # @param default_local_concurrency [Integer] Default max concurrent tool calls per agent
     # @param scratchpad [Tools::Stores::Scratchpad, nil] Optional scratchpad instance (for testing)
     # @param scratchpad_enabled [Boolean] Whether to enable scratchpad tools (default: true)
-    def initialize(name:, global_concurrency: DEFAULT_GLOBAL_CONCURRENCY, default_local_concurrency: DEFAULT_LOCAL_CONCURRENCY, scratchpad: nil, scratchpad_enabled: true)
+    def initialize(name:, swarm_id: nil, parent_swarm_id: nil, global_concurrency: DEFAULT_GLOBAL_CONCURRENCY, default_local_concurrency: DEFAULT_LOCAL_CONCURRENCY, scratchpad: nil, scratchpad_enabled: true)
       @name = name
+      @swarm_id = swarm_id || generate_swarm_id(name)
+      @parent_swarm_id = parent_swarm_id
       @global_concurrency = global_concurrency
       @default_local_concurrency = default_local_concurrency
       @scratchpad_enabled = scratchpad_enabled
+
+      # Swarm registry for managing sub-swarms (initialized later if needed)
+      @swarm_registry = nil
+
+      # Delegation call stack for circular dependency detection
+      @delegation_call_stack = []
 
       # Shared semaphore for all agents
       @global_semaphore = Async::Semaphore.new(@global_concurrency)
@@ -448,6 +459,8 @@ module SwarmSDK
           LogStream.emit(
             type: "model_lookup_warning",
             agent: warning[:agent],
+            swarm_id: @swarm_id,
+            parent_swarm_id: @parent_swarm_id,
             model: warning[:model],
             error_message: warning[:error_message],
             suggestions: warning[:suggestions],
@@ -523,7 +536,53 @@ module SwarmSDK
       self
     end
 
+    # Reset context for all agents
+    #
+    # Clears conversation history for all agents. This is used by composable swarms
+    # to reset sub-swarm context when keep_context: false is specified.
+    #
+    # @return [void]
+    def reset_context!
+      @agents.each_value do |agent_chat|
+        agent_chat.clear_conversation if agent_chat.respond_to?(:clear_conversation)
+      end
+    end
+
+    # Override swarm IDs for composable swarms
+    #
+    # Used by SwarmLoader to set hierarchical IDs when loading sub-swarms.
+    # This is called after the swarm is built to ensure proper parent/child relationships.
+    #
+    # @param swarm_id [String] New swarm ID
+    # @param parent_swarm_id [String] New parent swarm ID
+    # @return [void]
+    def override_swarm_ids(swarm_id:, parent_swarm_id:)
+      @swarm_id = swarm_id
+      @parent_swarm_id = parent_swarm_id
+    end
+
+    # Set swarm registry for composable swarms
+    #
+    # Used by Builder to set the registry after swarm creation.
+    # This must be called before agent initialization to enable swarm delegation.
+    #
+    # @param registry [SwarmRegistry] Configured swarm registry
+    # @return [void]
+    attr_writer :swarm_registry
+
     private
+
+    # Generate a unique swarm ID from name
+    #
+    # Creates a swarm ID by sanitizing the name and appending a random suffix.
+    # Used when swarm_id is not explicitly provided.
+    #
+    # @param name [String] Swarm name
+    # @return [String] Generated swarm ID (e.g., "dev_team_a3f2b1c8")
+    def generate_swarm_id(name)
+      sanitized = name.to_s.gsub(/[^a-z0-9_-]/i, "_").downcase
+      "#{sanitized}_#{SecureRandom.hex(4)}"
+    end
 
     # Initialize all agents using AgentInitializer
     #
@@ -587,6 +646,8 @@ module SwarmSDK
       LogStream.emit(
         type: "agent_start",
         agent: agent_name,
+        swarm_id: @swarm_id,
+        parent_swarm_id: @parent_swarm_id,
         swarm_name: @name,
         model: agent_def.model,
         provider: agent_def.provider || "openai",
@@ -696,6 +757,8 @@ module SwarmSDK
         LogStream.emit(
           type: "swarm_start",
           agent: context.metadata[:lead_agent], # Include agent for consistency
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           swarm_name: context.metadata[:swarm_name],
           lead_agent: context.metadata[:lead_agent],
           prompt: context.metadata[:prompt],
@@ -710,6 +773,8 @@ module SwarmSDK
 
         LogStream.emit(
           type: "swarm_stop",
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           swarm_name: context.metadata[:swarm_name],
           lead_agent: context.metadata[:lead_agent],
           last_agent: context.metadata[:last_agent], # Agent that produced final response
@@ -731,6 +796,8 @@ module SwarmSDK
         LogStream.emit(
           type: "user_prompt",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           model: context.metadata[:model] || "unknown",
           provider: context.metadata[:provider] || "unknown",
           message_count: context.metadata[:message_count] || 0,
@@ -751,6 +818,8 @@ module SwarmSDK
         LogStream.emit(
           type: "agent_step",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           model: context.metadata[:model],
           content: context.metadata[:content],
           tool_calls: context.metadata[:tool_calls],
@@ -772,6 +841,8 @@ module SwarmSDK
         LogStream.emit(
           type: "agent_stop",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           model: context.metadata[:model],
           content: context.metadata[:content],
           tool_calls: context.metadata[:tool_calls],
@@ -792,6 +863,8 @@ module SwarmSDK
         LogStream.emit(
           type: "tool_call",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           tool_call_id: context.tool_call.id,
           tool: context.tool_call.name,
           arguments: context.tool_call.parameters,
@@ -809,6 +882,8 @@ module SwarmSDK
         LogStream.emit(
           type: "tool_result",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           tool_call_id: context.tool_result.tool_call_id,
           tool: context.tool_result.tool_name,
           result: context.tool_result.content,
@@ -824,6 +899,8 @@ module SwarmSDK
         LogStream.emit(
           type: "context_limit_warning",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           model: context.metadata[:model] || "unknown",
           threshold: "#{context.metadata[:threshold]}%",
           current_usage: "#{context.metadata[:percentage]}%",
