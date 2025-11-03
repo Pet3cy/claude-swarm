@@ -68,7 +68,7 @@ module SwarmSDK
     # Default tools available to all agents
     DEFAULT_TOOLS = ToolConfigurator::DEFAULT_TOOLS
 
-    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions, :swarm_id, :parent_swarm_id, :swarm_registry
+    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions, :swarm_id, :parent_swarm_id, :swarm_registry, :scratchpad_storage
     attr_accessor :delegation_call_stack
 
     # Check if scratchpad tools are enabled
@@ -78,6 +78,19 @@ module SwarmSDK
       @scratchpad_enabled
     end
     attr_writer :config_for_hooks
+
+    # Check if first message has been sent (for system reminder injection)
+    #
+    # @return [Boolean]
+    def first_message_sent?
+      @first_message_sent
+    end
+
+    # Set first message sent flag (used by snapshot/restore)
+    #
+    # @param value [Boolean] New value
+    # @return [void]
+    attr_writer :first_message_sent
 
     # Class-level MCP log level configuration
     @mcp_log_level = DEFAULT_MCP_LOG_LEVEL
@@ -546,6 +559,62 @@ module SwarmSDK
       @agents.each_value do |agent_chat|
         agent_chat.clear_conversation if agent_chat.respond_to?(:clear_conversation)
       end
+    end
+
+    # Create snapshot of current conversation state
+    #
+    # Returns a Snapshot object containing:
+    # - All agent conversations (@messages arrays)
+    # - Agent context state (warnings, compression, TodoWrite tracking, skills)
+    # - Delegation instance conversations
+    # - Scratchpad contents (volatile shared storage)
+    # - Read tracking state (which files each agent has read with digests)
+    # - Memory read tracking state (which memory entries each agent has read with digests)
+    #
+    # Configuration (agent definitions, tools, prompts) stays in your YAML/DSL
+    # and is NOT included in snapshots.
+    #
+    # @return [Snapshot] Snapshot object with convenient serialization methods
+    #
+    # @example Save snapshot to JSON file
+    #   snapshot = swarm.snapshot
+    #   snapshot.write_to_file("session.json")
+    #
+    # @example Convert to hash or JSON string
+    #   snapshot = swarm.snapshot
+    #   hash = snapshot.to_hash
+    #   json_string = snapshot.to_json
+    def snapshot
+      StateSnapshot.new(self).snapshot
+    end
+
+    # Restore conversation state from snapshot
+    #
+    # Accepts a Snapshot object, hash, or JSON string. Validates compatibility
+    # between snapshot and current swarm configuration, restores agent conversations,
+    # context state, scratchpad, and read tracking. Returns RestoreResult with
+    # warnings about any agents that couldn't be restored due to configuration
+    # mismatches.
+    #
+    # The swarm must be created with the SAME configuration (agent definitions,
+    # tools, prompts) as when the snapshot was created. Only conversation state
+    # is restored from the snapshot.
+    #
+    # @param snapshot [Snapshot, Hash, String] Snapshot object, hash, or JSON string
+    # @return [RestoreResult] Result with warnings about skipped agents
+    #
+    # @example Restore from Snapshot object
+    #   swarm = SwarmSDK.build { ... }  # Same config as snapshot
+    #   snapshot = Snapshot.from_file("session.json")
+    #   result = swarm.restore(snapshot)
+    #   if result.success?
+    #     puts "All agents restored"
+    #   else
+    #     puts result.summary
+    #     result.warnings.each { |w| puts "  - #{w[:message]}" }
+    #   end
+    def restore(snapshot)
+      StateRestorer.new(self, snapshot).restore
     end
 
     # Override swarm IDs for composable swarms
