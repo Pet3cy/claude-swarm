@@ -27,6 +27,7 @@ loader.inflector.inflect(
   "cli" => "CLI",
   "openai_with_responses" => "OpenAIWithResponses",
   "llm_instrumentation_middleware" => "LLMInstrumentationMiddleware",
+  "mcp" => "MCP",
 )
 loader.setup
 

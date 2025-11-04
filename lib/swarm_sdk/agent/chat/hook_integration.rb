@@ -367,7 +367,10 @@ module SwarmSDK
           when "Read"
             Tools::Stores::ReadTracker.get_read_files(@agent_context.name)[File.expand_path(path)]
           when "MemoryRead"
-            SwarmMemory::Core::StorageReadTracker.get_read_entries(@agent_context.name)[path]
+            # Only query if SwarmMemory is loaded (optional dependency)
+            if defined?(SwarmMemory::Core::StorageReadTracker)
+              SwarmMemory::Core::StorageReadTracker.get_read_entries(@agent_context.name)[path]
+            end
           end
 
           digest ? { read_digest: digest, read_path: path } : {}
