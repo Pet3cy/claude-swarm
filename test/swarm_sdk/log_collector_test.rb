@@ -58,14 +58,33 @@ module SwarmSDK
       assert_equal(1, events.size)
     end
 
-    def test_callbacks_receive_exact_entry
+    def test_callbacks_receive_entry_with_timestamp
       received = nil
       LogCollector.on_log { |event| received = event }
 
       entry = { type: "test", agent: :backend, data: "value" }
       LogCollector.emit(entry)
 
-      assert_equal(entry, received)
+      # Should include all original fields
+      assert_equal("test", received[:type])
+      assert_equal(:backend, received[:agent])
+      assert_equal("value", received[:data])
+
+      # Should have auto-added timestamp
+      assert(received.key?(:timestamp), "Missing timestamp")
+      assert_match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/, received[:timestamp])
+    end
+
+    def test_existing_timestamps_are_preserved
+      received = nil
+      LogCollector.on_log { |event| received = event }
+
+      custom_timestamp = "2025-01-01T12:00:00Z"
+      entry = { type: "test", timestamp: custom_timestamp }
+      LogCollector.emit(entry)
+
+      # Should preserve the custom timestamp
+      assert_equal(custom_timestamp, received[:timestamp])
     end
   end
 end
