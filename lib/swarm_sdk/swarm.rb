@@ -117,8 +117,6 @@ module SwarmSDK
       def apply_mcp_logging_configuration
         return if @mcp_logging_configured
 
-        SwarmSDK::MCP.lazy_load
-
         RubyLLM::MCP.configure do |config|
           config.log_level = @mcp_log_level
         end
@@ -513,10 +511,12 @@ module SwarmSDK
       # Stop MCP clients for all agents (primaries + delegations tracked by instance name)
       @mcp_clients.each do |agent_name, clients|
         clients.each do |client|
-          client.stop if client.alive?
+          # Always call stop - this sets @running = false and stops background threads
+          client.stop
           RubyLLM.logger.debug("SwarmSDK: Stopped MCP client '#{client.name}' for agent #{agent_name}")
         rescue StandardError => e
-          RubyLLM.logger.error("SwarmSDK: Error stopping MCP client '#{client.name}': #{e.message}")
+          # Don't fail cleanup if stopping one client fails
+          RubyLLM.logger.debug("SwarmSDK: Error stopping MCP client '#{client.name}': #{e.message}")
         end
       end
 

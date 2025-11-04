@@ -15,6 +15,7 @@ require "yaml"
 require "async"
 require "async/semaphore"
 require "ruby_llm"
+require "ruby_llm/mcp"
 
 require_relative "swarm_sdk/version"
 
