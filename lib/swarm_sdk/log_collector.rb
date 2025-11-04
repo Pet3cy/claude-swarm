@@ -32,11 +32,16 @@ module SwarmSDK
 
       # Emit an event to all registered callbacks
       #
+      # Automatically adds a timestamp if one doesn't exist.
+      #
       # @param entry [Hash] Log event entry
       # @return [void]
       def emit(entry)
+        # Ensure timestamp exists (LogStream adds it, but direct calls might not)
+        entry_with_timestamp = entry.key?(:timestamp) ? entry : entry.merge(timestamp: Time.now.utc.iso8601)
+
         Array(@callbacks).each do |callback|
-          callback.call(entry)
+          callback.call(entry_with_timestamp)
         end
       end
 
