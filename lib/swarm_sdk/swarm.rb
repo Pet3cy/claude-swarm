@@ -247,6 +247,13 @@ module SwarmSDK
       logs = []
       current_prompt = prompt
 
+      # Set fiber-local execution context
+      # Use ||= to inherit parent's execution_id if one exists (for mini-swarms)
+      # Child fibers (tools, delegations) inherit automatically
+      Fiber[:execution_id] ||= generate_execution_id
+      Fiber[:swarm_id] = @swarm_id
+      Fiber[:parent_swarm_id] = @parent_swarm_id
+
       # Setup logging FIRST if block given (so swarm_start event can be emitted)
       if block_given?
         # Register callback to collect logs and forward to user's block
@@ -379,6 +386,14 @@ module SwarmSDK
 
       # Cleanup MCP clients after execution
       cleanup
+
+      # Only clear Fiber storage if we set up logging (same pattern as LogCollector)
+      # Mini-swarms are called without block, so they don't clear
+      if block_given?
+        Fiber[:execution_id] = nil
+        Fiber[:swarm_id] = nil
+        Fiber[:parent_swarm_id] = nil
+      end
 
       # Reset logging state for next execution if we set it up
       #
@@ -651,6 +666,16 @@ module SwarmSDK
     def generate_swarm_id(name)
       sanitized = name.to_s.gsub(/[^a-z0-9_-]/i, "_").downcase
       "#{sanitized}_#{SecureRandom.hex(4)}"
+    end
+
+    # Generate a unique execution ID
+    #
+    # Creates an execution ID that uniquely identifies a single swarm.execute() call.
+    # Format: "exec_{swarm_id}_{random_hex}"
+    #
+    # @return [String] Generated execution ID (e.g., "exec_main_a3f2b1c8")
+    def generate_execution_id
+      "exec_#{@swarm_id}_#{SecureRandom.hex(8)}"
     end
 
     # Initialize all agents using AgentInitializer

@@ -19,7 +19,7 @@ module SwarmSDK
   #   result = orchestrator.execute("Build auth system")
   class NodeOrchestrator
     attr_reader :swarm_name, :nodes, :start_node, :agent_definitions, :agent_instance_cache
-    attr_writer :swarm_id
+    attr_writer :swarm_id, :config_for_hooks
     attr_accessor :swarm_registry_config
 
     def initialize(swarm_name:, agent_definitions:, nodes:, start_node:, swarm_id: nil, scratchpad_enabled: true)
@@ -63,6 +63,9 @@ module SwarmSDK
       results = {}
       @original_prompt = prompt # Store original prompt for NodeContext
 
+      # Set fiber-local execution context for entire workflow
+      Fiber[:execution_id] = generate_execution_id
+
       # Setup logging if block given
       if block_given?
         # Register callback to collect logs and forward to user's block
@@ -83,6 +86,12 @@ module SwarmSDK
         node_name = @execution_order[execution_index]
         node = @nodes[node_name]
         node_start_time = Time.now
+
+        # Set node-specific swarm_id in fiber storage
+        # Mini-swarms will use ||= to inherit execution_id
+        node_swarm_id = @swarm_id ? "#{@swarm_id}/node:#{node_name}" : nil
+        Fiber[:swarm_id] = node_swarm_id
+        Fiber[:parent_swarm_id] = @swarm_id
 
         # Emit node_start event
         emit_node_start(node_name, node)
@@ -233,6 +242,11 @@ module SwarmSDK
 
       last_result
     ensure
+      # NodeOrchestrator always clears (always sets up logging)
+      Fiber[:execution_id] = nil
+      Fiber[:swarm_id] = nil
+      Fiber[:parent_swarm_id] = nil
+
       # Reset logging state for next execution
       LogCollector.reset!
       LogStream.reset!
@@ -292,6 +306,16 @@ module SwarmSDK
     end
 
     private
+
+    # Generate a unique execution ID for workflow
+    #
+    # Creates an execution ID that uniquely identifies a single orchestrator.execute() call.
+    # Format: "exec_workflow_{random_hex}"
+    #
+    # @return [String] Generated execution ID (e.g., "exec_workflow_a3f2b1c8")
+    def generate_execution_id
+      "exec_workflow_#{SecureRandom.hex(8)}"
+    end
 
     # Emit node_start event
     #
