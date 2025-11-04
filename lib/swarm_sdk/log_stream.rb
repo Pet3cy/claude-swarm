@@ -35,13 +35,23 @@ module SwarmSDK
       # Emit a log event
       #
       # Adds timestamp and forwards to the registered emitter.
+      # Auto-injects execution_id, swarm_id, and parent_swarm_id from Fiber storage.
+      # Explicit values in data override auto-injected ones.
       #
       # @param data [Hash] Event data (type, agent, and event-specific fields)
       # @return [void]
       def emit(**data)
         return unless @emitter
 
-        entry = data.merge(timestamp: Time.now.utc.iso8601).compact
+        # Auto-inject execution context from Fiber storage
+        # Explicit values in data override auto-injected ones
+        auto_injected = {
+          execution_id: Fiber[:execution_id],
+          swarm_id: Fiber[:swarm_id],
+          parent_swarm_id: Fiber[:parent_swarm_id],
+        }.compact
+
+        entry = auto_injected.merge(data).merge(timestamp: Time.now.utc.iso8601).compact
 
         @emitter.emit(entry)
       end
