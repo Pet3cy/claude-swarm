@@ -5,6 +5,24 @@ All notable changes to SwarmMemory will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Memory Read Tracking in Events**: MemoryRead tool now includes digest in tool_result events
+  - **`metadata.read_digest`** - SHA256 digest of entry content added to tool_result events
+  - **`metadata.read_path`** - Entry path added to tool_result events
+  - **Enables snapshot reconstruction** - Complete memory_read_tracking state recoverable from events
+  - **Event sourcing support** - Memory state can be reconstructed from event logs
+  - **Cross-gem coordination** - Works seamlessly with SwarmSDK's SnapshotFromEvents
+
+### Changed
+
+- **StorageReadTracker returns digest**: `register_read` now returns SHA256 digest string
+  - **Enables**: Digest extraction after MemoryRead execution for event metadata
+  - **Backward compatible**: Return value wasn't previously used
+  - **Integration**: Used by SwarmSDK to populate tool_result event metadata
+
 ## [2.1.2]
 
 ### Changed

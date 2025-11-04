@@ -21,12 +21,13 @@ module SwarmMemory
         # @param agent_id [Symbol] The agent identifier
         # @param entry_path [String] The storage entry path
         # @param content [String] Entry content (for digest calculation)
-        # @return [void]
+        # @return [String] The calculated SHA256 digest
         def register_read(agent_id, entry_path, content)
           @mutex.synchronize do
             @read_entries[agent_id] ||= {}
             digest = Digest::SHA256.hexdigest(content)
             @read_entries[agent_id][entry_path] = digest
+            digest
           end
         end
 

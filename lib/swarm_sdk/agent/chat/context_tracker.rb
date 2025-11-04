@@ -74,11 +74,22 @@ module SwarmSDK
             # Mark threshold as hit and emit warning
             @agent_context.hit_warning_threshold?(threshold)
 
+            # Emit context_threshold_hit event for snapshot reconstruction
+            LogStream.emit(
+              type: "context_threshold_hit",
+              agent: @agent_context.name,
+              swarm_id: @agent_context.swarm_id,
+              parent_swarm_id: @agent_context.parent_swarm_id,
+              threshold: threshold,
+              current_usage_percentage: current_percentage.round(2),
+            )
+
             # Trigger automatic compression at 60% threshold
             if threshold == Context::COMPRESSION_THRESHOLD
               trigger_automatic_compression
             end
 
+            # Emit legacy context_limit_warning for backwards compatibility
             LogStream.emit(
               type: "context_limit_warning",
               agent: @agent_context.name,
