@@ -150,8 +150,9 @@ module SwarmSDK
 
       # Handle tool calls - msg.to_h does NOT serialize these
       # Must manually call .to_h on each ToolCall object
+      # msg.tool_calls is a Hash<String, ToolCall>, so we need .values.map(&:to_h)
       if msg.tool_calls && !msg.tool_calls.empty?
-        hash[:tool_calls] = msg.tool_calls.map(&:to_h)
+        hash[:tool_calls] = msg.tool_calls.values.map(&:to_h)
       end
 
       # Handle other fields

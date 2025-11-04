@@ -22,12 +22,13 @@ module SwarmSDK
           # @param agent_id [Symbol] The agent identifier
           # @param file_path [String] The absolute path to the file
           # @param content [String] File content (for digest calculation)
-          # @return [void]
+          # @return [String] The calculated SHA256 digest
           def register_read(agent_id, file_path, content)
             @mutex.synchronize do
               @read_files[agent_id] ||= {}
               digest = Digest::SHA256.hexdigest(content)
               @read_files[agent_id][File.expand_path(file_path)] = digest
+              digest
             end
           end
 

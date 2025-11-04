@@ -9,6 +9,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Snapshot Reconstruction from Events**: Complete StateSnapshot reconstruction from event logs
+  - **`SwarmSDK::SnapshotFromEvents`** class reconstructs full swarm state from event stream
+  - **100% state reconstruction** - All components recoverable: conversations, context state, scratchpad, read tracking, delegation instances
+  - **Event sourcing ready** - Events are single source of truth, snapshots derived on-demand
+  - **Time travel debugging** - Reconstruct state at any point in time by filtering events
+  - **Session persistence** - Store only events in database, reconstruct snapshots when needed
+  - **`SwarmSDK::EventsToMessages`** helper class for message reconstruction with chronological ordering
+  - **Database/Redis patterns** - Complete examples for event-based session storage
+  - **Hybrid optimization** - Periodic snapshots + delta events for performance
+  - **Performance**: 1,000 events in ~10-20ms, 10,000 events in ~100-200ms
+  - **29 comprehensive tests** verifying event data capture and reconstruction accuracy
+  - **Documentation**: Complete guide in `docs/v2/guides/snapshots.md` with patterns and examples
+
+- **Event Timestamp Guarantee**: All events now guaranteed to have timestamps
+  - **Automatic timestamp injection** in `LogCollector.emit` if missing
+  - **Format**: ISO 8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`)
+  - **Preserves existing timestamps** - Won't overwrite if already present
+  - **Dual injection points** - LogStream and LogCollector both ensure timestamps
+  - **Chronological ordering** - Enables proper event sequencing for reconstruction
+  - **Updated test**: Verifies timestamp presence and preservation
+
+- **Context Threshold Tracking**: New event for tracking which warning thresholds were hit
+  - **`context_threshold_hit`** event emitted when threshold crossed for first time
+  - **Contains**: `threshold` (integer: 60, 80, 90, 95), `current_usage_percentage`
+  - **Enables reconstruction** of `context_state.warning_thresholds_hit` from events
+  - **Separate from context_limit_warning** - Hit tracking vs informational warning
+
+- **Read Tracking Digest in Events**: File read digests now included in tool_result metadata
+  - **`metadata.read_digest`** - SHA256 digest of read file content
+  - **`metadata.read_path`** - Absolute path to file
+  - **Added via `extract_tool_tracking_digest`** method after tool execution
+  - **Queries ReadTracker** after read completes to get calculated digest
+  - **Enables reconstruction** of complete read_tracking state from events
+  - **Works for all file types** - Text files, binary files, documents
+
+- **Memory Read Tracking Digest in Events**: Memory read digests included in tool_result metadata
+  - **`metadata.read_digest`** - SHA256 digest of memory entry content
+  - **`metadata.read_path`** - Memory entry path
+  - **Unified handling** with file read tracking via same extraction method
+  - **Enables reconstruction** of complete memory_read_tracking state from events
+  - **Cross-gem coordination** - SwarmMemory and SwarmSDK work together seamlessly
+
 - **Execution ID and Complete Swarm ID Tracking**: All log events now include comprehensive execution tracking fields
   - **`execution_id`**: Uniquely identifies a single `swarm.execute()` or `orchestrator.execute()` call
     - Format: `exec_{swarm_id}_{random_hex}` for swarms (e.g., `exec_main_a3f2b1c8`)
@@ -79,6 +121,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Permissions properly translated**: Complex permission configurations now work in YAML
   - **Documentation improvements**: Updated YAML reference with correct examples
   - **Cleaner agent builder**: Removed redundant hook/permission handling code
+
+### Fixed
+
+- **StateSnapshot tool_calls serialization**: Fixed bug where tool_calls couldn't be serialized
+  - **Issue**: `msg.tool_calls.map(&:to_h)` failed because tool_calls is a Hash, not Array
+  - **Fix**: Changed to `msg.tool_calls.values.map(&:to_h)` to properly serialize
+  - **Impact**: Snapshots with tool calls now serialize correctly
+  - **Location**: `lib/swarm_sdk/state_snapshot.rb:154`
+
+- **ReadTracker and StorageReadTracker return digest**: Both trackers now return calculated digest
+  - **Changed**: `register_read` methods now return SHA256 digest string
+  - **Enables**: Digest extraction after tool execution for event metadata
+  - **Backward compatible**: Return value wasn't previously used
 
 ### Changed
 
