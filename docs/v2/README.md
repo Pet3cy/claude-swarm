@@ -160,6 +160,7 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
 - **Rate Limiting**: [Tutorial Part 6](guides/complete-tutorial.md#rate-limiting)
 
 ### Production
+- **Security**: [Filesystem Tools Control](reference/ruby-dsl.md#swarmsdk.configure) | [Tutorial Part 8](guides/complete-tutorial.md#security-considerations)
 - **Logging**: [Tutorial Part 7](guides/complete-tutorial.md#structured-logging)
 - **Error Handling**: [Tutorial Part 7](guides/complete-tutorial.md#error-handling-and-recovery)
 - **Testing**: [Tutorial Part 8](guides/complete-tutorial.md#testing-strategies) | [Rails Guide](guides/rails-integration.md#testing-strategies)
@@ -203,6 +204,9 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
 
 **Build a custom storage adapter**
 → [Memory Adapter Guide](guides/memory-adapters.md)
+
+**Secure swarms for production** ⭐ NEW
+→ [Filesystem Tools Control](reference/ruby-dsl.md#swarmsdk.configure) | [Security Considerations](guides/complete-tutorial.md#security-considerations)
 
 **Understand the system architecture**
 → [Architecture Flow Diagram](reference/architecture-flow.md)

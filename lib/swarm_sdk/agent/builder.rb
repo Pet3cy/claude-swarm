@@ -24,6 +24,13 @@ module SwarmSDK
       # Expose mcp_servers for tests
       attr_reader :mcp_servers
 
+      # Get tools list as array for validation
+      #
+      # @return [Array<Symbol>] List of tools
+      def tools_list
+        @tools.to_a
+      end
+
       def initialize(name)
         @name = name
         @description = nil

@@ -49,11 +49,22 @@ SwarmSDK.configure {|config| ... } → void
 - `webfetch_model` (String): Model name for WebFetch tool (e.g., "claude-3-5-haiku-20241022")
 - `webfetch_base_url` (String, optional): Custom base URL for the provider
 - `webfetch_max_tokens` (Integer): Maximum tokens for WebFetch LLM responses (default: 4096)
+- `allow_filesystem_tools` (Boolean): Enable/disable filesystem tools globally (default: true)
 
 **Description:**
-Global configuration that applies to all swarms. Currently used to configure the WebFetch tool's LLM processing behavior.
+Global configuration that applies to all swarms.
 
+**WebFetch Configuration:**
 When `webfetch_provider` and `webfetch_model` are set, the WebFetch tool will process fetched web content using the configured LLM. Without this configuration, WebFetch returns raw markdown.
+
+**Filesystem Tools Security:**
+When `allow_filesystem_tools` is set to `false`, all filesystem tools (Read, Write, Edit, MultiEdit, Grep, Glob, Bash) are globally disabled across all swarms. This is a security boundary that cannot be overridden by swarm configurations. Non-filesystem tools (Think, TodoWrite, Clock, WebFetch, Scratchpad tools, Memory tools) continue to work normally.
+
+Use cases:
+- **Multi-tenant platforms**: Prevent user-provided swarms from accessing the filesystem
+- **Sandboxed execution**: Containerized environments with read-only filesystems
+- **Compliance requirements**: Data analysis workloads that forbid file operations
+- **Production security**: CI/CD pipelines where agents should only interact via APIs
 
 **Example:**
 ```ruby
@@ -71,7 +82,18 @@ SwarmSDK.configure do |config|
   config.webfetch_base_url = "http://localhost:11434"
 end
 
-# Reset to defaults (disables WebFetch LLM processing)
+# Disable filesystem tools globally (security)
+SwarmSDK.configure do |config|
+  config.allow_filesystem_tools = false
+end
+
+# Can also set directly
+SwarmSDK.settings.allow_filesystem_tools = false
+
+# Or via environment variable
+ENV['SWARM_SDK_ALLOW_FILESYSTEM_TOOLS'] = 'false'
+
+# Reset to defaults (disables WebFetch LLM processing, enables filesystem tools)
 SwarmSDK.reset_settings!
 ```
 
@@ -83,10 +105,11 @@ Build a swarm using the DSL.
 
 **Signature:**
 ```ruby
-SwarmSDK.build(&block) → Swarm | NodeOrchestrator
+SwarmSDK.build(allow_filesystem_tools: nil, &block) → Swarm | NodeOrchestrator
 ```
 
 **Parameters:**
+- `allow_filesystem_tools` (Boolean, optional): Override global setting to enable/disable filesystem tools (default: nil, uses global setting)
 - `block` (required): Configuration block
 
 **Returns:**
@@ -102,6 +125,17 @@ swarm = SwarmSDK.build do
   agent :backend do
     model "gpt-5"
     tools :Read, :Write, :Bash
+  end
+end
+
+# Override global setting to disable filesystem tools for this specific swarm
+swarm = SwarmSDK.build(allow_filesystem_tools: false) do
+  name "Restricted Analyst"
+  lead :analyst
+
+  agent :analyst do
+    model "gpt-5"
+    tools :Think, :WebFetch  # Only non-filesystem tools
   end
 end
 ```

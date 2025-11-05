@@ -46,8 +46,8 @@ module SwarmSDK
     attr_accessor :settings
 
     # Main entry point for DSL
-    def build(&block)
-      Swarm::Builder.build(&block)
+    def build(allow_filesystem_tools: nil, &block)
+      Swarm::Builder.build(allow_filesystem_tools: allow_filesystem_tools, &block)
     end
 
     # Validate YAML configuration without creating a swarm
@@ -171,10 +171,10 @@ module SwarmSDK
     # @example Load with default base_dir (Dir.pwd)
     #   yaml = File.read("config.yml")
     #   swarm = SwarmSDK.load(yaml)  # base_dir defaults to Dir.pwd
-    def load(yaml_content, base_dir: Dir.pwd)
+    def load(yaml_content, base_dir: Dir.pwd, allow_filesystem_tools: nil)
       config = Configuration.new(yaml_content, base_dir: base_dir)
       config.load_and_validate
-      swarm = config.to_swarm
+      swarm = config.to_swarm(allow_filesystem_tools: allow_filesystem_tools)
 
       # Apply hooks if any are configured (YAML-only feature)
       if hooks_configured?(config)
@@ -203,9 +203,9 @@ module SwarmSDK
     #
     # @example With absolute path
     #   swarm = SwarmSDK.load_file("/absolute/path/config.yml")
-    def load_file(path)
+    def load_file(path, allow_filesystem_tools: nil)
       config = Configuration.load_file(path)
-      swarm = config.to_swarm
+      swarm = config.to_swarm(allow_filesystem_tools: allow_filesystem_tools)
 
       # Apply hooks if any are configured (YAML-only feature)
       if hooks_configured?(config)
@@ -413,16 +413,32 @@ module SwarmSDK
     # WebFetch tool LLM processing configuration
     attr_accessor :webfetch_provider, :webfetch_model, :webfetch_base_url, :webfetch_max_tokens
 
+    # Filesystem tools control
+    attr_accessor :allow_filesystem_tools
+
     def initialize
       @webfetch_provider = nil
       @webfetch_model = nil
       @webfetch_base_url = nil
       @webfetch_max_tokens = 4096
+      @allow_filesystem_tools = parse_env_bool("SWARM_SDK_ALLOW_FILESYSTEM_TOOLS", default: true)
     end
 
     # Check if WebFetch LLM processing is enabled
     def webfetch_llm_enabled?
       !@webfetch_provider.nil? && !@webfetch_model.nil?
+    end
+
+    private
+
+    def parse_env_bool(key, default:)
+      return default unless ENV.key?(key)
+
+      value = ENV[key].to_s.downcase
+      return true if ["true", "yes", "1", "on", "enabled"].include?(value)
+      return false if ["false", "no", "0", "off", "disabled"].include?(value)
+
+      default
     end
   end
 

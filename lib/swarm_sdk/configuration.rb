@@ -90,9 +90,10 @@ module SwarmSDK
     # This method translates YAML configuration to Ruby DSL calls.
     # The DSL (Swarm::Builder) handles all validation, merging, and construction.
     #
+    # @param allow_filesystem_tools [Boolean, nil] Whether to allow filesystem tools (nil uses global setting)
     # @return [Swarm, NodeOrchestrator] Configured swarm or orchestrator
-    def to_swarm
-      builder = Swarm::Builder.new
+    def to_swarm(allow_filesystem_tools: nil)
+      builder = Swarm::Builder.new(allow_filesystem_tools: allow_filesystem_tools)
 
       # Translate basic swarm config to DSL
       builder.id(@swarm_id) if @swarm_id

@@ -37,14 +37,14 @@ module SwarmSDK
       #     agent :backend { ... }
       #   end
       class << self
-        def build(&block)
-          builder = new
+        def build(allow_filesystem_tools: nil, &block)
+          builder = new(allow_filesystem_tools: allow_filesystem_tools)
           builder.instance_eval(&block)
           builder.build_swarm
         end
       end
 
-      def initialize
+      def initialize(allow_filesystem_tools: nil)
         @swarm_id = nil
         @swarm_name = nil
         @lead_agent = nil
@@ -55,6 +55,7 @@ module SwarmSDK
         @nodes = {}
         @start_node = nil
         @scratchpad_enabled = true # Default: enabled
+        @allow_filesystem_tools = allow_filesystem_tools
       end
 
       # Set swarm ID
@@ -220,6 +221,12 @@ module SwarmSDK
       def build_swarm
         raise ConfigurationError, "Swarm name not set. Use: name 'My Swarm'" unless @swarm_name
 
+        # Validate all_agents filesystem tools BEFORE building
+        validate_all_agents_filesystem_tools if @all_agents_config
+
+        # Validate individual agent filesystem tools BEFORE building
+        validate_agent_filesystem_tools
+
         # Check if nodes are defined
         if @nodes.any?
           # Node-based workflow (agents optional for agent-less workflows)
@@ -340,7 +347,12 @@ module SwarmSDK
         end
 
         # Create swarm using SDK (swarm_id auto-generates if nil)
-        swarm = Swarm.new(name: @swarm_name, swarm_id: @swarm_id, scratchpad_enabled: @scratchpad_enabled)
+        swarm = Swarm.new(
+          name: @swarm_name,
+          swarm_id: @swarm_id,
+          scratchpad_enabled: @scratchpad_enabled,
+          allow_filesystem_tools: @allow_filesystem_tools,
+        )
 
         # Setup swarm registry if external swarms are registered
         if @swarm_registry_config.any?
@@ -420,6 +432,7 @@ module SwarmSDK
           nodes: @nodes,
           start_node: @start_node,
           scratchpad_enabled: @scratchpad_enabled,
+          allow_filesystem_tools: @allow_filesystem_tools,
         )
 
         # Pass swarm registry config to orchestrator if external swarms registered
@@ -624,6 +637,87 @@ module SwarmSDK
           base.merge(success: context.metadata[:success], duration: context.metadata[:duration])
         else
           base
+        end
+      end
+
+      # Validate all_agents filesystem tools
+      #
+      # Raises ConfigurationError if filesystem tools are globally disabled
+      # but all_agents configuration includes them.
+      #
+      # @raise [ConfigurationError] If filesystem tools are disabled and all_agents has them
+      # @return [void]
+      def validate_all_agents_filesystem_tools
+        # Resolve the effective setting
+        resolved_setting = if @allow_filesystem_tools.nil?
+          SwarmSDK.settings.allow_filesystem_tools
+        else
+          @allow_filesystem_tools
+        end
+
+        return if resolved_setting # If true, allow everything
+        return unless @all_agents_config&.tools_list&.any?
+
+        forbidden = @all_agents_config.tools_list.select do |tool|
+          SwarmSDK::Swarm::ToolConfigurator::FILESYSTEM_TOOLS.include?(tool)
+        end
+
+        return if forbidden.empty?
+
+        raise ConfigurationError,
+          "Filesystem tools are globally disabled (SwarmSDK.settings.allow_filesystem_tools = false) " \
+            "but all_agents configuration includes: #{forbidden.join(", ")}.\n\n" \
+            "This is a system-wide security setting that cannot be overridden by swarm configuration.\n" \
+            "To use filesystem tools, set SwarmSDK.settings.allow_filesystem_tools = true before loading the swarm."
+      end
+
+      # Validate individual agent filesystem tools
+      #
+      # Raises ConfigurationError if filesystem tools are globally disabled
+      # but any agent attempts to use them.
+      #
+      # @raise [ConfigurationError] If filesystem tools are disabled and any agent has them
+      # @return [void]
+      def validate_agent_filesystem_tools
+        # Resolve the effective setting
+        resolved_setting = if @allow_filesystem_tools.nil?
+          SwarmSDK.settings.allow_filesystem_tools
+        else
+          @allow_filesystem_tools
+        end
+
+        return if resolved_setting # If true, allow everything
+
+        # Check each agent for forbidden tools
+        @agents.each do |agent_name, agent_builder_or_config|
+          # Extract tool list from either Builder or file config
+          tools_list = if agent_builder_or_config.is_a?(Hash) && agent_builder_or_config.key?(:__file_config__)
+            # File-loaded agent
+            agent_builder_or_config[:__file_config__][:tools] || []
+          elsif agent_builder_or_config.is_a?(Agent::Builder)
+            # Builder object - use tools_list method
+            agent_builder_or_config.tools_list
+          else
+            []
+          end
+
+          # Extract tool names (they might be hashes with permissions)
+          tool_names = tools_list.map do |tool|
+            tool.is_a?(Hash) ? tool[:name] : tool
+          end
+
+          # Find forbidden tools
+          forbidden = tool_names.select do |tool|
+            SwarmSDK::Swarm::ToolConfigurator::FILESYSTEM_TOOLS.include?(tool)
+          end
+
+          next if forbidden.empty?
+
+          raise ConfigurationError,
+            "Filesystem tools are globally disabled (SwarmSDK.settings.allow_filesystem_tools = false) " \
+              "but agent '#{agent_name}' attempts to use: #{forbidden.join(", ")}.\n\n" \
+              "This is a system-wide security setting that cannot be overridden by swarm configuration.\n" \
+              "To use filesystem tools, set SwarmSDK.settings.allow_filesystem_tools = true before loading the swarm."
         end
       end
     end

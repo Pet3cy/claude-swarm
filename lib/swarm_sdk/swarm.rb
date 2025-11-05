@@ -68,7 +68,7 @@ module SwarmSDK
     # Default tools available to all agents
     DEFAULT_TOOLS = ToolConfigurator::DEFAULT_TOOLS
 
-    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions, :swarm_id, :parent_swarm_id, :swarm_registry, :scratchpad_storage
+    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions, :swarm_id, :parent_swarm_id, :swarm_registry, :scratchpad_storage, :allow_filesystem_tools
     attr_accessor :delegation_call_stack
 
     # Check if scratchpad tools are enabled
@@ -134,13 +134,23 @@ module SwarmSDK
     # @param default_local_concurrency [Integer] Default max concurrent tool calls per agent
     # @param scratchpad [Tools::Stores::Scratchpad, nil] Optional scratchpad instance (for testing)
     # @param scratchpad_enabled [Boolean] Whether to enable scratchpad tools (default: true)
-    def initialize(name:, swarm_id: nil, parent_swarm_id: nil, global_concurrency: DEFAULT_GLOBAL_CONCURRENCY, default_local_concurrency: DEFAULT_LOCAL_CONCURRENCY, scratchpad: nil, scratchpad_enabled: true)
+    # @param allow_filesystem_tools [Boolean, nil] Whether to allow filesystem tools (nil uses global setting)
+    def initialize(name:, swarm_id: nil, parent_swarm_id: nil, global_concurrency: DEFAULT_GLOBAL_CONCURRENCY, default_local_concurrency: DEFAULT_LOCAL_CONCURRENCY, scratchpad: nil, scratchpad_enabled: true, allow_filesystem_tools: nil)
       @name = name
       @swarm_id = swarm_id || generate_swarm_id(name)
       @parent_swarm_id = parent_swarm_id
       @global_concurrency = global_concurrency
       @default_local_concurrency = default_local_concurrency
       @scratchpad_enabled = scratchpad_enabled
+
+      # Resolve allow_filesystem_tools with priority:
+      # 1. Explicit parameter (if not nil)
+      # 2. Global settings
+      @allow_filesystem_tools = if allow_filesystem_tools.nil?
+        SwarmSDK.settings.allow_filesystem_tools
+      else
+        allow_filesystem_tools
+      end
 
       # Swarm registry for managing sub-swarms (initialized later if needed)
       @swarm_registry = nil
