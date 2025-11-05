@@ -425,20 +425,20 @@ module SwarmSDK
       # Before fix: raises ArgumentError: Invalid all_agents hook: agent_step
       # After fix: builds swarm successfully
       swarm = SwarmSDK.build do
-        name "Test Swarm"
-        lead :agent1
+        name("Test Swarm")
+        lead(:agent1)
 
         all_agents do
-          hook :agent_step do |ctx|
+          hook(:agent_step) do |ctx|
             # This hook should be allowed
           end
         end
 
-        agent :agent1 do
-          model "gpt-5"
-          provider "openai"
-          system_prompt "You are a test agent"
-          description "Test Agent"
+        agent(:agent1) do
+          model("gpt-5")
+          provider("openai")
+          system_prompt("You are a test agent")
+          description("Test Agent")
         end
       end
 
