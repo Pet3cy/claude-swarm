@@ -3064,6 +3064,48 @@ Staging: Restricted access, validated outputs
 Production: Minimal access, extensive hooks
 ```
 
+**6. Disable filesystem tools globally (system-wide security)**:
+```ruby
+# For multi-tenant platforms or sandboxed environments
+SwarmSDK.configure do |config|
+  config.allow_filesystem_tools = false
+end
+
+# Or via environment variable (recommended for production)
+ENV['SWARM_SDK_ALLOW_FILESYSTEM_TOOLS'] = 'false'
+
+# Agents can now only use non-filesystem tools
+swarm = SwarmSDK.build do
+  name "API Analyst"
+  lead :analyst
+
+  agent :analyst do
+    description "Analyzes data via APIs only"
+    model "gpt-5"
+    # These work: Think, WebFetch, Clock, TodoWrite, Scratchpad*, Memory*
+    tools :Think, :WebFetch
+    # These are blocked: Read, Write, Edit, MultiEdit, Grep, Glob, Bash
+  end
+end
+
+# Override per-swarm if needed
+restricted_swarm = SwarmSDK.build(allow_filesystem_tools: false) do
+  # ... specific swarm that needs extra restriction
+end
+```
+
+**Use cases:**
+- **Multi-tenant platforms**: Prevent user-provided swarms from accessing filesystem
+- **Containerized deployments**: Read-only filesystems or restricted environments
+- **Compliance requirements**: Data analysis workloads that forbid file operations
+- **CI/CD pipelines**: Agents should only interact via APIs
+
+**Key features:**
+- **Security boundary**: Cannot be overridden by swarm YAML/DSL configuration
+- **Validation**: Errors caught at build time with clear messages
+- **Priority**: Explicit parameter > Global setting > Environment variable > Default (true)
+- **Non-breaking**: Defaults to `true` for backward compatibility
+
 ### 8.6 Cost Management
 
 **Track costs in real-time**:

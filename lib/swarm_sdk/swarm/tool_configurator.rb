@@ -30,6 +30,17 @@ module SwarmSDK
         :ScratchpadList,
       ].freeze
 
+      # Filesystem tools that can be globally disabled for security
+      FILESYSTEM_TOOLS = [
+        :Read,
+        :Write,
+        :Edit,
+        :MultiEdit,
+        :Grep,
+        :Glob,
+        :Bash,
+      ].freeze
+
       def initialize(swarm, scratchpad_storage, plugin_storages = {})
         @swarm = swarm
         @scratchpad_storage = scratchpad_storage
@@ -144,6 +155,19 @@ module SwarmSDK
       # @param agent_name [Symbol] Agent name
       # @param agent_definition [AgentDefinition] Agent definition
       def register_explicit_tools(chat, tool_configs, agent_name:, agent_definition:)
+        # Validate filesystem tools if globally disabled
+        unless @swarm.allow_filesystem_tools
+          # Extract tool names from hashes
+          forbidden = tool_configs.map { |tc| tc[:name] }.select { |name| FILESYSTEM_TOOLS.include?(name) }
+          unless forbidden.empty?
+            raise ConfigurationError,
+              "Filesystem tools are globally disabled (SwarmSDK.settings.allow_filesystem_tools = false) " \
+                "but agent '#{agent_name}' attempts to use: #{forbidden.join(", ")}.\n\n" \
+                "This is a system-wide security setting that cannot be overridden by swarm configuration.\n" \
+                "To use filesystem tools, set SwarmSDK.settings.allow_filesystem_tools = true before loading the swarm."
+          end
+        end
+
         tool_configs.each do |tool_config|
           tool_name = tool_config[:name]
           permissions_config = tool_config[:permissions]
@@ -177,6 +201,9 @@ module SwarmSDK
         # Register core default tools (unless disabled)
         if agent_definition.disable_default_tools != true
           DEFAULT_TOOLS.each do |tool_name|
+            # Skip filesystem tools if globally disabled
+            next if !@swarm.allow_filesystem_tools && FILESYSTEM_TOOLS.include?(tool_name)
+
             register_tool_if_not_disabled(chat, tool_name, explicit_tool_names, agent_name, agent_definition)
           end
 

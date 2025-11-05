@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **System-Wide Filesystem Tools Control**: Global security setting to disable filesystem tools across all agents
+  - **`SwarmSDK.settings.allow_filesystem_tools`** - Global setting to enable/disable filesystem tools (default: true)
+  - **Environment variable**: `SWARM_SDK_ALLOW_FILESYSTEM_TOOLS` - Set via environment for production deployments
+  - **Parameter override**: `allow_filesystem_tools:` parameter in `SwarmSDK.build`, `load`, and `load_file`
+  - **Filesystem tools**: Read, Write, Edit, MultiEdit, Grep, Glob, Bash
+  - **Validation**: Build-time validation catches forbidden tools early with clear error messages
+  - **Non-breaking**: Defaults to `true` for backward compatibility
+  - **Security boundary**: External to swarm configuration - cannot be overridden by YAML/DSL
+  - **Tools still allowed**: Think, TodoWrite, Clock, WebFetch, ScratchpadRead/Write/List, Memory tools
+  - **Use cases**: Multi-tenant platforms, sandboxed execution, containerized environments, compliance requirements
+  - **Priority resolution**: Explicit parameter > Global setting > Environment variable > Default (true)
+  - **26 comprehensive tests** covering all configuration and validation scenarios
+  - **Documentation**: Complete implementation guide in `FILESYSTEM_TOOLS_CONTROL_PLAN.md`
+
 - **Snapshot Reconstruction from Events**: Complete StateSnapshot reconstruction from event logs
   - **`SwarmSDK::SnapshotFromEvents`** class reconstructs full swarm state from event stream
   - **100% state reconstruction** - All components recoverable: conversations, context state, scratchpad, read tracking, delegation instances

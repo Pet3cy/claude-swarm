@@ -22,13 +22,14 @@ module SwarmSDK
     attr_writer :swarm_id, :config_for_hooks
     attr_accessor :swarm_registry_config
 
-    def initialize(swarm_name:, agent_definitions:, nodes:, start_node:, swarm_id: nil, scratchpad_enabled: true)
+    def initialize(swarm_name:, agent_definitions:, nodes:, start_node:, swarm_id: nil, scratchpad_enabled: true, allow_filesystem_tools: nil)
       @swarm_name = swarm_name
       @swarm_id = swarm_id
       @agent_definitions = agent_definitions
       @nodes = nodes
       @start_node = start_node
       @scratchpad_enabled = scratchpad_enabled
+      @allow_filesystem_tools = allow_filesystem_tools
       @swarm_registry_config = [] # External swarms config (if using composable swarms)
       @agent_instance_cache = {
         primary: {}, # { agent_name => Agent::Chat }
@@ -443,6 +444,7 @@ module SwarmSDK
         swarm_id: node_swarm_id,
         parent_swarm_id: @swarm_id,
         scratchpad_enabled: @scratchpad_enabled,
+        allow_filesystem_tools: @allow_filesystem_tools,
       )
 
       # Setup swarm registry if external swarms are registered
