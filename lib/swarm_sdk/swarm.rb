@@ -259,16 +259,6 @@ module SwarmSDK
       logs = []
       current_prompt = prompt
 
-      # Debug diagnostics for Rails/Puma issues
-      if ENV["SWARM_SDK_DEBUG_CALLBACKS"]
-        puts "=== EXECUTE START ==="
-        puts "Thread: #{Thread.current.object_id}"
-        puts "Fiber: #{Fiber.current.object_id}"
-        puts "Scheduler: #{Fiber.scheduler ? "#{Fiber.scheduler.class} (#{Fiber.scheduler.object_id})" : "nil"}"
-        puts "Async::Task.current?: #{Async::Task.current?}"
-        puts "====================="
-      end
-
       # Force cleanup of any lingering scheduler from previous requests
       # This ensures we always take the clean Path C in Async()
       # See: Async expert analysis - prevents scheduler leak in Puma
@@ -337,15 +327,6 @@ module SwarmSDK
         # Use finished: false to suppress warnings for expected task failures
         lead = @agents[@lead_agent]
         response = Async(finished: false) do
-          # Debug: Check callback availability inside Async block
-          if ENV["SWARM_SDK_DEBUG_CALLBACKS"]
-            puts "=== INSIDE ASYNC ==="
-            puts "Fiber: #{Fiber.current.object_id}"
-            puts "Callbacks: #{Fiber[:log_callbacks]&.size || 0}"
-            puts "LogStream.emitter: #{LogStream.emitter.class if LogStream.emitter}"
-            puts "===================="
-          end
-
           lead.ask(current_prompt)
         end.wait
 
