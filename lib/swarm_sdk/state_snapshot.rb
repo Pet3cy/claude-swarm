@@ -96,7 +96,7 @@ module SwarmSDK
 
     # Snapshot all agent conversations and context state
     #
-    # @return [Hash] { agent_name => { conversation:, context_state: } }
+    # @return [Hash] { agent_name => { conversation:, context_state:, system_prompt: } }
     def snapshot_agents
       result = {}
 
@@ -108,9 +108,14 @@ module SwarmSDK
       end
 
       agents_hash.each do |agent_name, agent_chat|
+        # Get system prompt from agent definition
+        agent_definition = @orchestration.agent_definitions[agent_name]
+        system_prompt = agent_definition&.system_prompt
+
         result[agent_name.to_s] = {
           conversation: snapshot_conversation(agent_chat),
           context_state: snapshot_context_state(agent_chat),
+          system_prompt: system_prompt,
         }
       end
 
@@ -189,7 +194,7 @@ module SwarmSDK
 
     # Snapshot delegation instance conversations
     #
-    # @return [Hash] { "delegate@delegator" => { conversation:, context_state: } }
+    # @return [Hash] { "delegate@delegator" => { conversation:, context_state:, system_prompt: } }
     def snapshot_delegation_instances
       result = {}
 
@@ -201,9 +206,17 @@ module SwarmSDK
       end
 
       delegations_hash.each do |instance_name, delegation_chat|
+        # Extract base agent name from instance name (e.g., "backend@lead" -> "backend")
+        base_name = instance_name.to_s.split("@").first.to_sym
+
+        # Get system prompt from base agent definition
+        agent_definition = @orchestration.agent_definitions[base_name]
+        system_prompt = agent_definition&.system_prompt
+
         result[instance_name] = {
           conversation: snapshot_conversation(delegation_chat),
           context_state: snapshot_context_state(delegation_chat),
+          system_prompt: system_prompt,
         }
       end
 

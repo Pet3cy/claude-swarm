@@ -645,6 +645,92 @@ module SwarmSDK
       assert_equal([80, 90], thresholds)
     end
 
+    def test_reconstruct_system_prompt_from_last_agent_start
+      swarm = build_test_swarm
+      events = []
+
+      stub_llm_request(mock_llm_response(content: "Response"))
+
+      capture_io do
+        swarm.execute("Test") { |event| events << event }
+      end
+
+      # Reconstruct snapshot from events
+      snapshot = SnapshotFromEvents.reconstruct(events)
+
+      # Verify system prompt is extracted from agent_start event
+      backend_data = snapshot[:agents]["backend"]
+
+      assert(backend_data[:system_prompt], "System prompt should be present")
+      assert_includes(backend_data[:system_prompt], "Backend agent", "Should include custom prompt")
+    end
+
+    def test_reconstruct_system_prompt_uses_last_event
+      build_test_swarm
+      events = []
+
+      # Simulate multiple agent_start events (e.g., swarm restarted with updated config)
+      events << {
+        type: "agent_start",
+        agent: :backend,
+        system_prompt: "Old prompt",
+        timestamp: "2025-11-04T15:00:00Z",
+      }
+      events << {
+        type: "agent_start",
+        agent: :backend,
+        system_prompt: "Updated prompt",
+        timestamp: "2025-11-04T15:01:00Z",
+      }
+
+      snapshot = SnapshotFromEvents.reconstruct(events)
+
+      # Verify we use the LAST agent_start event's system prompt
+      backend_data = snapshot[:agents]["backend"]
+
+      assert_equal("Updated prompt", backend_data[:system_prompt])
+    end
+
+    def test_restore_applies_system_prompt_from_snapshot
+      swarm = build_test_swarm
+      events = []
+
+      stub_llm_request(mock_llm_response(content: "Response 1"))
+
+      capture_io do
+        swarm.execute("Test") { |event| events << event }
+      end
+
+      # Reconstruct snapshot with system prompt
+      snapshot_data = SnapshotFromEvents.reconstruct(events)
+
+      # Verify system prompt is in snapshot
+      backend_data = snapshot_data[:agents]["backend"]
+
+      assert(backend_data[:system_prompt], "Snapshot should contain system prompt")
+      assert_includes(backend_data[:system_prompt], "Backend agent")
+
+      # Create new swarm and restore
+      new_swarm = build_test_swarm
+      result = new_swarm.restore(snapshot_data)
+
+      assert_predicate(result, :success?, "Restore should succeed")
+
+      # Verify agent is functional after restore with correct system prompt
+      # The agent should have the restored system prompt applied via with_instructions()
+      backend_agent = new_swarm.agent(:backend)
+
+      assert(backend_agent, "Agent should be initialized")
+
+      # Execute to verify agent works with restored system prompt
+      stub_llm_request(mock_llm_response(content: "Response 2"))
+      capture_io do
+        response = new_swarm.execute("Another test")
+
+        assert_predicate(response, :success?, "Restored agent should execute successfully")
+      end
+    end
+
     private
 
     def build_test_swarm

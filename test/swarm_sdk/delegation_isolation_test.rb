@@ -278,11 +278,11 @@ module SwarmSDK
 
       assert(delegation_instance, "Should have delegation instance")
 
-      # The fact that it's a separate instance proves base name extraction worked
-      refute_same(
-        delegation_instance,
-        swarm.agent(:tester),
-        "Delegation instance should be separate from primary",
+      # Tester is only used as a delegate (isolated mode), so no primary exists
+      # The delegation instance is the only instance of tester
+      refute(
+        swarm.agents.key?(:tester),
+        "Primary tester should not exist (only used as delegate in isolated mode)",
       )
     end
 

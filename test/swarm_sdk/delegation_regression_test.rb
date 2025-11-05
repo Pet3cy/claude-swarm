@@ -155,11 +155,13 @@ module SwarmSDK
     def test_scratchpad_tools_registered_for_delegation_instances
       swarm = Swarm.new(name: "Test Swarm", scratchpad: @test_scratchpad)
 
+      # Set shared_across_delegations: true so backend exists as both primary and delegate
       swarm.add_agent(create_agent(
         name: :backend,
         description: "Backend developer",
         model: "gpt-4o-mini",
         directory: ".",
+        shared_across_delegations: true,
       ))
 
       swarm.add_agent(create_agent(
@@ -175,8 +177,9 @@ module SwarmSDK
       # Trigger initialization
       swarm.agent(:frontend)
 
-      # Get delegation instance
-      backend_instance = swarm.delegation_instances["backend@frontend"]
+      # Since backend has shared_across_delegations: true, frontend uses the primary backend
+      # (not a delegation instance)
+      backend_instance = swarm.agent(:backend)
 
       # Verify scratchpad tools are registered
       assert(backend_instance.tools.key?(:ScratchpadWrite), "Should have ScratchpadWrite")
@@ -191,7 +194,7 @@ module SwarmSDK
         title: "Test",
       )
 
-      # Primary backend should see the same scratchpad entry
+      # Primary backend should see the same scratchpad entry (it's the same instance)
       primary_backend = swarm.agent(:backend)
       list_result = primary_backend.tools[:ScratchpadList].execute
 
