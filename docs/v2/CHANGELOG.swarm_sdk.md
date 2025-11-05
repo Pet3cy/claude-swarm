@@ -29,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Fix 4**: Scheduler leak prevention - force cleanup of lingering Async schedulers between requests
   - **Fix 5**: Fresh callback array per execution to prevent accumulation
   - **Result**: All events (agent_step, tool_call, delegation, etc.) now work correctly in Puma/Sidekiq
-  - **Diagnostic**: Added `SWARM_SDK_DEBUG_CALLBACKS=1` environment variable for troubleshooting
   - **Rails integration**: Works seamlessly without service code changes
 
 ### Added

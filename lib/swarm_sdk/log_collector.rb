@@ -45,11 +45,6 @@ module SwarmSDK
       def on_log(&block)
         Fiber[:log_callbacks] ||= []
         Fiber[:log_callbacks] << block
-
-        # Debug: Log callback registration
-        if ENV["SWARM_SDK_DEBUG_CALLBACKS"]
-          puts "[LogCollector] Registered callback in Fiber #{Fiber.current.object_id}, total callbacks: #{Fiber[:log_callbacks].size}"
-        end
       end
 
       # Emit an event to all registered callbacks
@@ -66,12 +61,6 @@ module SwarmSDK
 
         # Read callbacks from Fiber-local storage (set by on_log in parent fiber)
         callbacks = Fiber[:log_callbacks] || []
-
-        # Debug: Log emission
-        if ENV["SWARM_SDK_DEBUG_CALLBACKS"]
-          puts "[LogCollector] Emitting #{entry[:type]} in Fiber #{Fiber.current.object_id}, callbacks: #{callbacks.size}"
-        end
-
         callbacks.each do |callback|
           callback.call(entry_with_timestamp)
         end
