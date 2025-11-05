@@ -244,19 +244,27 @@ module SwarmSDK
       end
 
       # Handle tool calls - deserialize from hash array
-      tool_calls = msg_data[:tool_calls]&.map do |tc_data|
-        # Handle both symbol and string keys from JSON
-        RubyLLM::ToolCall.new(
-          id: tc_data[:id] || tc_data["id"],
-          name: tc_data[:name] || tc_data["name"],
-          arguments: tc_data[:arguments] || tc_data["arguments"] || {},
-        )
+      # IMPORTANT: RubyLLM expects tool_calls to be Hash<String, ToolCall>, not Array!
+      tool_calls_hash = if msg_data[:tool_calls] && !msg_data[:tool_calls].empty?
+        msg_data[:tool_calls].each_with_object({}) do |tc_data, hash|
+          # Handle both symbol and string keys from JSON
+          id = tc_data[:id] || tc_data["id"]
+          name = tc_data[:name] || tc_data["name"]
+          arguments = tc_data[:arguments] || tc_data["arguments"] || {}
+
+          # Use ID as hash key (convert to string for consistency)
+          hash[id.to_s] = RubyLLM::ToolCall.new(
+            id: id,
+            name: name,
+            arguments: arguments,
+          )
+        end
       end
 
       RubyLLM::Message.new(
         role: (msg_data[:role] || msg_data["role"]).to_sym,
         content: content,
-        tool_calls: tool_calls,
+        tool_calls: tool_calls_hash,
         tool_call_id: msg_data[:tool_call_id] || msg_data["tool_call_id"],
         input_tokens: msg_data[:input_tokens] || msg_data["input_tokens"],
         output_tokens: msg_data[:output_tokens] || msg_data["output_tokens"],

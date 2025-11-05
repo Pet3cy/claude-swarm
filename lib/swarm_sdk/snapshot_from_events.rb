@@ -154,9 +154,16 @@ module SwarmSDK
       hash = { role: msg.role, content: msg.content }
 
       # Serialize tool calls if present
-      # msg.tool_calls is a Hash<String, ToolCall>, so we need .values.map(&:to_h)
+      # Must manually extract fields - RubyLLM::ToolCall#to_h doesn't reliably serialize id/name
+      # msg.tool_calls is a Hash<String, ToolCall>, so we need .values
       if msg.tool_calls && !msg.tool_calls.empty?
-        hash[:tool_calls] = msg.tool_calls.values.map(&:to_h)
+        hash[:tool_calls] = msg.tool_calls.values.map do |tc|
+          {
+            id: tc.id,
+            name: tc.name,
+            arguments: tc.arguments,
+          }
+        end
       end
 
       # Add optional fields

@@ -659,7 +659,7 @@ module SwarmSDK
         return unless @all_agents_config&.tools_list&.any?
 
         forbidden = @all_agents_config.tools_list.select do |tool|
-          SwarmSDK::Swarm::ToolConfigurator::FILESYSTEM_TOOLS.include?(tool)
+          SwarmSDK::Swarm::ToolConfigurator::FILESYSTEM_TOOLS.include?(tool.to_sym)
         end
 
         return if forbidden.empty?
@@ -701,9 +701,10 @@ module SwarmSDK
             []
           end
 
-          # Extract tool names (they might be hashes with permissions)
+          # Extract tool names (they might be hashes with permissions) and convert to symbols
           tool_names = tools_list.map do |tool|
-            tool.is_a?(Hash) ? tool[:name] : tool
+            name = tool.is_a?(Hash) ? tool[:name] : tool
+            name.to_sym
           end
 
           # Find forbidden tools

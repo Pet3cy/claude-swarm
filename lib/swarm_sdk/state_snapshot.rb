@@ -148,11 +148,17 @@ module SwarmSDK
         msg.content
       end
 
-      # Handle tool calls - msg.to_h does NOT serialize these
-      # Must manually call .to_h on each ToolCall object
-      # msg.tool_calls is a Hash<String, ToolCall>, so we need .values.map(&:to_h)
+      # Handle tool calls - must manually extract fields
+      # RubyLLM::ToolCall#to_h doesn't reliably serialize id/name fields
+      # msg.tool_calls is a Hash<String, ToolCall>, so we need .values
       if msg.tool_calls && !msg.tool_calls.empty?
-        hash[:tool_calls] = msg.tool_calls.values.map(&:to_h)
+        hash[:tool_calls] = msg.tool_calls.values.map do |tc|
+          {
+            id: tc.id,
+            name: tc.name,
+            arguments: tc.arguments,
+          }
+        end
       end
 
       # Handle other fields
