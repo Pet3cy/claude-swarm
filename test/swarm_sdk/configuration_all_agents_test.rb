@@ -418,6 +418,35 @@ module SwarmSDK
       end
     end
 
+    def test_all_agents_agent_step_hook_dsl
+      # Test that :agent_step hook is allowed in all_agents block using DSL
+      # This is a valid agent-level event defined in Hooks::Registry::VALID_EVENTS
+      #
+      # Before fix: raises ArgumentError: Invalid all_agents hook: agent_step
+      # After fix: builds swarm successfully
+      swarm = SwarmSDK.build do
+        name "Test Swarm"
+        lead :agent1
+
+        all_agents do
+          hook :agent_step do |ctx|
+            # This hook should be allowed
+          end
+        end
+
+        agent :agent1 do
+          model "gpt-5"
+          provider "openai"
+          system_prompt "You are a test agent"
+          description "Test Agent"
+        end
+      end
+
+      # Verify swarm was built successfully
+      assert(swarm, "Swarm should be created successfully")
+      assert_equal(:agent1, swarm.lead_agent, "Lead agent should be set")
+    end
+
     private
 
     def with_temp_config(content)
