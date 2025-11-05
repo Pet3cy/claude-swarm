@@ -224,11 +224,11 @@ module SwarmSDK
         swarm.execute("Test") { |event| events << event }
       end
 
-      # Every single event must have a timestamp
+      # Every single event must have a timestamp with microsecond precision
       events.each do |event|
         assert(event.key?(:timestamp), "Event missing timestamp: #{event[:type]}")
         assert_match(
-          /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/,
+          /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/,
           event[:timestamp],
           "Invalid timestamp format: #{event[:timestamp]}",
         )
