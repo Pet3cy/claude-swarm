@@ -749,6 +749,37 @@ module SwarmSDK
         messages.select { |msg| msg.role == :assistant }.sum { |msg| msg.output_tokens || 0 }
       end
 
+      # Calculate cumulative cached tokens across all assistant messages
+      #
+      # Cached tokens are portions of prompts served from the provider's cache.
+      # OpenAI reports this automatically for prompts >1024 tokens.
+      # Anthropic/Bedrock expose cache control via Content::Raw blocks.
+      #
+      # @return [Integer] Total cached tokens used in conversation
+      def cumulative_cached_tokens
+        messages.select { |msg| msg.role == :assistant }.sum { |msg| msg.cached_tokens || 0 }
+      end
+
+      # Calculate cumulative cache creation tokens
+      #
+      # Cache creation tokens are written to the cache (Anthropic/Bedrock only).
+      # These are charged at the normal input rate when first created.
+      #
+      # @return [Integer] Total tokens written to cache
+      def cumulative_cache_creation_tokens
+        messages.select { |msg| msg.role == :assistant }.sum { |msg| msg.cache_creation_tokens || 0 }
+      end
+
+      # Calculate effective input tokens (excluding cache hits)
+      #
+      # This represents the actual tokens charged for input, excluding cached portions.
+      # Useful for accurate cost tracking when using prompt caching.
+      #
+      # @return [Integer] Actual input tokens charged (input minus cached)
+      def effective_input_tokens
+        cumulative_input_tokens - cumulative_cached_tokens
+      end
+
       # Calculate total tokens used (input + output)
       #
       # @return [Integer] Total tokens used in conversation

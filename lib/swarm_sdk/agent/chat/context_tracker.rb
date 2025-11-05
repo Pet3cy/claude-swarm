@@ -120,6 +120,9 @@ module SwarmSDK
               cumulative_input_tokens: @chat.cumulative_input_tokens,
               cumulative_output_tokens: @chat.cumulative_output_tokens,
               cumulative_total_tokens: @chat.cumulative_total_tokens,
+              cumulative_cached_tokens: @chat.cumulative_cached_tokens,
+              cumulative_cache_creation_tokens: @chat.cumulative_cache_creation_tokens,
+              effective_input_tokens: @chat.effective_input_tokens,
               context_limit: @chat.context_limit,
               tokens_used_percentage: "#{@chat.context_usage_percentage}%",
               tokens_remaining: @chat.tokens_remaining,
@@ -131,6 +134,8 @@ module SwarmSDK
           {
             input_tokens: message.input_tokens,
             output_tokens: message.output_tokens,
+            cached_tokens: message.cached_tokens,
+            cache_creation_tokens: message.cache_creation_tokens,
             total_tokens: (message.input_tokens || 0) + (message.output_tokens || 0),
             input_cost: cost_info[:input_cost],
             output_cost: cost_info[:output_cost],
