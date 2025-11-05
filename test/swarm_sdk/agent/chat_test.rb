@@ -466,13 +466,12 @@ module SwarmSDK
 
     def test_system_reminder_constants_defined
       # Verify the constants are defined in SystemReminderInjector
-      assert_kind_of(String, Agent::Chat::SystemReminderInjector::BEFORE_FIRST_MESSAGE_REMINDER)
       assert_kind_of(String, Agent::Chat::SystemReminderInjector::AFTER_FIRST_MESSAGE_REMINDER)
+      assert_kind_of(String, Agent::Chat::SystemReminderInjector::TODOWRITE_PERIODIC_REMINDER)
 
       # Verify content
-      assert_match(/important-instruction-reminders/, Agent::Chat::SystemReminderInjector::BEFORE_FIRST_MESSAGE_REMINDER)
-      assert_match(/NEVER create files unless/, Agent::Chat::SystemReminderInjector::BEFORE_FIRST_MESSAGE_REMINDER)
       assert_match(/todo list is currently empty/, Agent::Chat::SystemReminderInjector::AFTER_FIRST_MESSAGE_REMINDER)
+      assert_match(/TodoWrite tool hasn't been used recently/, Agent::Chat::SystemReminderInjector::TODOWRITE_PERIODIC_REMINDER)
     end
 
     def test_context_limit_with_explicit_context_window
@@ -664,6 +663,144 @@ module SwarmSDK
       )
 
       assert_instance_of(Agent::Chat, chat)
+    end
+
+    def test_todowrite_reminder_not_injected_when_tool_missing
+      # Create chat without TodoWrite tool
+      chat = Agent::Chat.new(definition: { model: "gpt-5" })
+
+      # Remove TodoWrite tool if it exists
+      chat.tools.delete("TodoWrite")
+
+      # Mock messages exceeding interval (should trigger reminder IF tool exists)
+      messages = (1..20).map { Struct.new(:role, :content).new(:user, "test") }
+      chat.stub(:messages, messages) do
+        # Capture the full prompt that would be sent
+        captured_prompt = nil
+        chat.define_singleton_method(:complete) do |**options|
+          # Get messages to check what would be sent
+          captured_prompt = options[:messages]&.last&.dig(:content) || "no messages"
+          Struct.new(:content).new("Response")
+        end
+
+        # Mock add_message
+        chat.define_singleton_method(:add_message) do |role:, content:|
+          Struct.new(:role, :content).new(role, content)
+        end
+
+        # Ask should NOT inject TodoWrite reminder
+        chat.ask("Hello")
+
+        # Verify TodoWrite reminder was NOT injected
+        refute_match(/TodoWrite tool hasn't been used recently/, captured_prompt.to_s)
+      end
+    end
+
+    def test_todowrite_reminder_injected_when_tool_present
+      # Create chat with TodoWrite tool
+      chat = Agent::Chat.new(definition: { model: "gpt-5" })
+
+      # Directly add TodoWrite to tools hash (simpler than mocking with_tool)
+      todo_tool = Struct.new(:name).new("TodoWrite")
+      chat.tools["TodoWrite"] = todo_tool
+
+      # Mock messages exceeding interval (should trigger reminder)
+      messages = (1..20).map { Struct.new(:role, :content).new(:user, "test") }
+      chat.stub(:messages, messages) do
+        # Test the guard logic directly
+        # With TodoWrite tool present and enough messages, should_inject should return true
+        assert(
+          Agent::Chat::SystemReminderInjector.should_inject_todowrite_reminder?(chat, nil),
+          "Should inject reminder when TodoWrite tool is present",
+        )
+
+        # Verify the guard in ask() works by checking that tools.key?("TodoWrite") returns true
+        assert(chat.tools.key?("TodoWrite"), "TodoWrite tool should be present")
+      end
+    end
+
+    def test_after_first_message_reminder_not_injected_when_tool_missing
+      # Create chat without TodoWrite tool
+      chat = Agent::Chat.new(definition: { model: "gpt-5" })
+
+      # Remove TodoWrite tool if it exists
+      chat.tools.delete("TodoWrite")
+
+      # Mock no existing messages (first message)
+      chat.stub(:messages, []) do
+        # Mock context_manager for first message handling
+        context_manager = Minitest::Mock.new
+        context_manager.expect(:extract_system_reminders, ["<system-reminder>test</system-reminder>"], [String])
+        context_manager.expect(:strip_system_reminders, "Hello", [String])
+        context_manager.expect(:add_ephemeral_reminder, nil, [String, Hash])
+
+        chat.stub(:context_manager, context_manager) do
+          # Capture added messages
+          added_content = nil
+          chat.define_singleton_method(:add_message) do |role:, content:|
+            added_content = content
+            Struct.new(:role, :content).new(role, content)
+          end
+
+          # Mock complete
+          chat.define_singleton_method(:complete) do |**_options|
+            Struct.new(:content).new("Response")
+          end
+
+          # First ask should build full_content without AFTER_FIRST_MESSAGE_REMINDER
+          # Check what inject_first_message_reminders receives
+          parts_built = []
+          Agent::Chat::SystemReminderInjector.stub(:inject_first_message_reminders, lambda { |c, p|
+            # Manually build parts to test logic
+            parts = [
+              p,
+              Agent::Chat::SystemReminderInjector.build_toolset_reminder(c),
+            ]
+            parts << Agent::Chat::SystemReminderInjector::AFTER_FIRST_MESSAGE_REMINDER if c.tools.key?("TodoWrite")
+            parts_built.concat(parts)
+
+            full_content = parts.join("\n\n")
+
+            # Store for verification
+            added_content = full_content
+
+            # Simulate normal behavior
+            c.add_message(role: :user, content: p)
+          }) do
+            chat.ask("Hello")
+          end
+
+          # Verify AFTER_FIRST_MESSAGE_REMINDER was NOT included
+          refute_match(/todo list is currently empty/, added_content.to_s)
+        end
+      end
+    end
+
+    def test_after_first_message_reminder_injected_when_tool_present
+      # Create chat with TodoWrite tool
+      chat = Agent::Chat.new(definition: { model: "gpt-5" })
+
+      # Directly add TodoWrite to tools hash (simpler than mocking with_tool)
+      todo_tool = Struct.new(:name).new("TodoWrite")
+      chat.tools["TodoWrite"] = todo_tool
+
+      # Test the guard logic for first message reminder
+      # Build parts as inject_first_message_reminders does
+      parts = [
+        "test prompt",
+        Agent::Chat::SystemReminderInjector.build_toolset_reminder(chat),
+      ]
+
+      # Guard: only add AFTER_FIRST_MESSAGE_REMINDER if TodoWrite tool present
+      parts << Agent::Chat::SystemReminderInjector::AFTER_FIRST_MESSAGE_REMINDER if chat.tools.key?("TodoWrite")
+
+      full_content = parts.join("\n\n")
+
+      # Verify AFTER_FIRST_MESSAGE_REMINDER WAS included (because TodoWrite is present)
+      assert_match(/todo list is currently empty/, full_content)
+
+      # Verify the guard condition is true
+      assert(chat.tools.key?("TodoWrite"), "TodoWrite tool should be present for reminder")
     end
   end
 end

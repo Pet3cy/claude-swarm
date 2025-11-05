@@ -292,8 +292,8 @@ module SwarmSDK
             # Build prompt with embedded reminders (if needed)
             full_prompt = prompt
 
-            # Add periodic TodoWrite reminder if needed
-            if SystemReminderInjector.should_inject_todowrite_reminder?(self, @last_todowrite_message_index)
+            # Add periodic TodoWrite reminder if needed (only if agent has TodoWrite tool)
+            if tools.key?("TodoWrite") && SystemReminderInjector.should_inject_todowrite_reminder?(self, @last_todowrite_message_index)
               full_prompt = "#{full_prompt}\n\n#{SystemReminderInjector::TODOWRITE_PERIODIC_REMINDER}"
               # Update tracking
               @last_todowrite_message_index = SystemReminderInjector.find_last_todowrite_index(self)
