@@ -17,10 +17,6 @@ module SwarmSDK
         :Read,
         :Grep,
         :Glob,
-        :TodoWrite,
-        :Think,
-        :WebFetch,
-        :Clock,
       ].freeze
 
       # Scratchpad tools (added if scratchpad is enabled)

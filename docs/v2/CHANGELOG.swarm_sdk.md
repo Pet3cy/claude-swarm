@@ -549,7 +549,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Future-ready for SQLite and FAISS adapters
 
 - **Default tools** - Conditional inclusion
-  - Core defaults: Read, Grep, Glob, TodoWrite, Think, WebFetch
+  - Core defaults: Read, Grep, Glob
   - Scratchpad tools: Added if `use_scratchpad true` (default)
   - Memory tools: Added if agent has `memory` configured
   - Enables fine-grained control over tool availability

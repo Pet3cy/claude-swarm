@@ -65,7 +65,7 @@ flowchart TB
         BASH_TOOL["Bash Tool"]
         DELEGATE_TOOL["Delegation Tools<br/>(call other agents)"]
         PLUGIN_TOOLS["Plugin Tools<br/>(from PluginRegistry)"]
-        DEFAULT_TOOLS["Default Tools<br/>(Think, TodoWrite, Clock)"]
+        DEFAULT_TOOLS["Default Tools<br/>(Read, Grep, Glob)"]
         SCRATCHPAD["Scratchpad Tools<br/>(volatile storage)"]
     end
 
@@ -285,7 +285,7 @@ Agent.ask(prompt) →
 - **Bash Tool**: Execute shell commands
 - **Delegation Tools**: Recursively call other Agent::Chat instances
 - **Plugin Tools**: PluginRegistry → create_tool → (e.g., MemoryWrite → Storage)
-- **Default Tools**: Think (reasoning), TodoWrite (task mgmt), Clock (time)
+- **Default Tools**: Read, Grep, Glob (file operations and search)
 - **Scratchpad Tools**: Volatile shared storage across agents
 
 ### 6. Memory Integration Flow
