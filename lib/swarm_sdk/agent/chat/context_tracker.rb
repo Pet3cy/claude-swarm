@@ -13,6 +13,25 @@ module SwarmSDK
       # - Check context warnings
       #
       # This is a stateful helper that's instantiated per Agent::Chat instance.
+      #
+      # ## Thread Safety and Fiber-Local Storage
+      #
+      # IMPORTANT: LogStream.emit calls in this class DO NOT explicitly pass
+      # swarm_id, parent_swarm_id, or execution_id. These values are automatically
+      # injected from Fiber-local storage (Fiber[:swarm_id], etc.) by LogStream.emit.
+      #
+      # Why: In threaded environments (Puma, Sidekiq), swarm/agent instances may be
+      # reused across multiple requests/jobs. If we explicitly pass @agent_context.swarm_id,
+      # callbacks would use STALE values from the first request, causing events to be
+      # lost or misattributed.
+      #
+      # By relying on Fiber-local storage, each request/job gets the correct context
+      # even when reusing the same swarm instance. Fiber storage is set at the start
+      # of Swarm#execute and inherited by child fibers (tool calls, delegations).
+      #
+      # This design works correctly in both:
+      # - Single-threaded environments (rails runner, console)
+      # - Multi-threaded environments (Puma, Sidekiq)
       class ContextTracker
         include LoggingHelpers
 
@@ -78,8 +97,6 @@ module SwarmSDK
             LogStream.emit(
               type: "context_threshold_hit",
               agent: @agent_context.name,
-              swarm_id: @agent_context.swarm_id,
-              parent_swarm_id: @agent_context.parent_swarm_id,
               threshold: threshold,
               current_usage_percentage: current_percentage.round(2),
             )
@@ -93,8 +110,6 @@ module SwarmSDK
             LogStream.emit(
               type: "context_limit_warning",
               agent: @agent_context.name,
-              swarm_id: @agent_context.swarm_id,
-              parent_swarm_id: @agent_context.parent_swarm_id,
               model: @chat.model.id,
               threshold: "#{threshold}%",
               current_usage: "#{current_percentage}%",
@@ -181,8 +196,6 @@ module SwarmSDK
                 LogStream.emit(
                   type: "delegation_result",
                   agent: @agent_context.name,
-                  swarm_id: @agent_context.swarm_id,
-                  parent_swarm_id: @agent_context.parent_swarm_id,
                   delegate_from: delegate_from,
                   tool_call_id: message.tool_call_id,
                   result: serialize_result(message.content),
@@ -206,8 +219,6 @@ module SwarmSDK
               LogStream.emit(
                 type: "agent_delegation",
                 agent: @agent_context.name,
-                swarm_id: @agent_context.swarm_id,
-                parent_swarm_id: @agent_context.parent_swarm_id,
                 tool_call_id: tool_call.id,
                 delegate_to: agent_name,
                 arguments: tool_call.arguments,
@@ -323,8 +334,6 @@ module SwarmSDK
         LogStream.emit(
           type: "context_compression",
           agent: @agent_context.name,
-          swarm_id: @agent_context.swarm_id,
-          parent_swarm_id: @agent_context.parent_swarm_id,
           total_messages: @chat.messages.size,
           messages_compressed: messages_compressed,
           tokens_before: tokens_before,
