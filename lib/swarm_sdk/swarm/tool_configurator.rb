@@ -157,8 +157,8 @@ module SwarmSDK
       def register_explicit_tools(chat, tool_configs, agent_name:, agent_definition:)
         # Validate filesystem tools if globally disabled
         unless @swarm.allow_filesystem_tools
-          # Extract tool names from hashes
-          forbidden = tool_configs.map { |tc| tc[:name] }.select { |name| FILESYSTEM_TOOLS.include?(name) }
+          # Extract tool names from hashes and convert to symbols for comparison
+          forbidden = tool_configs.map { |tc| tc[:name].to_sym }.select { |name| FILESYSTEM_TOOLS.include?(name) }
           unless forbidden.empty?
             raise ConfigurationError,
               "Filesystem tools are globally disabled (SwarmSDK.settings.allow_filesystem_tools = false) " \
@@ -336,15 +336,21 @@ module SwarmSDK
       def tool_disabled?(tool_name, disable_config)
         return false if disable_config.nil?
 
+        # Normalize tool_name to symbol for comparison
+        tool_name_sym = tool_name.to_sym
+
         if disable_config == true
           # Disable all default tools
           true
         elsif disable_config.is_a?(Symbol)
           # Single tool name
-          disable_config == tool_name
+          disable_config == tool_name_sym
+        elsif disable_config.is_a?(String)
+          # Single tool name as string (from YAML)
+          disable_config.to_sym == tool_name_sym
         elsif disable_config.is_a?(Array)
-          # Disable only tools in the array
-          disable_config.include?(tool_name)
+          # Disable only tools in the array - normalize to symbols for comparison
+          disable_config.map(&:to_sym).include?(tool_name_sym)
         else
           false
         end
