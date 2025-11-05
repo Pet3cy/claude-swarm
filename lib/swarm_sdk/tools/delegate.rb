@@ -152,7 +152,7 @@ module SwarmSDK
           delegate_to: @tool_name,
           error_class: e.class.name,
           error_message: "Request timed out",
-          backtrace: e.backtrace&.first(5) || [],
+          error_backtrace: e.backtrace&.first(5) || [],
         )
         "Error: Request to #{@tool_name} timed out. The agent may be overloaded or the LLM service is not responding. Please try again or simplify the task."
       rescue Faraday::Error => e
@@ -165,7 +165,7 @@ module SwarmSDK
           delegate_to: @tool_name,
           error_class: e.class.name,
           error_message: e.message,
-          backtrace: e.backtrace&.first(5) || [],
+          error_backtrace: e.backtrace&.first(5) || [],
         )
         "Error: Network error communicating with #{@tool_name}: #{e.class.name}. Please check connectivity and try again."
       rescue StandardError => e
@@ -179,7 +179,7 @@ module SwarmSDK
           delegate_to: @tool_name,
           error_class: e.class.name,
           error_message: e.message,
-          backtrace: backtrace_array,
+          error_backtrace: backtrace_array,
         )
         # Return error string for LLM
         backtrace_str = backtrace_array.join("\n  ")

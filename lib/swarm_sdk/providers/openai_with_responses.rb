@@ -145,7 +145,7 @@ module SwarmSDK
       rescue NoMethodError => e
         # Catch fetch/dig errors on nil and provide better context
         if e.message.include?("undefined method") && (e.message.include?("fetch") || e.message.include?("dig"))
-          log_parse_error(e.class.name, e.message, response.body)
+          log_parse_error(e.class.name, e.message, response.body, e.backtrace)
           nil
         else
           raise
@@ -568,7 +568,7 @@ module SwarmSDK
       # @param error_class [String] Error class name
       # @param error_message [String] Error message
       # @param response_body [Object] Response body that failed to parse
-      def log_parse_error(error_class, error_message, response_body)
+      def log_parse_error(error_class, error_message, response_body, error_backtrace=nil)
         if @agent_name
           # Emit structured JSON log through LogStream
           LogStream.emit(
@@ -576,11 +576,12 @@ module SwarmSDK
             agent: @agent_name,
             error_class: error_class,
             error_message: error_message,
+            error_backtrace: error_backtrace,
             response_body: response_body.inspect,
           )
         else
           # Fallback to RubyLLM logger if agent name not set
-          RubyLLM.logger.error("SwarmSDK: #{error_class}: #{error_message}\nResponse: #{response_body.inspect}")
+          RubyLLM.logger.error("SwarmSDK: #{error_class}: #{error_message}\nResponse: #{response_body.inspect}\nError backtrace: #{error_backtrace.join("\n")}")
         end
       end
     end

@@ -943,6 +943,7 @@ module SwarmSDK
                 attempts: attempts,
                 error_class: e.class.name,
                 error_message: e.message,
+                error_backtrace: e.backtrace,
               )
               raise
             end
@@ -958,6 +959,7 @@ module SwarmSDK
               max_retries: max_retries,
               error_class: e.class.name,
               error_message: e.message,
+              error_backtrace: e.backtrace,
               retry_delay: delay,
             )
 
