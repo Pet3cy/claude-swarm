@@ -204,6 +204,12 @@ module SwarmSDK
         snapshot_data = agents_data[agent_name] || agents_data[agent_name.to_s]
         next unless snapshot_data # Skip if agent not in snapshot (shouldn't happen due to validation)
 
+        # Restore system prompt if present in snapshot
+        # This overrides the system prompt from the agent definition, enabling
+        # true event-sourced restoration where the exact historical prompt is used
+        system_prompt = snapshot_data[:system_prompt] || snapshot_data["system_prompt"]
+        agent_chat.with_instructions(system_prompt) if system_prompt
+
         # Clear existing messages
         messages = agent_chat.messages
         messages.clear
@@ -326,6 +332,12 @@ module SwarmSDK
         delegations_data = @snapshot_data[:delegation_instances] || @snapshot_data["delegation_instances"]
         snapshot_data = delegations_data[instance_name.to_sym] || delegations_data[instance_name.to_s] || delegations_data[instance_name]
         next unless snapshot_data # Skip if delegation not in snapshot (shouldn't happen due to validation)
+
+        # Restore system prompt if present in snapshot
+        # This overrides the system prompt from the agent definition, enabling
+        # true event-sourced restoration where the exact historical prompt is used
+        system_prompt = snapshot_data[:system_prompt] || snapshot_data["system_prompt"]
+        delegation_chat.with_instructions(system_prompt) if system_prompt
 
         # Clear existing messages
         messages = delegation_chat.messages

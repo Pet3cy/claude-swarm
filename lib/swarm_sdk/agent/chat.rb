@@ -852,6 +852,9 @@ module SwarmSDK
         faraday_conn = @provider.connection&.connection
         return unless faraday_conn
 
+        # Check if middleware is already present to prevent duplicates
+        return if @llm_instrumentation_injected
+
         # Get provider name for logging
         provider_name = @provider.class.name.split("::").last.downcase
 
@@ -865,6 +868,9 @@ module SwarmSDK
           on_response: method(:handle_llm_api_response),
           provider_name: provider_name,
         )
+
+        # Mark as injected to prevent duplicates
+        @llm_instrumentation_injected = true
 
         RubyLLM.logger.debug("SwarmSDK: Injected LLM instrumentation middleware for agent #{@agent_name}")
       rescue StandardError => e

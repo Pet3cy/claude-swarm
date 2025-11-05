@@ -99,7 +99,7 @@ module SwarmSDK
 
     # Reconstruct all primary agents
     #
-    # @return [Hash] { agent_name => { conversation:, context_state: } }
+    # @return [Hash] { agent_name => { conversation:, context_state:, system_prompt: } }
     def reconstruct_all_agents
       # Get unique primary agent names (exclude delegations with @)
       agent_names = @events
@@ -112,13 +112,14 @@ module SwarmSDK
         hash[agent.to_s] = {
           conversation: reconstruct_conversation(agent),
           context_state: reconstruct_context_state(agent),
+          system_prompt: reconstruct_system_prompt(agent),
         }
       end
     end
 
     # Reconstruct all delegation instances
     #
-    # @return [Hash] { "delegate@delegator" => { conversation:, context_state: } }
+    # @return [Hash] { "delegate@delegator" => { conversation:, context_state:, system_prompt: } }
     def reconstruct_all_delegations
       # Get unique delegation instance names (contain @)
       delegation_names = @events
@@ -131,6 +132,7 @@ module SwarmSDK
         hash[delegation.to_s] = {
           conversation: reconstruct_conversation(delegation),
           context_state: reconstruct_context_state(delegation),
+          system_prompt: reconstruct_system_prompt(delegation),
         }
       end
     end
@@ -256,6 +258,26 @@ module SwarmSDK
       # Extract skill path from arguments (handle both symbol and string keys)
       args = last_load_skill[:arguments]
       args[:file_path] || args["file_path"]
+    end
+
+    # Reconstruct system prompt from the last agent_start event
+    #
+    # Uses the LAST agent_start event for this agent, which represents the most
+    # recent system prompt that was active. This handles cases where the swarm
+    # was restarted with updated configuration.
+    #
+    # @param agent [Symbol, String] Agent name
+    # @return [String, nil] System prompt or nil if no agent_start event found
+    def reconstruct_system_prompt(agent)
+      last_agent_start = @events
+        .select { |e| e[:type] == "agent_start" && normalize_agent(e[:agent]) == normalize_agent(agent) }
+        .sort_by { |e| parse_timestamp(e[:timestamp]) }
+        .last
+
+      return unless last_agent_start
+
+      # Handle both symbol and string keys from JSON
+      last_agent_start[:system_prompt] || last_agent_start["system_prompt"]
     end
 
     # Reconstruct scratchpad contents

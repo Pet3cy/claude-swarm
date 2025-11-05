@@ -77,10 +77,15 @@ module SwarmSDK
 
       private
 
-      # Pass 1: Create all agent chat instances
+      # Pass 1: Create primary agent chat instances
       #
-      # This creates the Agent::Chat instances but doesn't wire them together yet.
-      # Each agent gets its own chat instance with configured tools.
+      # Only creates agents that will actually be used as primaries:
+      # - The lead agent
+      # - Agents with shared_across_delegations: true (shared delegates)
+      # - Agents not used as delegates (standalone agents)
+      #
+      # Agents that are ONLY delegates with shared_across_delegations: false
+      # are NOT created here - they'll be created as delegation instances in pass 2a.
       def pass_1_create_agents
         # Create plugin storages for agents
         create_plugin_storages
@@ -88,6 +93,9 @@ module SwarmSDK
         tool_configurator = ToolConfigurator.new(@swarm, @scratchpad_storage, @plugin_storages)
 
         @agent_definitions.each do |name, agent_definition|
+          # Skip if this agent will only exist as delegation instances
+          next if should_skip_primary_creation?(name, agent_definition)
+
           chat = create_agent_chat(name, agent_definition, tool_configurator)
           @agents[name] = chat
 
@@ -140,6 +148,9 @@ module SwarmSDK
         # Sub-pass 2b: Wire primary agents to delegation instances OR shared primaries OR registered swarms
         @agent_definitions.each do |delegator_name, delegator_def|
           delegator_chat = @agents[delegator_name]
+
+          # Skip if delegator doesn't exist as primary (wasn't created in pass_1)
+          next unless delegator_chat
 
           delegator_def.delegates_to.each do |delegate_base_name|
             delegate_base_name_str = delegate_base_name.to_s
@@ -571,6 +582,41 @@ module SwarmSDK
           # Notify plugin
           plugin.on_agent_initialized(agent_name: agent_name, agent: chat, context: context)
         end
+      end
+
+      # Determine if we should skip creating a primary agent
+      #
+      # Skip if:
+      # - NOT the lead agent, AND
+      # - Has shared_across_delegations: false (isolated mode), AND
+      # - Is only referenced as a delegate (not used standalone)
+      #
+      # @param name [Symbol] Agent name
+      # @param agent_definition [Agent::Definition] Agent definition
+      # @return [Boolean] True if should skip primary creation
+      def should_skip_primary_creation?(name, agent_definition)
+        # Always create lead agent
+        return false if name == @swarm.lead_agent
+
+        # If shared mode, create primary (delegates will use it)
+        return false if agent_definition.shared_across_delegations
+
+        # Skip if only used as a delegate
+        only_referenced_as_delegate?(name)
+      end
+
+      # Check if an agent is only referenced as a delegate
+      #
+      # @param name [Symbol] Agent name
+      # @return [Boolean] True if only referenced as delegate
+      def only_referenced_as_delegate?(name)
+        # Check if any agent delegates to this one
+        referenced_as_delegate = @agent_definitions.any? do |_agent_name, definition|
+          definition.delegates_to.include?(name)
+        end
+
+        # Skip if referenced as delegate (and not lead, already checked above)
+        referenced_as_delegate
       end
 
       # Extract base agent name from instance name

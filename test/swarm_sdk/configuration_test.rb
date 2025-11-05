@@ -350,7 +350,7 @@ module SwarmSDK
 
             # Build swarm to load the agent from file
             swarm = configuration.to_swarm
-            swarm.agent(:backend) # Trigger initialization
+            # Access agent definition directly (doesn't require agent to be created as primary)
             backend_def = swarm.agent_definitions[:backend]
 
             assert_equal("Backend developer", backend_def.description)
@@ -391,7 +391,7 @@ module SwarmSDK
 
         # Build swarm to load the agent from file
         swarm = configuration.to_swarm
-        swarm.agent(:backend) # Trigger initialization
+        # Access agent definition directly (doesn't require agent to be created as primary)
         backend_def = swarm.agent_definitions[:backend]
 
         assert_equal("Test agent", backend_def.description)
@@ -422,7 +422,7 @@ module SwarmSDK
 
           # Build swarm to load the agent from file
           swarm = configuration.to_swarm
-          swarm.agent(:backend) # Trigger initialization
+          # Access agent definition directly (doesn't require agent to be created as primary)
           backend_def = swarm.agent_definitions[:backend]
 
           assert_equal("Test agent", backend_def.description)
@@ -689,7 +689,7 @@ module SwarmSDK
 
           # Build swarm to load the agent from file
           swarm = configuration.to_swarm
-          swarm.agent(:backend) # Trigger initialization
+          # Access agent definition directly (doesn't require agent to be created as primary)
           backend_def = swarm.agent_definitions[:backend]
 
           assert_equal("String path agent", backend_def.description)
@@ -727,7 +727,7 @@ module SwarmSDK
 
         # Build swarm to load the agent from file
         swarm = configuration.to_swarm
-        swarm.agent(:backend) # Trigger initialization
+        # Access agent definition directly (doesn't require agent to be created as primary)
         backend_def = swarm.agent_definitions[:backend]
 
         assert_equal("Relative string path agent", backend_def.description)

@@ -501,10 +501,11 @@ module SwarmSDK
 
       swarm.lead = :lead
 
-      # Initialize and mock agents
+      # Initialize agents to create delegation instances
       swarm.agent(swarm.agent_names.first)
 
-      backend_agent = swarm.agent(:backend)
+      # Backend is only used as a delegate, so access the delegation instance
+      backend_agent = swarm.delegation_instances["backend@lead"]
       backend_mock_response = Struct.new(:content).new("Backend response")
       backend_agent.define_singleton_method(:ask) do |_task|
         backend_mock_response
