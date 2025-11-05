@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Event Timestamp Precision**: Microsecond-precision timestamps for correct event ordering
+  - **Issue**: Events emitted rapidly within same second had identical timestamps, causing arbitrary sort order
+  - **Impact**: Message reconstruction from events produced incorrect conversation order (tool results before tool calls)
+  - **Root cause**: `Time.now.utc.iso8601` defaults to second precision, events within same second indistinguishable
+  - **Fix**: Use `Time.now.utc.iso8601(6)` for microsecond precision (e.g., `2025-11-05T19:10:58.123456Z`)
+  - **Files**: `log_stream.rb:54`, `log_collector.rb:65`
+  - **Result**: Events now sort correctly even when emitted microseconds apart
+  - **Critical for**: Snapshot reconstruction, delegation conversations, rapid tool executions
+
+- **Rails/Puma Event Loss in Multi-Threaded Environments**: Complete fix for event streaming in production
+  - **Issue**: Events lost on subsequent requests when using `restore()` before `execute()` in Rails/Puma
+  - **Root cause 1**: Callbacks stored in class instance variables didn't propagate to child fibers
+  - **Root cause 2**: `restore()` triggered agent initialization before logging setup, skipping callback registration
+  - **Root cause 3**: Callbacks passed stale `@agent_context.swarm_id` that overrode Fiber-local storage
+  - **Fix 1**: LogCollector uses Fiber-local storage (`Fiber[:log_callbacks]`) for thread-safe callback propagation
+  - **Fix 2**: Retroactive callback registration via `setup_logging_for_all_agents` when agents initialized early
+  - **Fix 3**: Removed explicit `swarm_id`/`parent_swarm_id` from LogStream.emit calls in callbacks
+  - **Fix 4**: Scheduler leak prevention - force cleanup of lingering Async schedulers between requests
+  - **Fix 5**: Fresh callback array per execution to prevent accumulation
+  - **Result**: All events (agent_step, tool_call, delegation, etc.) now work correctly in Puma/Sidekiq
+  - **Diagnostic**: Added `SWARM_SDK_DEBUG_CALLBACKS=1` environment variable for troubleshooting
+  - **Rails integration**: Works seamlessly without service code changes
+
 ### Added
 
 - **System-Wide Filesystem Tools Control**: Global security setting to disable filesystem tools across all agents

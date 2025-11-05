@@ -190,6 +190,10 @@ module SwarmSDK
 
       # Track if first message has been sent
       @first_message_sent = false
+
+      # Track if agent_start events have been emitted
+      # This prevents duplicate emissions and ensures events are emitted when logging is ready
+      @agent_start_events_emitted = false
     end
 
     # Add an agent to the swarm
@@ -255,6 +259,23 @@ module SwarmSDK
       logs = []
       current_prompt = prompt
 
+      # Debug diagnostics for Rails/Puma issues
+      if ENV["SWARM_SDK_DEBUG_CALLBACKS"]
+        puts "=== EXECUTE START ==="
+        puts "Thread: #{Thread.current.object_id}"
+        puts "Fiber: #{Fiber.current.object_id}"
+        puts "Scheduler: #{Fiber.scheduler ? "#{Fiber.scheduler.class} (#{Fiber.scheduler.object_id})" : "nil"}"
+        puts "Async::Task.current?: #{Async::Task.current?}"
+        puts "====================="
+      end
+
+      # Force cleanup of any lingering scheduler from previous requests
+      # This ensures we always take the clean Path C in Async()
+      # See: Async expert analysis - prevents scheduler leak in Puma
+      if Fiber.scheduler && !Async::Task.current?
+        Fiber.set_scheduler(nil)
+      end
+
       # Set fiber-local execution context
       # Use ||= to inherit parent's execution_id if one exists (for mini-swarms)
       # Child fibers (tools, delegations) inherit automatically
@@ -264,6 +285,9 @@ module SwarmSDK
 
       # Setup logging FIRST if block given (so swarm_start event can be emitted)
       if block_given?
+        # Force fresh callback array for this execution
+        Fiber[:log_callbacks] = []
+
         # Register callback to collect logs and forward to user's block
         LogCollector.on_log do |entry|
           logs << entry
@@ -292,6 +316,17 @@ module SwarmSDK
       # Lazy initialization of agents (with optional logging)
       initialize_agents unless @agents_initialized
 
+      # If agents were initialized BEFORE logging was set up (e.g., via restore()),
+      # we need to retroactively set up logging callbacks and emit agent_start events
+      if block_given? && @agents_initialized && !@agent_start_events_emitted
+        # Setup logging callbacks for all agents (they were skipped during initialization)
+        setup_logging_for_all_agents
+
+        # Emit agent_start events now that logging is ready
+        emit_agent_start_events
+        @agent_start_events_emitted = true
+      end
+
       # Execution loop (supports reprompting)
       result = nil
       swarm_stop_triggered = false
@@ -302,6 +337,15 @@ module SwarmSDK
         # Use finished: false to suppress warnings for expected task failures
         lead = @agents[@lead_agent]
         response = Async(finished: false) do
+          # Debug: Check callback availability inside Async block
+          if ENV["SWARM_SDK_DEBUG_CALLBACKS"]
+            puts "=== INSIDE ASYNC ==="
+            puts "Fiber: #{Fiber.current.object_id}"
+            puts "Callbacks: #{Fiber[:log_callbacks]&.size || 0}"
+            puts "LogStream.emitter: #{LogStream.emitter.class if LogStream.emitter}"
+            puts "===================="
+          end
+
           lead.ask(current_prompt)
         end.wait
 
@@ -711,8 +755,28 @@ module SwarmSDK
       @agent_contexts = initializer.agent_contexts
       @agents_initialized = true
 
-      # Emit agent_start events for all agents
-      emit_agent_start_events
+      # NOTE: agent_start events are emitted in execute() when logging is set up
+      # This ensures events are never lost, even if agents are initialized early (e.g., by restore())
+    end
+
+    # Setup logging callbacks for all agents
+    #
+    # Called when agents were initialized before logging was set up (e.g., via restore()).
+    # Retroactively registers RubyLLM callbacks (on_tool_call, on_end_message, etc.)
+    # so events are properly emitted during execution.
+    # Safe to call multiple times - RubyLLM callbacks are replaced, not appended.
+    #
+    # @return [void]
+    def setup_logging_for_all_agents
+      # Setup for PRIMARY agents
+      @agents.each_value do |chat|
+        chat.setup_logging if chat.respond_to?(:setup_logging)
+      end
+
+      # Setup for DELEGATION instances
+      @delegation_instances.each_value do |chat|
+        chat.setup_logging if chat.respond_to?(:setup_logging)
+      end
     end
 
     # Emit agent_start events for all initialized agents
@@ -729,6 +793,9 @@ module SwarmSDK
         base_name = extract_base_name(instance_name)
         emit_agent_start_for(instance_name.to_sym, chat, is_delegation: true, base_name: base_name)
       end
+
+      # Mark as emitted to prevent duplicate emissions
+      @agent_start_events_emitted = true
     end
 
     # Helper for emitting agent_start event

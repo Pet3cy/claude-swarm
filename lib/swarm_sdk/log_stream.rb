@@ -51,7 +51,7 @@ module SwarmSDK
           parent_swarm_id: Fiber[:parent_swarm_id],
         }.compact
 
-        entry = auto_injected.merge(data).merge(timestamp: Time.now.utc.iso8601).compact
+        entry = auto_injected.merge(data).merge(timestamp: Time.now.utc.iso8601(6)).compact
 
         @emitter.emit(entry)
       end

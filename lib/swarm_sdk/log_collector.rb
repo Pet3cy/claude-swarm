@@ -45,6 +45,11 @@ module SwarmSDK
       def on_log(&block)
         Fiber[:log_callbacks] ||= []
         Fiber[:log_callbacks] << block
+
+        # Debug: Log callback registration
+        if ENV["SWARM_SDK_DEBUG_CALLBACKS"]
+          puts "[LogCollector] Registered callback in Fiber #{Fiber.current.object_id}, total callbacks: #{Fiber[:log_callbacks].size}"
+        end
       end
 
       # Emit an event to all registered callbacks
@@ -56,10 +61,17 @@ module SwarmSDK
       # @return [void]
       def emit(entry)
         # Ensure timestamp exists (LogStream adds it, but direct calls might not)
-        entry_with_timestamp = entry.key?(:timestamp) ? entry : entry.merge(timestamp: Time.now.utc.iso8601)
+        # Use microsecond precision (6 digits) for proper event ordering
+        entry_with_timestamp = entry.key?(:timestamp) ? entry : entry.merge(timestamp: Time.now.utc.iso8601(6))
 
         # Read callbacks from Fiber-local storage (set by on_log in parent fiber)
         callbacks = Fiber[:log_callbacks] || []
+
+        # Debug: Log emission
+        if ENV["SWARM_SDK_DEBUG_CALLBACKS"]
+          puts "[LogCollector] Emitting #{entry[:type]} in Fiber #{Fiber.current.object_id}, callbacks: #{callbacks.size}"
+        end
+
         callbacks.each do |callback|
           callback.call(entry_with_timestamp)
         end

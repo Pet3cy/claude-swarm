@@ -70,9 +70,9 @@ module SwarmSDK
       assert_equal(:backend, received[:agent])
       assert_equal("value", received[:data])
 
-      # Should have auto-added timestamp
+      # Should have auto-added timestamp with microsecond precision
       assert(received.key?(:timestamp), "Missing timestamp")
-      assert_match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z/, received[:timestamp])
+      assert_match(/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z/, received[:timestamp])
     end
 
     def test_existing_timestamps_are_preserved
