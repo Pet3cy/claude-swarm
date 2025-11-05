@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Snapshot Restoration Critical Bugs**: Fixed two critical bugs preventing proper state restoration
+  - **Bug 1 - Delegation Instance Validation**: Delegation instances incorrectly rejected during restoration
+    - **Issue**: `bob@jarvis` delegation failed validation even when both agents existed
+    - **Root cause**: Validation checked if base agent (`bob`) existed as primary agent in snapshot, but bob only appeared as delegation
+    - **Fix**: Changed validation to check if base agent exists in **current configuration** instead of snapshot
+    - **Impact**: Delegation instances can now be restored correctly from snapshots and events
+  - **Bug 2 - System Prompt Ordering**: System prompts applied then immediately removed
+    - **Issue**: `with_instructions()` adds system message, but `messages.clear` was called after, removing it
+    - **Root cause**: Wrong order of operations - system prompt added before clearing messages
+    - **Fix**: Clear messages first, then add system prompt, then restore conversation
+    - **Impact**: System prompts now correctly preserved during restoration for all agents
+  - **Result**: Event sourcing fully functional, delegation workflows restore correctly
+  - **Files**: `lib/swarm_sdk/state_restorer.rb` - Lines 140-141, 210-225, 340-356
+
 - **Event Timestamp Precision**: Microsecond-precision timestamps for correct event ordering
   - **Issue**: Events emitted rapidly within same second had identical timestamps, causing arbitrary sort order
   - **Impact**: Message reconstruction from events produced incorrect conversation order (tool results before tool calls)
@@ -32,6 +46,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Rails integration**: Works seamlessly without service code changes
 
 ### Added
+
+- **Configurable System Prompt Restoration**: Control whether system prompts come from current config or historical snapshot
+  - **`preserve_system_prompts`** parameter in `swarm.restore()` and `orchestrator.restore()` (default: `false`)
+  - **Default behavior (`false`)**: System prompts from current agent definitions (YAML + SDK defaults + plugin injections)
+    - Enables system prompt iteration without creating new sessions
+    - Configuration is source of truth for agent behavior
+    - External session management with prompt updates works seamlessly
+  - **Historical mode (`true`)**: System prompts from snapshot (exact historical state)
+    - For debugging: "What instructions was agent following when bug occurred?"
+    - For auditing: "What exact prompts were active at that time?"
+    - For reproducibility: "Replay with exact historical context"
+  - **Applies to all agents**: Primary agents and delegation instances
+  - **Includes all injections**: YAML config, SDK defaults, SwarmMemory instructions, plugin additions
+  - **Non-breaking**: Backward compatible, all existing code works unchanged
+  - **Documentation**: Complete guide in `docs/v2/guides/snapshots.md` with examples and comparisons
 
 - **System-Wide Filesystem Tools Control**: Global security setting to disable filesystem tools across all agents
   - **`SwarmSDK.settings.allow_filesystem_tools`** - Global setting to enable/disable filesystem tools (default: true)

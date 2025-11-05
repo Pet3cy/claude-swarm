@@ -302,8 +302,17 @@ module SwarmSDK
     #   else
     #     puts result.summary
     #   end
-    def restore(snapshot)
-      StateRestorer.new(self, snapshot).restore
+    #
+    # Restore orchestrator state from snapshot
+    #
+    # By default, uses current system prompts from agent definitions (YAML + SDK defaults + plugin injections).
+    # Set preserve_system_prompts: true to use historical prompts from snapshot.
+    #
+    # @param snapshot [Snapshot, Hash, String] Snapshot object, hash, or JSON string
+    # @param preserve_system_prompts [Boolean] Use historical system prompts instead of current config (default: false)
+    # @return [RestoreResult] Result with warnings about partial restores
+    def restore(snapshot, preserve_system_prompts: false)
+      StateRestorer.new(self, snapshot, preserve_system_prompts: preserve_system_prompts).restore
     end
 
     private

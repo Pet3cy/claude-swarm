@@ -170,6 +170,88 @@ end
 swarm2.restore(snapshot)  # Restores conversation only
 ```
 
+### System Prompt Handling
+
+**By default, system prompts come from your current configuration**, not from the snapshot. This means you can update system prompts without creating new sessions.
+
+```ruby
+# Original execution with system prompt A
+swarm = SwarmSDK.build do
+  agent :backend do
+    system_prompt "You build robust APIs"  # System prompt A
+  end
+end
+result = swarm.execute("Build auth")
+snapshot = swarm.snapshot
+
+# === Update system prompt in config ===
+
+# Restoration with system prompt B (default behavior)
+swarm = SwarmSDK.build do
+  agent :backend do
+    system_prompt "You build secure APIs with comprehensive logging"  # System prompt B (NEW!)
+  end
+end
+swarm.restore(snapshot)  # Uses NEW system prompt B with OLD conversation
+swarm.execute("Add password reset")  # Continues with updated prompt
+```
+
+**Why This Design?**
+
+System prompts define agent **behavior** and should come from configuration (your source of truth). Snapshots preserve **conversation history** (what happened), not configuration (how agents should behave).
+
+This enables:
+- ✅ Iterate on system prompts without losing conversation history
+- ✅ A/B test different prompts on same conversation
+- ✅ Update prompts across all sessions instantly
+- ✅ Configuration stays in version control, conversations in storage
+
+**System Prompts Include:**
+- YAML `system_prompt` field
+- SDK-injected defaults (environment, date, etc.)
+- Plugin injections (SwarmMemory instructions, etc.)
+
+When you restore, **all these injections apply**, giving you the complete current system prompt.
+
+#### Historical System Prompts (Advanced)
+
+For debugging, auditing, or exact reproducibility, use `preserve_system_prompts: true`:
+
+```ruby
+# Use historical system prompts from snapshot
+swarm.restore(snapshot, preserve_system_prompts: true)
+```
+
+**Use Cases:**
+- **Debugging**: "What system prompt was active when this bug occurred?"
+- **Audit Trail**: "What instructions was the agent following at that time?"
+- **Reproducibility**: "Run this exact scenario again with historical context"
+- **Time-Travel Debugging**: "Replay with exact state from past execution"
+
+**Example: Debugging with Historical Prompts**
+
+```ruby
+# Load snapshot from bug report
+snapshot = SwarmSDK::Snapshot.from_file("bug_session.json")
+
+# Restore with EXACT prompts that were active during bug
+swarm = SwarmSDK.build { ... }
+swarm.restore(snapshot, preserve_system_prompts: true)
+
+# Now you can reproduce the exact behavior
+result = swarm.execute("Trigger the bug scenario")
+```
+
+**Default vs Preserve Comparison:**
+
+| Aspect | Default (`false`) | Preserve (`true`) |
+|--------|------------------|-------------------|
+| System Prompt Source | Current YAML config | Historical snapshot |
+| SDK Injections | Current defaults | Historical defaults |
+| Plugin Injections | Current plugins | Historical plugins |
+| Use Case | Production, iteration | Debugging, audit |
+| Config Changes | Apply immediately | Ignored |
+
 ## Reconstructing Snapshots from Events
 
 SwarmSDK can reconstruct complete snapshots from event logs, enabling event sourcing and session persistence without explicit snapshot storage.
@@ -897,18 +979,31 @@ snapshot = swarm.snapshot
 Restore conversation state from snapshot.
 
 ```ruby
+# Default: use current system prompts from config
 result = swarm.restore(snapshot)
+# => SwarmSDK::RestoreResult
+
+# Advanced: use historical system prompts from snapshot
+result = swarm.restore(snapshot, preserve_system_prompts: true)
 # => SwarmSDK::RestoreResult
 ```
 
 **Parameters**:
 - `snapshot` - `Snapshot` object, hash, or JSON string
+- `preserve_system_prompts` - Boolean, default `false`
+  - `false` (default): Use current system prompts from agent definitions
+  - `true`: Use historical system prompts from snapshot
 
 **Returns**: `RestoreResult` object
 
 **Requirements**:
-- Swarm must have same configuration (agents, tools, prompts) as snapshot
-- Only conversation state is restored from snapshot
+- Swarm must have same agents (by name) as snapshot
+- With `preserve_system_prompts: false` (default):
+  - System prompts come from current config (YAML + SDK defaults + plugins)
+  - Allows prompt iteration without creating new sessions
+- With `preserve_system_prompts: true`:
+  - System prompts come from snapshot (historical)
+  - Exact reproducibility for debugging/auditing
 
 ### Snapshot.from_file
 

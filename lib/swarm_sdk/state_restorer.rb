@@ -11,23 +11,34 @@ module SwarmSDK
   # Handles configuration mismatches gracefully by skipping agents that
   # don't exist in the current swarm and returning warnings in RestoreResult.
   #
-  # @example Restore a swarm
-  #   swarm = SwarmSDK.build { ... }  # Same config as snapshot
+  # ## System Prompt Handling
+  #
+  # By default, system prompts are taken from the **current YAML configuration**,
+  # not from the snapshot. This makes configuration the source of truth and allows
+  # you to update system prompts without creating new sessions.
+  #
+  # Set `preserve_system_prompts: true` to use historical prompts from the snapshot
+  # (useful for debugging, auditing, or exact reproducibility).
+  #
+  # @example Restore with current system prompts (default)
+  #   swarm = SwarmSDK.build { ... }
   #   snapshot_data = JSON.parse(File.read("session.json"), symbolize_names: true)
   #   result = swarm.restore(snapshot_data)
-  #   if result.success?
-  #     puts "All agents restored"
-  #   else
-  #     puts result.summary
-  #   end
+  #   # Uses system prompts from current YAML config
+  #
+  # @example Restore with historical system prompts
+  #   result = swarm.restore(snapshot_data, preserve_system_prompts: true)
+  #   # Uses system prompts that were active when snapshot was created
   class StateRestorer
     # Initialize state restorer
     #
     # @param orchestration [Swarm, NodeOrchestrator] Swarm or orchestrator to restore into
     # @param snapshot [Snapshot, Hash, String] Snapshot object, hash, or JSON string
-    def initialize(orchestration, snapshot)
+    # @param preserve_system_prompts [Boolean] If true, use system prompts from snapshot instead of current config (default: false)
+    def initialize(orchestration, snapshot, preserve_system_prompts: false)
       @orchestration = orchestration
       @type = orchestration.is_a?(SwarmSDK::NodeOrchestrator) ? :node_orchestrator : :swarm
+      @preserve_system_prompts = preserve_system_prompts
 
       # Handle different input types
       @snapshot_data = case snapshot
@@ -134,7 +145,10 @@ module SwarmSDK
       delegation_instances&.each do |instance_name, _data|
         base_name, delegator_name = instance_name.split("@")
 
-        if restorable_agents.include?(base_name.to_sym) &&
+        # Delegation can be restored if:
+        # 1. The base agent exists in current configuration (may not be in snapshot as primary agent)
+        # 2. The delegator was a restorable primary agent from the snapshot
+        if current_agents.include?(base_name.to_sym) &&
             restorable_agents.include?(delegator_name.to_sym)
           restorable_delegations << instance_name
         else
@@ -204,17 +218,27 @@ module SwarmSDK
         snapshot_data = agents_data[agent_name] || agents_data[agent_name.to_s]
         next unless snapshot_data # Skip if agent not in snapshot (shouldn't happen due to validation)
 
-        # Restore system prompt if present in snapshot
-        # This overrides the system prompt from the agent definition, enabling
-        # true event-sourced restoration where the exact historical prompt is used
-        system_prompt = snapshot_data[:system_prompt] || snapshot_data["system_prompt"]
-        agent_chat.with_instructions(system_prompt) if system_prompt
-
-        # Clear existing messages
+        # Clear existing messages FIRST (before adding system prompt)
         messages = agent_chat.messages
         messages.clear
 
-        # Restore messages
+        # Determine which system prompt to use
+        # By default, use current prompt from YAML config (allows prompt iteration)
+        # With preserve_system_prompts: true, use historical prompt from snapshot
+        system_prompt = if @preserve_system_prompts
+          # Historical: Use prompt that was active when snapshot was created
+          snapshot_data[:system_prompt] || snapshot_data["system_prompt"]
+        else
+          # Current: Use prompt from current agent definition (default)
+          agent_definition = @orchestration.agent_definitions[agent_name]
+          agent_definition&.system_prompt
+        end
+
+        # Apply system prompt as system message
+        # NOTE: with_instructions adds a system message, so call AFTER clearing
+        agent_chat.with_instructions(system_prompt) if system_prompt
+
+        # Restore conversation messages (after system prompt)
         conversation = snapshot_data[:conversation] || snapshot_data["conversation"]
         conversation.each do |msg_data|
           message = deserialize_message(msg_data)
@@ -333,17 +357,30 @@ module SwarmSDK
         snapshot_data = delegations_data[instance_name.to_sym] || delegations_data[instance_name.to_s] || delegations_data[instance_name]
         next unless snapshot_data # Skip if delegation not in snapshot (shouldn't happen due to validation)
 
-        # Restore system prompt if present in snapshot
-        # This overrides the system prompt from the agent definition, enabling
-        # true event-sourced restoration where the exact historical prompt is used
-        system_prompt = snapshot_data[:system_prompt] || snapshot_data["system_prompt"]
-        delegation_chat.with_instructions(system_prompt) if system_prompt
-
-        # Clear existing messages
+        # Clear existing messages FIRST (before adding system prompt)
         messages = delegation_chat.messages
         messages.clear
 
-        # Restore messages
+        # Determine which system prompt to use
+        # Extract base agent name from delegation instance (e.g., "bob@jarvis" -> "bob")
+        base_name = instance_name.to_s.split("@").first.to_sym
+
+        # By default, use current prompt from YAML config (allows prompt iteration)
+        # With preserve_system_prompts: true, use historical prompt from snapshot
+        system_prompt = if @preserve_system_prompts
+          # Historical: Use prompt that was active when snapshot was created
+          snapshot_data[:system_prompt] || snapshot_data["system_prompt"]
+        else
+          # Current: Use prompt from current base agent definition (default)
+          agent_definition = @orchestration.agent_definitions[base_name]
+          agent_definition&.system_prompt
+        end
+
+        # Apply system prompt as system message
+        # NOTE: with_instructions adds a system message, so call AFTER clearing
+        delegation_chat.with_instructions(system_prompt) if system_prompt
+
+        # Restore conversation messages (after system prompt)
         conversation = snapshot_data[:conversation] || snapshot_data["conversation"]
         conversation.each do |msg_data|
           message = deserialize_message(msg_data)
