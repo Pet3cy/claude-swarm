@@ -301,7 +301,7 @@ flowchart TD
    **Pass 1: Create Agents**
    - Create `Agent::Chat` instance for each agent
    - Register explicit tools (from config)
-   - Register default tools (Read, Grep, Glob, Think, TodoWrite, etc.)
+   - Register default tools (Read, Grep, Glob)
    - Wrap tools with permissions validators
    - Connect to MCP servers for external tools
    - Initialize plugins (create memory storage if enabled)

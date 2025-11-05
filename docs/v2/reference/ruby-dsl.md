@@ -58,7 +58,7 @@ Global configuration that applies to all swarms.
 When `webfetch_provider` and `webfetch_model` are set, the WebFetch tool will process fetched web content using the configured LLM. Without this configuration, WebFetch returns raw markdown.
 
 **Filesystem Tools Security:**
-When `allow_filesystem_tools` is set to `false`, all filesystem tools (Read, Write, Edit, MultiEdit, Grep, Glob, Bash) are globally disabled across all swarms. This is a security boundary that cannot be overridden by swarm configurations. Non-filesystem tools (Think, TodoWrite, Clock, WebFetch, Scratchpad tools, Memory tools) continue to work normally.
+When `allow_filesystem_tools` is set to `false`, all filesystem tools (Read, Write, Edit, MultiEdit, Grep, Glob, Bash) are globally disabled across all swarms. This is a security boundary that cannot be overridden by swarm configurations. Non-filesystem tools (Scratchpad tools, Memory tools) continue to work normally.
 
 Use cases:
 - **Multi-tenant platforms**: Prevent user-provided swarms from accessing the filesystem
@@ -1275,7 +1275,7 @@ max_concurrent_tools 20  # Allow more parallelism
 
 ### disable_default_tools
 
-Include default tools (Read, Grep, Glob, TodoWrite, Think, and scratchpad tools).
+Include default tools (Read, Grep, Glob, and scratchpad tools).
 
 **Signature:**
 ```ruby

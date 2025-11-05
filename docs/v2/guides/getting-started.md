@@ -195,7 +195,7 @@ Tools are functions agents call to interact with the world. SwarmSDK provides:
 | **Per-Agent Memory** | MemoryWrite, MemoryRead, MemoryEdit, MemoryMultiEdit, MemoryGlob, MemoryGrep, MemoryDelete | Persistent learning and knowledge storage (opt-in) |
 | **Reasoning** | Think | Extended reasoning for complex problems |
 
-**Default tools**: Every agent automatically gets Read, Grep, Glob, TodoWrite, Think, WebFetch, and scratchpad tools (ScratchpadWrite, ScratchpadRead, ScratchpadList) unless you explicitly disable them with `disable_default_tools: true`.
+**Default tools**: Every agent automatically gets Read, Grep, Glob, and scratchpad tools (ScratchpadWrite, ScratchpadRead, ScratchpadList) unless you explicitly disable them with `disable_default_tools: true`.
 
 **Memory tools** are opt-in for learning agents that need persistent knowledge storage.
 

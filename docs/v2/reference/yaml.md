@@ -904,7 +904,7 @@ agents:
 
 **Type:** Boolean (optional)
 **Default:** `true`
-**Description:** Include default tools (Read, Grep, Glob, TodoWrite, Think, and scratchpad tools).
+**Description:** Include default tools (Read, Grep, Glob, and scratchpad tools).
 
 ```yaml
 agents:

@@ -144,11 +144,9 @@ module SwarmSDK
       assert(backend_instance, "Should have delegation instance")
 
       # Verify default tools are registered
-      assert(backend_instance.tools.key?(:Think), "Should have Think tool")
-      assert(backend_instance.tools.key?(:TodoWrite), "Should have TodoWrite tool")
-      assert(backend_instance.tools.key?(:Clock), "Should have Clock tool")
       assert(backend_instance.tools.key?(:Read), "Should have Read tool")
       assert(backend_instance.tools.key?(:Grep), "Should have Grep tool")
+      assert(backend_instance.tools.key?(:Glob), "Should have Glob tool")
     end
 
     # Test: Scratchpad tools registered for delegation instances

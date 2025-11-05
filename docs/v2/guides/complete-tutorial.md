@@ -631,8 +631,7 @@ WebFetch(url: "https://example.com/api-docs", prompt: "List all available API en
 agent :agent_name do
   description "..."
   model "gpt-4"
-  disable_default_tools [:Think, :WebFetch]  # Disable specific tools
-  # Or disable multiple: [:Think, :TodoWrite, :Grep]
+  disable_default_tools [:Read, :Grep]  # Disable specific tools
 end
 ```
 
@@ -678,8 +677,8 @@ end
 agent :selective_agent do
   description "Selective agent"
   model "gpt-4"
-  disable_default_tools [:Think, :TodoWrite]  # Disable these
-  # Still has: Read, Grep, Glob, Scratchpad tools
+  disable_default_tools [:Read, :Grep]  # Disable these
+  # Still has: Glob, Scratchpad tools
 end
 ```
 
