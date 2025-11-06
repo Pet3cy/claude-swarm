@@ -568,7 +568,7 @@ module SwarmSDK
       # @param error_class [String] Error class name
       # @param error_message [String] Error message
       # @param response_body [Object] Response body that failed to parse
-      def log_parse_error(error_class, error_message, response_body, error_backtrace=nil)
+      def log_parse_error(error_class, error_message, response_body, error_backtrace = nil)
         if @agent_name
           # Emit structured JSON log through LogStream
           LogStream.emit(
