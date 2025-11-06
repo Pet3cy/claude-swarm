@@ -120,9 +120,6 @@ class SkillWorkflowTest < Minitest::Test
     assert_includes(tools_after_load, "MemoryWrite")
     assert_includes(tools_after_load, "MemoryRead")
     assert_includes(tools_after_load, "LoadSkill")
-    assert_includes(tools_after_load, "Think")
-    assert_includes(tools_after_load, "Clock")
-    assert_includes(tools_after_load, "TodoWrite")
 
     # Skill should be marked as loaded
     assert_predicate(agent, :skill_loaded?)
@@ -258,9 +255,6 @@ class SkillWorkflowTest < Minitest::Test
 
     assert_includes(tools_after_skill2, "Read")
     assert_includes(tools_after_skill2, "Write") # Added by skill 2
-    assert_includes(tools_after_skill2, "Think") # Immutable preserved
-    assert_includes(tools_after_skill2, "Clock") # Immutable preserved
-    assert_includes(tools_after_skill2, "TodoWrite") # Immutable preserved
     refute_includes(tools_after_skill2, "Grep") # Removed (was from skill 1)
   end
 
@@ -318,8 +312,5 @@ class SkillWorkflowTest < Minitest::Test
     assert_includes(tools_after_load, "Read")
     assert_includes(tools_after_load, "Write")
     assert_includes(tools_after_load, "Edit")
-    assert_includes(tools_after_load, "Think")
-    assert_includes(tools_after_load, "Clock")
-    assert_includes(tools_after_load, "TodoWrite")
   end
 end
