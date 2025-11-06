@@ -102,6 +102,7 @@ module SwarmSDK
           :pre_tool_use,
           :post_tool_use,
           :user_prompt,
+          :agent_step,
           :agent_stop,
           :first_message,
           :pre_delegation,
