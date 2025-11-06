@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2025-11-06
+
 ### Fixed
 
 - **Snapshot Restoration Critical Bugs**: Fixed two critical bugs preventing proper state restoration
@@ -204,16 +206,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking: Default tools reduced to essential file operations only**
+  - **Old default tools**: Read, Grep, Glob, WebFetch, TodoWrite, Clock, Think
+  - **New default tools**: Read, Grep, Glob
+  - **Removed from defaults**: WebFetch, TodoWrite, Clock, Think
+  - **Rationale**: Follows principle of least privilege - users have complete control over agent capabilities
+  - **Migration**: Explicitly add removed tools if needed: `tools :Read, :Grep, :Glob, :WebFetch, :TodoWrite, :Clock, :Think`
+  - **Impact**: Agents will no longer have WebFetch, TodoWrite, Clock, or Think unless explicitly added
+  - **Documentation updated**: All guides and references now show correct default tools
+
 - **Breaking: Default delegation behavior changed**
   - **Old behavior**: Multiple agents delegating to same target shared conversation history
   - **New behavior**: Each delegator gets isolated instance with separate history (prevents context mixing)
   - **Migration**: Add `shared_across_delegations: true` to agents that need the old shared behavior
   - **Impact**: Existing swarms will see different behavior - agents no longer share delegation contexts by default
 
+- **Ruby version upgraded**: 3.4.2 → 3.4.5
+  - Updated `.ruby-version` file
+  - All dependencies compatible with Ruby 3.4.5
+
+- **RubyLLM upgraded**: 1.8.2 → 1.9.0
+  - Updated to latest RubyLLM gem version
+  - Updated ruby_llm-mcp integration
+  - Disabled MCP lazy loading for better compatibility
+  - See RubyLLM changelog for full details
+
 - **YAML Configuration Loading**: Improved YAML parsing and validation
   - **Stricter validation**: Required fields now validated earlier with better error messages
   - **Better error context**: Error messages include field paths and agent names
   - **Node workflow validation**: Full validation for node dependencies and transformers
+
+- **TodoWrite system reminders**: Only injected when TodoWrite tool is available
+  - Fixed bug where TodoWrite reminders appeared even when tool was disabled
+  - System reminders now conditional based on agent's actual toolset
+  - Cleaner agent output when TodoWrite is not needed
 
 ### Fixed
 
