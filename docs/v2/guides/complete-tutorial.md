@@ -395,7 +395,7 @@ agent :planner do
   description "Task planner"
   model "gpt-4"
   system_prompt "Plan and track work"
-  # TodoWrite included by default
+  tools :Read, :Grep, :Glob, :TodoWrite  # Add TodoWrite explicitly
 end
 ```
 
@@ -538,7 +538,7 @@ agent :problem_solver do
   description "Problem solver"
   model "gpt-4"
   system_prompt "Use the Think tool frequently to reason through problems"
-  # Think included by default
+  tools :Read, :Grep, :Glob, :Think  # Add Think explicitly
 end
 ```
 
@@ -585,7 +585,7 @@ agent :researcher do
   description "Web researcher"
   model "gpt-4"
   system_prompt "Research information from web sources"
-  # WebFetch included by default
+  tools :Read, :Grep, :Glob, :WebFetch  # Add WebFetch explicitly
 end
 ```
 

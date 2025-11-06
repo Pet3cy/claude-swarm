@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.3] - 2025-11-06
+
 ### Added
 
 - **Memory Read Tracking in Events**: MemoryRead tool now includes digest in tool_result events
