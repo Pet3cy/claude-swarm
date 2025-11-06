@@ -104,5 +104,110 @@ module SwarmSDK
 
       assert_same(emitter, LogStream.emitter)
     end
+
+    # Test thread safety: simulates concurrent requests in Puma
+    # Each thread should have its own isolated emitter (no cross-thread contamination)
+    def test_concurrent_threads_have_isolated_emitters
+      thread_count = 5
+      events_per_thread = 10
+
+      # Create separate emitters for each thread
+      emitters = thread_count.times.map { MockEmitter.new }
+
+      # Simulate concurrent requests (like Puma thread pool)
+      threads = thread_count.times.map do |i|
+        Thread.new do
+          # Each thread sets its own emitter (simulating swarm.execute with block)
+          LogStream.emitter = emitters[i]
+
+          # Verify emitter is correctly set for this thread
+          assert_same(
+            emitters[i],
+            LogStream.emitter,
+            "Thread #{i} should have its own emitter",
+          )
+
+          # Emit multiple events
+          events_per_thread.times do |j|
+            LogStream.emit(
+              type: "test_event",
+              thread_id: i,
+              event_number: j,
+              message: "Thread #{i}, Event #{j}",
+            )
+
+            # Small random sleep to increase chance of interleaving
+            sleep(rand * 0.01)
+          end
+
+          # Cleanup (simulating swarm.execute ensure block)
+          LogStream.reset!
+        end
+      end
+
+      # Wait for all threads to complete
+      threads.each(&:join)
+
+      # After threads complete, verify each emitter received exactly its own events
+      thread_count.times do |i|
+        emitter = emitters[i]
+
+        assert_equal(
+          events_per_thread,
+          emitter.events.size,
+          "Thread #{i}'s emitter should have received exactly #{events_per_thread} events",
+        )
+
+        # Verify all events belong to this thread
+        emitter.events.each_with_index do |event, j|
+          assert_equal(
+            i,
+            event[:thread_id],
+            "Event #{j} in thread #{i}'s emitter should have thread_id=#{i}",
+          )
+          assert_equal(
+            j,
+            event[:event_number],
+            "Event #{j} in thread #{i}'s emitter should have event_number=#{j}",
+          )
+        end
+
+        # Verify no cross-thread contamination
+        # (emitter should only have events from its own thread)
+        thread_ids = emitter.events.map { |e| e[:thread_id] }.uniq
+
+        assert_equal(
+          [i],
+          thread_ids,
+          "Emitter #{i} should only have events from thread #{i}, but had: #{thread_ids}",
+        )
+      end
+    end
+
+    # Test that child fibers inherit parent's emitter
+    def test_child_fibers_inherit_emitter
+      emitter = MockEmitter.new
+      LogStream.emitter = emitter
+
+      # Emit from parent fiber
+      LogStream.emit(type: "parent_event", source: "parent")
+
+      # Create child fiber and emit
+      Async do
+        # Child fiber should inherit parent's emitter
+        assert_same(
+          emitter,
+          LogStream.emitter,
+          "Child fiber should inherit parent's emitter",
+        )
+
+        LogStream.emit(type: "child_event", source: "child")
+      end.wait
+
+      # Both events should be in the same emitter
+      assert_equal(2, emitter.events.size)
+      assert_equal("parent", emitter.events[0][:source])
+      assert_equal("child", emitter.events[1][:source])
+    end
   end
 end
