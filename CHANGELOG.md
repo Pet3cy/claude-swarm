@@ -1,6 +1,12 @@
 ## [1.0.6]
 
 ### Fixed
+- **Fixed thread safety issue in SwarmSDK LogStream**: Fixed race condition in multi-threaded environments (Puma, Sidekiq)
+  - Moved LogStream emitter from class instance variable to Fiber storage for per-request isolation
+  - Each thread/request now has its own isolated emitter instance
+  - Prevents cross-thread contamination where events from one request could be sent to another request's emitter
+  - Child fibers correctly inherit the parent's emitter within the same request
+  - Added comprehensive multi-threading tests to catch similar issues
 - **Fixed Ruby environment variable conflicts in MCP servers**: Removed RUBYOPT and RUBYLIB from MCP server configurations to prevent Bundler interference
   - MCP servers no longer inherit RUBYOPT and RUBYLIB environment variables from the parent process
   - Also removed BUNDLE_* environment variables to ensure MCP servers use the system-installed gem
