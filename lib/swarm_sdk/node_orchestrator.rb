@@ -18,17 +18,17 @@ module SwarmSDK
   #   )
   #   result = orchestrator.execute("Build auth system")
   class NodeOrchestrator
-    attr_reader :swarm_name, :nodes, :start_node, :agent_definitions, :agent_instance_cache
+    attr_reader :swarm_name, :nodes, :start_node, :agent_definitions, :agent_instance_cache, :scratchpad
     attr_writer :swarm_id, :config_for_hooks
     attr_accessor :swarm_registry_config
 
-    def initialize(swarm_name:, agent_definitions:, nodes:, start_node:, swarm_id: nil, scratchpad_enabled: true, allow_filesystem_tools: nil)
+    def initialize(swarm_name:, agent_definitions:, nodes:, start_node:, swarm_id: nil, scratchpad: :enabled, allow_filesystem_tools: nil)
       @swarm_name = swarm_name
       @swarm_id = swarm_id
       @agent_definitions = agent_definitions
       @nodes = nodes
       @start_node = start_node
-      @scratchpad_enabled = scratchpad_enabled
+      @scratchpad = normalize_scratchpad_mode(scratchpad)
       @allow_filesystem_tools = allow_filesystem_tools
       @swarm_registry_config = [] # External swarms config (if using composable swarms)
       @agent_instance_cache = {
@@ -36,12 +36,94 @@ module SwarmSDK
         delegations: {}, # { "delegate@delegator" => Agent::Chat }
       }
 
+      # Initialize scratchpad storage based on mode
+      case @scratchpad
+      when :enabled
+        # Enabled mode: single scratchpad shared across all nodes
+        @shared_scratchpad_storage = Tools::Stores::ScratchpadStorage.new
+        @node_scratchpads = nil
+      when :per_node
+        # Per-node mode: separate scratchpad per node (lazy initialized)
+        @shared_scratchpad_storage = nil
+        @node_scratchpads = {}
+      when :disabled
+        # Disabled: no storage at all
+        @shared_scratchpad_storage = nil
+        @node_scratchpads = nil
+      end
+
       validate!
       @execution_order = build_execution_order
     end
 
     # Alias for compatibility with Swarm interface
     alias_method :name, :swarm_name
+
+    # Get scratchpad storage for a specific node
+    #
+    # Returns the appropriate scratchpad based on mode:
+    # - :enabled - returns the shared scratchpad (same for all nodes)
+    # - :per_node - returns node-specific scratchpad (lazy initialized)
+    # - :disabled - returns nil
+    #
+    # @param node_name [Symbol] Node name
+    # @return [Tools::Stores::ScratchpadStorage, nil] Scratchpad instance or nil if disabled
+    def scratchpad_for(node_name)
+      case @scratchpad
+      when :enabled
+        @shared_scratchpad_storage
+      when :per_node
+        # Lazy initialization per node
+        @node_scratchpads[node_name] ||= Tools::Stores::ScratchpadStorage.new
+      when :disabled
+        nil
+      end
+    end
+
+    # Get all scratchpad storages (for snapshot/restore)
+    #
+    # @return [Hash] { :shared => scratchpad } or { node_name => scratchpad }
+    def all_scratchpads
+      case @scratchpad
+      when :enabled
+        { shared: @shared_scratchpad_storage }
+      when :per_node
+        @node_scratchpads.dup
+      when :disabled
+        {}
+      end
+    end
+
+    # Check if scratchpad is enabled
+    #
+    # @return [Boolean]
+    def scratchpad_enabled?
+      @scratchpad != :disabled
+    end
+
+    # Check if scratchpad is shared between nodes (enabled mode)
+    #
+    # @return [Boolean]
+    def shared_scratchpad?
+      @scratchpad == :enabled
+    end
+
+    # Check if scratchpad is per-node
+    #
+    # @return [Boolean]
+    def per_node_scratchpad?
+      @scratchpad == :per_node
+    end
+
+    # Backward compatibility accessor
+    #
+    # @return [Tools::Stores::ScratchpadStorage, nil]
+    def shared_scratchpad_storage
+      if @scratchpad == :per_node
+        RubyLLM.logger.warn("NodeOrchestrator: Accessing shared_scratchpad_storage in per-node mode. Use scratchpad_for(node_name) instead.")
+      end
+      @shared_scratchpad_storage
+    end
 
     # Return the lead agent of the start node for CLI compatibility
     #
@@ -255,16 +337,18 @@ module SwarmSDK
 
     # Create snapshot of current workflow state
     #
-    # Returns a Snapshot object containing agent conversations and context state
-    # from all nodes that have been executed. The snapshot captures the state of
-    # agents in the agent_instance_cache (both primary and delegation instances).
+    # Returns a Snapshot object containing agent conversations, context state,
+    # and scratchpad data from all nodes that have been executed. The snapshot
+    # captures the state of agents in the agent_instance_cache (both primary and
+    # delegation instances), as well as scratchpad storage.
     #
     # Configuration (agent definitions, nodes, transformers) stays in your code
     # and is NOT included in snapshots.
     #
-    # NOTE: For NodeOrchestrator, scratchpad is NOT snapshotted because each
-    # mini-swarm creates its own fresh scratchpad per node execution. There is
-    # no persistent scratchpad state to snapshot.
+    # Scratchpad behavior depends on scratchpad mode:
+    # - :enabled (default): single scratchpad shared across all nodes
+    # - :per_node: separate scratchpad per node
+    # - :disabled: no scratchpad data
     #
     # @return [Snapshot] Snapshot object with convenient serialization methods
     #
@@ -440,7 +524,10 @@ module SwarmSDK
     # For agents with reset_context: false, injects cached instances
     # to preserve conversation history across nodes.
     #
-    # Inherits scratchpad_enabled setting from NodeOrchestrator.
+    # Scratchpad behavior depends on mode:
+    # - :enabled - all nodes use the same scratchpad instance
+    # - :per_node - each node gets its own scratchpad instance
+    # - :disabled - no scratchpad
     #
     # @param node [Node::Builder] Node configuration
     # @return [Swarm] Configured swarm instance
@@ -452,7 +539,8 @@ module SwarmSDK
         name: "#{@swarm_name}:#{node.name}",
         swarm_id: node_swarm_id,
         parent_swarm_id: @swarm_id,
-        scratchpad_enabled: @scratchpad_enabled,
+        scratchpad: scratchpad_for(node.name),
+        scratchpad_mode: :enabled, # Mini-swarms always use enabled (scratchpad instance passed in)
         allow_filesystem_tools: @allow_filesystem_tools,
       )
 
@@ -469,12 +557,13 @@ module SwarmSDK
       node.agent_configs.each do |config|
         agent_name = config[:agent]
         delegates_to = config[:delegates_to]
+        tools_override = config[:tools]
 
         # Get global agent definition
         agent_def = @agent_definitions[agent_name]
 
-        # Clone definition with node-specific delegation
-        node_specific_def = clone_with_delegation(agent_def, delegates_to)
+        # Clone definition with node-specific overrides
+        node_specific_def = clone_agent_for_node(agent_def, delegates_to, tools_override)
 
         swarm.add_agent(node_specific_def)
       end
@@ -488,14 +577,20 @@ module SwarmSDK
       swarm
     end
 
-    # Clone an agent definition with different delegates_to
+    # Clone an agent definition with node-specific overrides
+    #
+    # Allows overriding delegation and tools per node. This enables:
+    # - Different delegation topology per node
+    # - Different tool sets per workflow stage
     #
     # @param agent_def [Agent::Definition] Original definition
     # @param delegates_to [Array<Symbol>] New delegation targets
-    # @return [Agent::Definition] Cloned definition
-    def clone_with_delegation(agent_def, delegates_to)
+    # @param tools [Array<Symbol>, nil] Tool override (nil = use global agent definition)
+    # @return [Agent::Definition] Cloned definition with overrides
+    def clone_agent_for_node(agent_def, delegates_to, tools)
       config = agent_def.to_h
       config[:delegates_to] = delegates_to
+      config[:tools] = tools if tools # Only override if explicitly set
       Agent::Definition.new(agent_def.name, config)
     end
 
@@ -737,6 +832,26 @@ module SwarmSDK
       agent_def.delegates_to.any? do |delegate_name|
         delegation_key = "#{delegate_name}@#{agent_name}"
         @agent_instance_cache[:delegations][delegation_key]
+      end
+    end
+
+    # Normalize scratchpad mode parameter
+    #
+    # Accepts symbols: :enabled, :per_node, or :disabled
+    #
+    # @param value [Symbol, String] Scratchpad mode (strings from YAML converted to symbols)
+    # @return [Symbol] Normalized mode (:enabled, :per_node, or :disabled)
+    # @raise [ArgumentError] If value is invalid
+    def normalize_scratchpad_mode(value)
+      # Convert strings from YAML to symbols
+      value = value.to_sym if value.is_a?(String)
+
+      case value
+      when :enabled, :per_node, :disabled
+        value
+      else
+        raise ArgumentError,
+          "Invalid scratchpad mode: #{value.inspect}. Use :enabled, :per_node, or :disabled"
       end
     end
   end

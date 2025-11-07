@@ -43,8 +43,8 @@ module SwarmSDK
 
       # Configure an agent for this node
       #
-      # Returns an AgentConfig object that supports fluent delegation syntax.
-      # If delegates_to is not called, the agent is registered with no delegation.
+      # Returns an AgentConfig object that supports fluent delegation and tool override syntax.
+      # If delegates_to/tools are not called, the agent uses global configuration.
       #
       # By default, agents get fresh context in each node (reset_context: true).
       # Set reset_context: false to preserve conversation history across nodes.
@@ -61,12 +61,18 @@ module SwarmSDK
       #
       # @example Preserve context across nodes
       #   agent(:architect, reset_context: false)
+      #
+      # @example Override tools for this node
+      #   agent(:backend).tools(:Read, :Think)
+      #
+      # @example Combine delegation and tools
+      #   agent(:backend).delegates_to(:tester).tools(:Read, :Edit, :Write)
       def agent(name, reset_context: true)
         config = AgentConfig.new(name, self, reset_context: reset_context)
 
-        # Register immediately with empty delegation
-        # If delegates_to is called later, it will update this
-        register_agent(name, [], reset_context)
+        # Register immediately with empty delegation and no tool override
+        # If delegates_to/tools are called later, they will update this
+        register_agent(name, [], reset_context, nil)
 
         config
       end
@@ -76,18 +82,25 @@ module SwarmSDK
       # @param agent_name [Symbol] Agent name
       # @param delegates_to [Array<Symbol>] Delegation targets
       # @param reset_context [Boolean] Whether to reset agent context
+      # @param tools [Array<Symbol>, nil] Tool override for this node (nil = use global)
       # @return [void]
-      def register_agent(agent_name, delegates_to, reset_context = true)
+      def register_agent(agent_name, delegates_to, reset_context = true, tools = nil)
         # Check if agent already registered
         existing = @agent_configs.find { |ac| ac[:agent] == agent_name }
 
         if existing
-          # Update delegation and reset_context (happens when delegates_to is called after agent())
+          # Update delegation, reset_context, and tools (happens when methods are called after agent())
           existing[:delegates_to] = delegates_to
           existing[:reset_context] = reset_context
+          existing[:tools] = tools unless tools.nil?
         else
           # Add new agent configuration
-          @agent_configs << { agent: agent_name, delegates_to: delegates_to, reset_context: reset_context }
+          @agent_configs << {
+            agent: agent_name,
+            delegates_to: delegates_to,
+            reset_context: reset_context,
+            tools: tools,
+          }
         end
       end
 
@@ -154,32 +167,36 @@ module SwarmSDK
       #     "Implement based on:\nPlan: #{plan}\nDesign: #{design}"
       #   end
       #
-      # @example Skip execution (caching)
+      # @example Skip execution (caching) - using return
       #   input do |ctx|
       #     cached = check_cache(ctx.content)
       #     return ctx.skip_execution(content: cached) if cached
       #     ctx.content
       #   end
       #
-      # @example Halt workflow (validation)
+      # @example Halt workflow (validation) - using return
       #   input do |ctx|
       #     if ctx.content.length > 10000
-      #       # Halt entire workflow
+      #       # Halt entire workflow - return works safely!
       #       return ctx.halt_workflow(content: "ERROR: Input too long")
       #     end
       #     ctx.content
       #   end
       #
-      # @example Jump to different node (conditional routing)
+      # @example Jump to different node (conditional routing) - using return
       #   input do |ctx|
       #     if ctx.content.include?("NEEDS_REVIEW")
-      #       # Jump to review node instead
+      #       # Jump to review node instead - return works safely!
       #       return ctx.goto_node(:review, content: ctx.content)
       #     end
       #     ctx.content
       #   end
+      #
+      # @note The input block is automatically converted to a lambda, which means
+      #   return statements work safely and only exit the transformer, not the
+      #   entire program. This allows natural control flow patterns.
       def input(&block)
-        @input_transformer = block
+        @input_transformer = ProcHelpers.to_lambda(block)
       end
 
       # Set input transformer as bash command (YAML API)
@@ -234,22 +251,26 @@ module SwarmSDK
       #     "Task: #{ctx.original_prompt}\nResult: #{ctx.content}"
       #   end
       #
-      # @example Halt workflow (convergence check)
+      # @example Halt workflow (convergence check) - using return
       #   output do |ctx|
       #     return ctx.halt_workflow(content: ctx.content) if converged?(ctx.content)
       #     ctx.content
       #   end
       #
-      # @example Jump to different node (conditional routing)
+      # @example Jump to different node (conditional routing) - using return
       #   output do |ctx|
       #     if needs_revision?(ctx.content)
-      #       # Go back to revision node
+      #       # Go back to revision node - return works safely!
       #       return ctx.goto_node(:revision, content: ctx.content)
       #     end
       #     ctx.content
       #   end
+      #
+      # @note The output block is automatically converted to a lambda, which means
+      #   return statements work safely and only exit the transformer, not the
+      #   entire program. This allows natural control flow patterns.
       def output(&block)
-        @output_transformer = block
+        @output_transformer = ProcHelpers.to_lambda(block)
       end
 
       # Set output transformer as bash command (YAML API)

@@ -306,7 +306,7 @@ module SwarmMemory
         storage = @storages[base_name] # ← Changed from agent_name to base_name
 
         return [] unless storage&.semantic_index
-        return [] if prompt.empty?
+        return [] if prompt.nil? || prompt.empty?
 
         # Adaptive threshold based on query length
         # Short queries use lower threshold as they have less semantic richness

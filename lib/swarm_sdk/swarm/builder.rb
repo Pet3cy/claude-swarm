@@ -54,7 +54,7 @@ module SwarmSDK
         @swarm_registry_config = [] # NEW - stores register() calls for composable swarms
         @nodes = {}
         @start_node = nil
-        @scratchpad_enabled = true # Default: enabled
+        @scratchpad = :enabled # Default: enabled (shared for nodes, just enabled for non-nodes)
         @allow_filesystem_tools = allow_filesystem_tools
       end
 
@@ -75,11 +75,14 @@ module SwarmSDK
         @lead_agent = agent_name
       end
 
-      # Enable or disable shared scratchpad
+      # Configure scratchpad mode
       #
-      # @param enabled [Boolean] Whether to enable scratchpad tools
-      def use_scratchpad(enabled)
-        @scratchpad_enabled = enabled
+      # For NodeOrchestrator: :enabled (shared across nodes), :per_node (isolated), or :disabled
+      # For regular Swarm: :enabled or :disabled
+      #
+      # @param mode [Symbol, Boolean] Scratchpad mode
+      def scratchpad(mode)
+        @scratchpad = mode
       end
 
       # Register external swarms for composable swarms
@@ -242,6 +245,26 @@ module SwarmSDK
 
       private
 
+      # Normalize scratchpad mode parameter
+      #
+      # Accepts symbols: :enabled, :per_node, or :disabled
+      #
+      # @param value [Symbol, String] Scratchpad mode (strings from YAML converted to symbols)
+      # @return [Symbol] Normalized mode (:enabled, :per_node, or :disabled)
+      # @raise [ConfigurationError] If value is invalid
+      def normalize_scratchpad_mode(value)
+        # Convert strings from YAML to symbols
+        value = value.to_sym if value.is_a?(String)
+
+        case value
+        when :enabled, :per_node, :disabled
+          value
+        else
+          raise ConfigurationError,
+            "Invalid scratchpad mode: #{value.inspect}. Use :enabled, :per_node, or :disabled"
+        end
+      end
+
       # Check if a string is markdown content (has frontmatter)
       #
       # @param str [String] String to check
@@ -350,7 +373,7 @@ module SwarmSDK
         swarm = Swarm.new(
           name: @swarm_name,
           swarm_id: @swarm_id,
-          scratchpad_enabled: @scratchpad_enabled,
+          scratchpad_mode: @scratchpad,
           allow_filesystem_tools: @allow_filesystem_tools,
         )
 
@@ -431,7 +454,7 @@ module SwarmSDK
           agent_definitions: agent_definitions,
           nodes: @nodes,
           start_node: @start_node,
-          scratchpad_enabled: @scratchpad_enabled,
+          scratchpad: @scratchpad,
           allow_filesystem_tools: @allow_filesystem_tools,
         )
 

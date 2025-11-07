@@ -49,8 +49,8 @@ module SwarmSDK
         memory_read_tracking: snapshot_memory_read_tracking,
       }
 
-      # Add scratchpad (Swarm only - NodeOrchestrator doesn't have persistent scratchpad)
-      data[:scratchpad] = snapshot_scratchpad unless @type == :node_orchestrator
+      # Add scratchpad for both Swarm and NodeOrchestrator (shared across nodes)
+      data[:scratchpad] = snapshot_scratchpad
 
       # Add type-specific metadata
       if @type == :swarm
@@ -223,17 +223,78 @@ module SwarmSDK
       result
     end
 
-    # Snapshot scratchpad contents (Swarm only)
+    # Snapshot scratchpad contents
     #
-    # @return [Hash] { path => { content:, title:, updated_at:, size: } }
+    # For Swarm: uses scratchpad_storage (returns flat hash)
+    # For NodeOrchestrator: returns structured hash with metadata
+    #   - Enabled mode: { shared: true, data: { path => entry } }
+    #   - Per-node mode: { shared: false, data: { node_name => { path => entry } } }
+    #
+    # @return [Hash] Scratchpad snapshot data
     def snapshot_scratchpad
-      return {} if @type == :node_orchestrator
+      if @type == :node_orchestrator
+        snapshot_node_orchestrator_scratchpad
+      else
+        snapshot_swarm_scratchpad
+      end
+    end
 
+    # Snapshot scratchpad for NodeOrchestrator
+    #
+    # @return [Hash] Structured scratchpad data with mode metadata
+    def snapshot_node_orchestrator_scratchpad
+      all_scratchpads = @orchestration.all_scratchpads
+      return {} unless all_scratchpads&.any?
+
+      if @orchestration.shared_scratchpad?
+        # Enabled mode: single shared scratchpad
+        shared_scratchpad = all_scratchpads[:shared]
+        return {} unless shared_scratchpad
+
+        entries = serialize_scratchpad_entries(shared_scratchpad.all_entries)
+        return {} if entries.empty?
+
+        {
+          shared: true,
+          data: entries,
+        }
+      else
+        # Per-node mode: separate scratchpads per node
+        node_data = {}
+        all_scratchpads.each do |node_name, scratchpad|
+          next unless scratchpad
+
+          entries = serialize_scratchpad_entries(scratchpad.all_entries)
+          node_data[node_name.to_s] = entries unless entries.empty?
+        end
+
+        return {} if node_data.empty?
+
+        {
+          shared: false,
+          data: node_data,
+        }
+      end
+    end
+
+    # Snapshot scratchpad for Swarm
+    #
+    # @return [Hash] Flat scratchpad entries
+    def snapshot_swarm_scratchpad
       scratchpad = @orchestration.scratchpad_storage
       return {} unless scratchpad
 
-      # Use new public API: all_entries returns { path => Entry }
       entries_hash = scratchpad.all_entries
+      return {} unless entries_hash&.any?
+
+      serialize_scratchpad_entries(entries_hash)
+    end
+
+    # Serialize scratchpad entries to snapshot format
+    #
+    # @param entries_hash [Hash] { path => Entry }
+    # @return [Hash] { path => { content:, title:, updated_at:, size: } }
+    def serialize_scratchpad_entries(entries_hash)
       return {} unless entries_hash
 
       result = {}
@@ -241,11 +302,10 @@ module SwarmSDK
         result[path] = {
           content: entry.content,
           title: entry.title,
-          updated_at: entry.updated_at.iso8601, # Serialize Time as ISO8601 string
+          updated_at: entry.updated_at.iso8601,
           size: entry.size,
         }
       end
-
       result
     end
 

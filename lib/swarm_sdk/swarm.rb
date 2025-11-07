@@ -75,7 +75,7 @@ module SwarmSDK
     #
     # @return [Boolean]
     def scratchpad_enabled?
-      @scratchpad_enabled
+      @scratchpad_mode == :enabled
     end
     attr_writer :config_for_hooks
 
@@ -132,16 +132,19 @@ module SwarmSDK
     # @param parent_swarm_id [String, nil] Optional parent swarm ID (nil for root swarms)
     # @param global_concurrency [Integer] Max concurrent LLM calls across entire swarm
     # @param default_local_concurrency [Integer] Default max concurrent tool calls per agent
-    # @param scratchpad [Tools::Stores::Scratchpad, nil] Optional scratchpad instance (for testing)
-    # @param scratchpad_enabled [Boolean] Whether to enable scratchpad tools (default: true)
+    # @param scratchpad [Tools::Stores::Scratchpad, nil] Optional scratchpad instance (for testing/internal use)
+    # @param scratchpad_mode [Symbol, String] Scratchpad mode (:enabled or :disabled). :per_node not allowed for non-node swarms.
     # @param allow_filesystem_tools [Boolean, nil] Whether to allow filesystem tools (nil uses global setting)
-    def initialize(name:, swarm_id: nil, parent_swarm_id: nil, global_concurrency: DEFAULT_GLOBAL_CONCURRENCY, default_local_concurrency: DEFAULT_LOCAL_CONCURRENCY, scratchpad: nil, scratchpad_enabled: true, allow_filesystem_tools: nil)
+    def initialize(name:, swarm_id: nil, parent_swarm_id: nil, global_concurrency: DEFAULT_GLOBAL_CONCURRENCY, default_local_concurrency: DEFAULT_LOCAL_CONCURRENCY, scratchpad: nil, scratchpad_mode: :enabled, allow_filesystem_tools: nil)
       @name = name
       @swarm_id = swarm_id || generate_swarm_id(name)
       @parent_swarm_id = parent_swarm_id
       @global_concurrency = global_concurrency
       @default_local_concurrency = default_local_concurrency
-      @scratchpad_enabled = scratchpad_enabled
+
+      # Handle scratchpad_mode parameter
+      # For Swarm: :enabled or :disabled (not :per_node - that's for nodes)
+      @scratchpad_mode = validate_swarm_scratchpad_mode(scratchpad_mode)
 
       # Resolve allow_filesystem_tools with priority:
       # 1. Explicit parameter (if not nil)
@@ -162,8 +165,12 @@ module SwarmSDK
       @global_semaphore = Async::Semaphore.new(@global_concurrency)
 
       # Shared scratchpad storage for all agents (volatile)
-      # Use provided scratchpad storage (for testing) or create volatile one
-      @scratchpad_storage = scratchpad || Tools::Stores::ScratchpadStorage.new
+      # Use provided scratchpad storage (for testing) or create volatile one based on mode
+      @scratchpad_storage = if scratchpad
+        scratchpad # Testing/internal use - explicit instance provided
+      elsif @scratchpad_mode == :enabled
+        Tools::Stores::ScratchpadStorage.new
+      end
 
       # Per-agent plugin storages (persistent)
       # Format: { plugin_name => { agent_name => storage } }
@@ -699,6 +706,32 @@ module SwarmSDK
     attr_writer :swarm_registry
 
     private
+
+    # Validate and normalize scratchpad mode for Swarm
+    #
+    # Regular Swarms support :enabled or :disabled.
+    # Rejects :per_node since it only makes sense for NodeOrchestrator with multiple nodes.
+    #
+    # @param value [Symbol, String] Scratchpad mode (strings from YAML converted to symbols)
+    # @return [Symbol] :enabled or :disabled
+    # @raise [ArgumentError] If :per_node used, or invalid value
+    def validate_swarm_scratchpad_mode(value)
+      # Convert strings from YAML to symbols
+      value = value.to_sym if value.is_a?(String)
+
+      case value
+      when :enabled, :disabled
+        value
+      when :per_node
+        raise ArgumentError,
+          "scratchpad: :per_node is only valid for NodeOrchestrator with nodes. " \
+            "For regular Swarms, use :enabled or :disabled."
+      else
+        raise ArgumentError,
+          "Invalid scratchpad mode for Swarm: #{value.inspect}. " \
+            "Use :enabled or :disabled."
+      end
+    end
 
     # Generate a unique swarm ID from name
     #

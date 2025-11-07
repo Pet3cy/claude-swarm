@@ -575,20 +575,55 @@ module SwarmSDK
       assert_equal(scratchpad_data, mock_scratchpad.restored_entries)
     end
 
-    def test_restore_scratchpad_node_orchestrator_skips
-      scratchpad_data = [{ id: "1", title: "Item" }]
+    def test_restore_scratchpad_node_orchestrator_enabled_mode
+      scratchpad_data = {
+        shared: true,
+        data: { "path1" => { "content" => "data", "title" => "Item" } },
+      }
       snapshot_data = create_valid_snapshot_hash(
         agents: [:alice],
         scratchpad: scratchpad_data,
       )
-      snapshot_data[:type] = :node_orchestrator
-      mock_node_orch = create_mock_node_orchestrator(agents: [:alice])
+      snapshot_data[:type] = "node_orchestrator"
+      mock_node_orch = create_mock_node_orchestrator(agents: [:alice], scratchpad: :enabled)
+      mock_scratchpad = MockScratchpadStorage.new
+      mock_node_orch.setup_scratchpad_for(:planning, mock_scratchpad)
 
       restorer = StateRestorer.new(mock_node_orch, snapshot_data)
       result = restorer.restore
 
       assert_kind_of(RestoreResult, result)
-      # Should succeed without trying to restore scratchpad
+      # Should restore scratchpad for NodeOrchestrator (enabled/shared across nodes)
+      assert_equal(scratchpad_data[:data], mock_scratchpad.restored_entries)
+    end
+
+    def test_restore_scratchpad_node_orchestrator_per_node_mode
+      scratchpad_data = {
+        shared: false,
+        data: {
+          "planning" => { "path1" => { "content" => "plan data", "title" => "Plan" } },
+          "implementation" => { "path2" => { "content" => "impl data", "title" => "Impl" } },
+        },
+      }
+      snapshot_data = create_valid_snapshot_hash(
+        agents: [:alice],
+        scratchpad: scratchpad_data,
+      )
+      snapshot_data[:type] = "node_orchestrator"
+      mock_node_orch = create_mock_node_orchestrator(agents: [:alice], scratchpad: :per_node)
+
+      planning_scratchpad = MockScratchpadStorage.new
+      impl_scratchpad = MockScratchpadStorage.new
+      mock_node_orch.setup_scratchpad_for(:planning, planning_scratchpad)
+      mock_node_orch.setup_scratchpad_for(:implementation, impl_scratchpad)
+
+      restorer = StateRestorer.new(mock_node_orch, snapshot_data)
+      result = restorer.restore
+
+      assert_kind_of(RestoreResult, result)
+      # Should restore separate scratchpads for each node
+      assert_equal(scratchpad_data[:data]["planning"], planning_scratchpad.restored_entries)
+      assert_equal(scratchpad_data[:data]["implementation"], impl_scratchpad.restored_entries)
     end
 
     def test_restore_scratchpad_empty
@@ -1006,8 +1041,8 @@ module SwarmSDK
       MockSwarm.new(agents: agents, system_prompt: system_prompt)
     end
 
-    def create_mock_node_orchestrator(agents: [])
-      MockNodeOrchestrator.new(agents: agents)
+    def create_mock_node_orchestrator(agents: [], scratchpad: :enabled)
+      MockNodeOrchestrator.new(agents: agents, scratchpad: scratchpad)
     end
 
     # Mock Classes for testing
@@ -1021,7 +1056,7 @@ module SwarmSDK
     end
 
     class MockNodeOrchestrator
-      attr_reader :agent_instance_cache
+      attr_reader :agent_instance_cache, :scratchpad, :start_node
 
       # Identify as NodeOrchestrator for type detection
       def is_a?(klass)
@@ -1036,12 +1071,15 @@ module SwarmSDK
         super
       end
 
-      def initialize(agents: [])
+      def initialize(agents: [], scratchpad: :enabled)
         @agent_defs = {}
         @agent_instance_cache = {
           primary: {},
           delegations: {},
         }
+        @scratchpad = scratchpad
+        @start_node = :planning # Default for tests
+        @scratchpads = {} # { node_name => scratchpad }
 
         agents.each do |agent_name|
           @agent_defs[agent_name] = MockAgentDef.new("Test prompt")
@@ -1050,6 +1088,41 @@ module SwarmSDK
 
       def agent_definitions
         @agent_defs
+      end
+
+      def shared_scratchpad?
+        @scratchpad == :enabled
+      end
+
+      # Setup a scratchpad for a specific node (for testing)
+      def setup_scratchpad_for(node_name, scratchpad)
+        @scratchpads[node_name] = scratchpad
+      end
+
+      # Get scratchpad for a specific node
+      def scratchpad_for(node_name)
+        @scratchpads[node_name]
+      end
+
+      # Get all scratchpads (for snapshot)
+      def all_scratchpads
+        case @scratchpad
+        when :enabled
+          { shared: @scratchpads[@start_node] }
+        when :per_node
+          @scratchpads.dup
+        when :disabled
+          {}
+        end
+      end
+
+      # Backward compatibility
+      def shared_scratchpad_storage
+        @scratchpads[@start_node]
+      end
+
+      def shared_scratchpad_storage=(scratchpad)
+        @scratchpads[@start_node] = scratchpad
       end
     end
 

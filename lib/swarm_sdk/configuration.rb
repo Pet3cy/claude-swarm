@@ -99,7 +99,7 @@ module SwarmSDK
       builder.id(@swarm_id) if @swarm_id
       builder.name(@swarm_name)
       builder.lead(@lead_agent)
-      builder.use_scratchpad(@scratchpad_enabled)
+      builder.scratchpad(@scratchpad_mode)
 
       # Translate external swarms
       if @external_swarms&.any?
@@ -138,6 +138,22 @@ module SwarmSDK
     end
 
     private
+
+    def parse_scratchpad_mode(value)
+      return :enabled if value.nil? # Default
+
+      # Convert strings from YAML to symbols
+      value = value.to_sym if value.is_a?(String)
+
+      # Validate symbols
+      case value
+      when :enabled, :disabled, :per_node
+        value
+      else
+        raise ConfigurationError,
+          "Invalid scratchpad mode: #{value.inspect}. Use :enabled, :per_node, or :disabled"
+      end
+    end
 
     def interpolate_env_vars!(obj)
       case obj
@@ -209,7 +225,7 @@ module SwarmSDK
       @swarm_name = swarm[:name]
       @swarm_id = swarm[:id] # Optional - will auto-generate if missing
       @lead_agent = swarm[:lead].to_sym # Convert to symbol for consistency
-      @scratchpad_enabled = swarm[:use_scratchpad].nil? ? true : swarm[:use_scratchpad] # Default: enabled
+      @scratchpad_mode = parse_scratchpad_mode(swarm[:scratchpad])
 
       # Load external swarms for composable swarms
       load_external_swarms(swarm[:swarms]) if swarm[:swarms]
@@ -520,12 +536,16 @@ module SwarmSDK
             agent_name = agent_config[:agent].to_sym
             delegates = agent_config[:delegates_to] || []
             reset_ctx = agent_config.key?(:reset_context) ? agent_config[:reset_context] : true
+            tools_override = agent_config[:tools]
 
-            if delegates.any?
-              agent(agent_name, reset_context: reset_ctx).delegates_to(*delegates)
-            else
-              agent(agent_name, reset_context: reset_ctx)
-            end
+            # Build agent config with fluent API
+            agent_cfg = agent(agent_name, reset_context: reset_ctx)
+
+            # Apply delegation if present
+            agent_cfg = agent_cfg.delegates_to(*delegates) if delegates.any?
+
+            # Apply tools override if present
+            agent_cfg.tools(*tools_override) if tools_override # Return config (finalize will be called automatically)
           end
 
           # Translate dependencies
