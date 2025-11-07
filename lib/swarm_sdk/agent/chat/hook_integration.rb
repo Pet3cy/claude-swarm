@@ -186,9 +186,13 @@ module SwarmSDK
         def trigger_post_tool_use(result, tool_call:)
           return result unless @hook_executor
 
+          # Extract tracking digest for Read/MemoryRead tools
+          metadata_with_digest = extract_tool_tracking_digest(tool_call, result)
+
           context = build_hook_context(
             event: :post_tool_use,
             tool_result: wrap_tool_result(tool_call.id, tool_call.name, result),
+            metadata: metadata_with_digest,
           )
 
           agent_hooks = @hook_agent_hooks[:post_tool_use] || []
@@ -333,6 +337,43 @@ module SwarmSDK
             name: tool_call.name,
             parameters: tool_call.arguments,
           )
+        end
+
+        # Extract tracking digest for Read/MemoryRead tools
+        #
+        # Queries the appropriate tracker after tool execution to get the digest
+        # that was calculated and stored during the read operation.
+        #
+        # @param tool_call [RubyLLM::ToolCall] Tool call with arguments
+        # @param result [Object] Tool execution result (to check for errors)
+        # @return [Hash] Metadata hash with digest if applicable
+        def extract_tool_tracking_digest(tool_call, result)
+          # Only add digest for successful Read/MemoryRead tool calls
+          return {} if result.is_a?(StandardError)
+          return {} unless ["Read", "MemoryRead"].include?(tool_call.name)
+
+          # Extract path from arguments
+          path = case tool_call.name
+          when "Read"
+            tool_call.arguments[:file_path] || tool_call.arguments["file_path"]
+          when "MemoryRead"
+            tool_call.arguments[:file_path] || tool_call.arguments["file_path"]
+          end
+
+          return {} unless path
+
+          # Query tracker for digest
+          digest = case tool_call.name
+          when "Read"
+            Tools::Stores::ReadTracker.get_read_files(@agent_context.name)[File.expand_path(path)]
+          when "MemoryRead"
+            # Only query if SwarmMemory is loaded (optional dependency)
+            if defined?(SwarmMemory::Core::StorageReadTracker)
+              SwarmMemory::Core::StorageReadTracker.get_read_entries(@agent_context.name)[path]
+            end
+          end
+
+          digest ? { read_digest: digest, read_path: path } : {}
         end
 
         # Wrap a tool result in our Hooks::ToolResult value object

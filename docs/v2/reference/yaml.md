@@ -60,6 +60,31 @@ swarm:
 
 Fields under the `swarm` key.
 
+### id
+
+**Type:** String (optional)
+**Description:** Unique swarm identifier.
+
+**When required:**
+- **Required** when using composable swarms (`swarms:` section)
+- **Optional** otherwise (auto-generates if omitted)
+
+**Purpose:**
+- Hierarchical swarm tracking in events (`swarm_id`, `parent_swarm_id`)
+- Building parent/child relationships in composable swarms
+- Identifying swarms in logs and monitoring
+
+If omitted and not using composable swarms, an ID is auto-generated from the swarm name with a random suffix.
+
+```yaml
+swarm:
+  id: development_team
+  id: code_review_v2
+  id: main_app
+```
+
+---
+
 ### name
 
 **Type:** String (required)
@@ -70,6 +95,94 @@ swarm:
   name: "Development Team"
   name: "Code Review Swarm"
 ```
+
+---
+
+### swarms
+
+**Type:** Object (optional)
+**Description:** External swarms to register for composable swarms feature.
+**Format:** `{ swarm_name: swarm_config }`
+
+**Enables delegation to other swarms as if they were agents.** A swarm IS an agent - delegating to a child swarm is identical to delegating to an agent. The child swarm's lead agent serves as its public interface.
+
+**Configuration per swarm:**
+- `file` (String): Path to swarm file (.rb or .yml)
+- `yaml` (String): YAML configuration content (for dynamic loading)
+- `swarm` (Object): Inline swarm definition
+- `keep_context` (Boolean, optional): Preserve conversation (default: true)
+
+**Rules:**
+- Exactly ONE of `file`, `yaml`, or `swarm` must be provided
+- `id` must be set on parent swarm when using `swarms:`
+
+**Example - From Files:**
+```yaml
+swarm:
+  id: main_app
+  name: "Main Application"
+  lead: backend
+
+  swarms:
+    code_review:
+      file: "./swarms/code_review.rb"
+      keep_context: true
+
+    testing:
+      file: "./swarms/testing.yml"
+      keep_context: false
+
+  agents:
+    backend:
+      delegates_to:
+        - code_review
+        - testing
+```
+
+**Example - Inline Definition:**
+```yaml
+swarm:
+  id: main_app
+  name: "Main Application"
+  lead: backend
+
+  swarms:
+    # File reference
+    code_review:
+      file: "./swarms/code_review.rb"
+
+    # Inline definition - no file needed!
+    testing:
+      keep_context: false
+      swarm:
+        id: testing_team
+        name: "Testing Team"
+        lead: tester
+        agents:
+          tester:
+            description: "Test specialist"
+            model: gpt-4o-mini
+            system: "You test code"
+            tools:
+              - Think
+              - Bash
+
+  agents:
+    backend:
+      description: "Backend developer"
+      delegates_to:
+        - code_review
+        - testing
+```
+
+**Hierarchical IDs:**
+Sub-swarms automatically get hierarchical IDs:
+- Parent swarm: `main_app`
+- Sub-swarms: `main_app/code_review`, `main_app/testing`
+
+**Keep Context:**
+- `keep_context: true` (default): Swarm maintains conversation history
+- `keep_context: false`: Swarm context resets after each delegation
 
 ---
 
@@ -86,18 +199,50 @@ swarm:
 
 ---
 
-### use_scratchpad
+### scratchpad
 
-**Type:** Boolean (optional)
-**Default:** `true`
-**Description:** Enable or disable shared scratchpad tools for all agents in the swarm.
+**Type:** Symbol/String (optional)
+**Default:** `disabled`
+**Description:** Configure scratchpad mode for the swarm or workflow.
 
-When enabled, all agents get scratchpad tools (ScratchpadWrite, ScratchpadRead, ScratchpadList). Scratchpad is volatile (in-memory only) and shared across all agents.
+**Valid Values:**
+- For regular Swarms: `enabled`, `disabled`
+- For workflows with nodes: `enabled`, `per_node`, `disabled`
+
+**Modes:**
+- **`enabled`**: Scratchpad tools available (ScratchpadWrite, ScratchpadRead, ScratchpadList)
+  - Regular Swarm: All agents share one scratchpad
+  - With nodes: All nodes share one scratchpad across workflow
+- **`per_node`**: (Nodes only) Each node gets isolated scratchpad storage
+- **`disabled`**: No scratchpad tools available
+
+Scratchpad is volatile (in-memory only) and provides temporary storage for cross-agent or cross-node communication.
 
 ```yaml
+# Regular swarm
 swarm:
-  use_scratchpad: true   # default
-  use_scratchpad: false  # disable scratchpad
+  scratchpad: enabled   # enable scratchpad
+  scratchpad: disabled  # no scratchpad (default)
+
+# With nodes - shared across all nodes
+swarm:
+  scratchpad: enabled
+
+  nodes:
+    planning: { ... }
+    implementation: { ... }
+
+  start_node: planning
+
+# With nodes - isolated per node
+swarm:
+  scratchpad: per_node
+
+  nodes:
+    planning: { ... }
+    implementation: { ... }
+
+  start_node: planning
 ```
 
 ---
@@ -168,53 +313,93 @@ swarm:
 
 ### nodes
 
-> **⚠️ IMPORTANT: Node workflows are ONLY supported in Ruby DSL, NOT in YAML configuration.**
->
-> The documentation below describes the node structure for reference, but you cannot use nodes in YAML files.
-> To use node-based workflows, you must use the Ruby DSL. See [Ruby DSL Reference](./ruby-dsl.md#node-builder-dsl) for details.
-
-**Type:** Object (optional, **Ruby DSL only**)
-**Description:** Map of node names to node configurations. Enables multi-stage workflows.
+**Type:** Object (optional)
+**Description:** Map of node names to node configurations. Enables multi-stage workflows with multiple execution stages.
 **Format:** `{ node_name: node_config }`
 
-**Note:** This section is for reference only. YAML configuration does not support nodes.
+Nodes allow you to create workflows where different agent teams collaborate in sequence. Each node is an independent swarm execution that can receive input from previous nodes and pass output to subsequent nodes.
 
-```ruby
-# Ruby DSL only - NOT valid in YAML
-SwarmSDK.build do
-  nodes:
-    planning:
-      agents:
-        - agent: architect
+**Example:**
+```yaml
+nodes:
+  planning:
+    agents:
+      - agent: architect
+    output_command: "tee plan.txt"
 
-    implementation:
-      agents:
-        - agent: backend
-          delegates_to: [tester]
-        - agent: tester
-      dependencies: [planning]
-end
+  implementation:
+    agents:
+      - agent: backend
+        delegates_to: [tester]
+        tools: [Read, Edit, Write]  # Override tools for this node
+      - agent: tester
+    dependencies: [planning]
+    input_command: "cat plan.txt"
+
+  review:
+    agents:
+      - agent: reviewer
+    dependencies: [implementation]
+```
+
+**Node configuration fields:**
+- `agents` - Array of agent configurations (optional for computation-only nodes)
+- `dependencies` - Array of prerequisite node names
+- `lead` - Override the lead agent for this node
+- `input_command` - Bash command to transform input before execution
+- `input_timeout` - Timeout for input_command (seconds, default: 60)
+- `output_command` - Bash command to transform output after execution
+- `output_timeout` - Timeout for output_command (seconds, default: 60)
+
+**Per-node agent configuration:**
+Each agent in a node's `agents` array can have:
+- `agent` (required) - Agent name (must be defined in global `agents` section)
+- `delegates_to` (optional) - Override delegation targets for this node
+- `reset_context` (optional) - Whether to reset context (default: true)
+- `tools` (optional) - Override tools for this node (replaces global agent tools)
+
+```yaml
+nodes:
+  planning:
+    agents:
+      - agent: backend
+        tools: [Read, Think]  # Restrict to read-only + reasoning in planning
+
+  implementation:
+    agents:
+      - agent: backend
+        delegates_to: [tester]
+        tools: [Read, Edit, Write, Bash]  # Full tools in implementation
 ```
 
 ---
 
 ### start_node
 
-> **⚠️ Note: Node workflows are Ruby DSL only, not supported in YAML.**
-
-**Type:** String (required if nodes defined, **Ruby DSL only**)
+**Type:** String (required if nodes defined)
 **Description:** Name of the starting node for workflow execution.
 
-**Note:** This field only applies to Ruby DSL. Not supported in YAML configuration.
-
-```ruby
-# Ruby DSL only - NOT valid in YAML
-SwarmSDK.build do
-  start_node :planning
+**Example:**
+```yaml
+swarm:
+  name: "Dev Workflow"
+  lead: coordinator
+  agents:
+    coordinator:
+      description: "Coordinator"
+      model: "gpt-5"
+    backend:
+      description: "Backend dev"
+      model: "gpt-5"
   nodes:
     planning:
-      # ...
-end
+      agents:
+        - agent: coordinator
+    implementation:
+      agents:
+        - agent: backend
+      dependencies: [planning]
+  start_node: planning  # Start with planning node
 ```
 
 ---
@@ -401,7 +586,7 @@ agents:
 **Default tools (when `default tools enabled`):**
 - `Read`, `Glob`, `Grep`, `TodoWrite`, `Think`, `WebFetch`
 
-**Scratchpad tools** (added if `use_scratchpad: true` at swarm level, default):
+**Scratchpad tools** (opt-in via `scratchpad: enabled` at swarm level):
 - `ScratchpadWrite`, `ScratchpadRead`, `ScratchpadList`
 
 **Memory tools** (added if agent has `memory` configured):
@@ -454,6 +639,60 @@ agents:
   coordinator:
     delegates_to: [frontend, backend, reviewer]
 ```
+
+---
+
+### shared_across_delegations
+
+**Type:** Boolean (optional)
+**Default:** `false`
+**Description:** Control whether multiple agents share the same instance when delegating to this agent.
+
+**Values:**
+- `false` (default): Create isolated instances per delegator (recommended)
+- `true`: Share the same instance across all delegators
+
+**Behavior:**
+
+By default, when multiple agents delegate to the same target, each gets its own isolated instance with separate conversation history. This prevents context mixing.
+
+**Isolated Mode Example (default):**
+```yaml
+agents:
+  tester:
+    description: "Testing agent"
+    # shared_across_delegations: false (default)
+
+  frontend:
+    delegates_to: [tester]  # Gets tester@frontend
+
+  backend:
+    delegates_to: [tester]  # Gets tester@backend (separate)
+```
+
+**Shared Mode Example (opt-in):**
+```yaml
+agents:
+  database:
+    description: "Database coordination agent"
+    shared_across_delegations: true  # All delegators share this
+
+  frontend:
+    delegates_to: [database]  # Gets shared database primary
+
+  backend:
+    delegates_to: [database]  # Gets same shared database
+```
+
+**Memory Sharing:**
+
+Plugin storage (like SwarmMemory) is always shared by base agent name:
+- `tester@frontend` and `tester@backend` share memory storage
+- Only conversation history and tool state are isolated
+
+**When to use:**
+- **Shared mode**: Stateful coordination, database agents, shared context needs
+- **Isolated mode (default)**: Testing different codebases, reviewing different PRs, preventing context mixing
 
 ---
 
@@ -719,7 +958,7 @@ agents:
 
 **Type:** Boolean (optional)
 **Default:** `true`
-**Description:** Include default tools (Read, Grep, Glob, TodoWrite, Think, and scratchpad tools).
+**Description:** Include default tools (Read, Grep, Glob, and scratchpad tools).
 
 ```yaml
 agents:
@@ -1342,14 +1581,9 @@ agents:
 
 ---
 
-## Node Configuration (**Ruby DSL Only**)
+## Node Configuration
 
-> **⚠️ CRITICAL: Nodes are NOT supported in YAML configuration.**
->
-> The following documentation is for reference only. To use node-based workflows, you MUST use the Ruby DSL.
-> See [Ruby DSL Reference](./ruby-dsl.md#node-builder-dsl) for working examples.
-
-Fields under each node in `swarm.nodes` (**Ruby DSL only**).
+Fields under each node in `swarm.nodes`.
 
 ### agents
 
@@ -1357,7 +1591,9 @@ Fields under each node in `swarm.nodes` (**Ruby DSL only**).
 **Default:** `[]`
 **Description:** List of agents participating in this node.
 
-**Format:** Array of objects with `agent` and optional `delegates_to`
+Nodes can have zero agents (computation-only nodes with transformers) or multiple agents working together. Each agent can have delegation configured and context preservation settings.
+
+**Format:** Array of objects with `agent`, optional `delegates_to`, and optional `reset_context`
 
 ```yaml
 nodes:
@@ -1367,6 +1603,7 @@ nodes:
         delegates_to: [tester, database]
       - agent: tester
         delegates_to: [database]
+        reset_context: false  # Preserve context from previous nodes
       - agent: database
 ```
 
@@ -1376,7 +1613,9 @@ nodes:
 
 **Type:** String (optional)
 **Default:** First agent in `agents` list
-**Description:** Lead agent for this node (overrides first agent).
+**Description:** Lead agent for this node (overrides default first agent).
+
+The lead agent receives the initial prompt and coordinates the node's execution.
 
 ```yaml
 nodes:
@@ -1384,7 +1623,7 @@ nodes:
     agents:
       - agent: backend
       - agent: reviewer
-    lead: reviewer  # Make reviewer the lead instead of backend
+    lead: reviewer  # reviewer leads instead of backend
 ```
 
 ---
@@ -1395,7 +1634,7 @@ nodes:
 **Default:** `[]`
 **Description:** List of prerequisite node names that must execute before this node.
 
-**Note:** In Ruby DSL, use the `depends_on` method. In YAML (if nodes were supported), the field name is `dependencies`.
+Dependencies create a directed acyclic graph (DAG) of node execution. A node waits for all its dependencies to complete before starting.
 
 ```yaml
 nodes:
@@ -1406,20 +1645,36 @@ nodes:
   implementation:
     agents:
       - agent: backend
-    dependencies: [planning]
+    dependencies: [planning]  # Runs after planning
 
   testing:
     agents:
       - agent: tester
-    dependencies: [implementation]
+    dependencies: [implementation]  # Runs after implementation
 ```
 
 ---
 
-### input
+### reset_context
 
-**Type:** String (optional, Ruby DSL only)
-**Description:** Ruby block for input transformation. Not supported in YAML - use `input_command` instead.
+**Type:** Boolean (optional, per-agent in node)
+**Default:** `true`
+**Description:** Whether to reset agent conversation context in this node.
+
+Set to `false` to preserve conversation history from previous nodes, enabling stateful multi-node workflows.
+
+```yaml
+nodes:
+  first:
+    agents:
+      - agent: architect
+
+  second:
+    agents:
+      - agent: architect
+        reset_context: false  # Preserve history from first node
+    dependencies: [first]
+```
 
 ---
 
@@ -1789,12 +2044,11 @@ swarm:
       parameters:
         temperature: 0.2
 
-  # Multi-stage workflow (optional)
+  # Multi-stage workflow
   nodes:
     planning:
       agents:
         - agent: coordinator
-
       output_command: "tee plan.txt"
 
     backend_implementation:
@@ -1803,7 +2057,6 @@ swarm:
           delegates_to: [database]
         - agent: database
       dependencies: [planning]
-
       input_command: "scripts/prepare-backend-context.sh"
       output_command: "scripts/save-backend-results.sh"
 
@@ -1811,14 +2064,12 @@ swarm:
       agents:
         - agent: frontend
       dependencies: [planning]
-
       input_command: "scripts/prepare-frontend-context.sh"
 
     review:
       agents:
         - agent: reviewer
       dependencies: [backend_implementation, frontend_implementation]
-
       input_command: "scripts/gather-changes.sh"
       output_command: "scripts/format-review.sh"
 

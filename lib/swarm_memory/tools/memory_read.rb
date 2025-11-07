@@ -64,11 +64,11 @@ module SwarmMemory
       # @param file_path [String] Path to read from
       # @return [String] JSON with content and metadata
       def execute(file_path:)
-        # Register this read in the tracker
-        Core::StorageReadTracker.register_read(@agent_name, file_path)
-
         # Read full entry with metadata
         entry = @storage.read_entry(file_path: file_path)
+
+        # Register this read in the tracker with content digest
+        Core::StorageReadTracker.register_read(@agent_name, file_path, entry.content)
 
         # Always return JSON format (metadata always exists - at minimum title)
         format_as_json(entry)

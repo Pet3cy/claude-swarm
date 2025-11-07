@@ -15,6 +15,7 @@ require "yaml"
 require "async"
 require "async/semaphore"
 require "ruby_llm"
+require "ruby_llm/mcp"
 
 require_relative "swarm_sdk/version"
 
@@ -25,6 +26,7 @@ loader.push_dir("#{__dir__}/swarm_sdk", namespace: SwarmSDK)
 loader.inflector = Zeitwerk::GemInflector.new(__FILE__)
 loader.inflector.inflect(
   "cli" => "CLI",
+  "llm_instrumentation_middleware" => "LLMInstrumentationMiddleware",
   "mcp" => "MCP",
   "openai_with_responses" => "OpenAIWithResponses",
 )
@@ -44,8 +46,8 @@ module SwarmSDK
     attr_accessor :settings
 
     # Main entry point for DSL
-    def build(&block)
-      Swarm::Builder.build(&block)
+    def build(allow_filesystem_tools: nil, &block)
+      Swarm::Builder.build(allow_filesystem_tools: allow_filesystem_tools, &block)
     end
 
     # Validate YAML configuration without creating a swarm
@@ -85,6 +87,10 @@ module SwarmSDK
       begin
         config = Configuration.new(yaml_content, base_dir: base_dir)
         config.load_and_validate
+
+        # Build swarm to trigger DSL validation
+        # This catches errors from Agent::Definition, Builder, etc.
+        config.to_swarm
       rescue ConfigurationError, CircularDependencyError => e
         errors << parse_configuration_error(e)
       rescue StandardError => e
@@ -165,10 +171,10 @@ module SwarmSDK
     # @example Load with default base_dir (Dir.pwd)
     #   yaml = File.read("config.yml")
     #   swarm = SwarmSDK.load(yaml)  # base_dir defaults to Dir.pwd
-    def load(yaml_content, base_dir: Dir.pwd)
+    def load(yaml_content, base_dir: Dir.pwd, allow_filesystem_tools: nil)
       config = Configuration.new(yaml_content, base_dir: base_dir)
       config.load_and_validate
-      swarm = config.to_swarm
+      swarm = config.to_swarm(allow_filesystem_tools: allow_filesystem_tools)
 
       # Apply hooks if any are configured (YAML-only feature)
       if hooks_configured?(config)
@@ -197,9 +203,9 @@ module SwarmSDK
     #
     # @example With absolute path
     #   swarm = SwarmSDK.load_file("/absolute/path/config.yml")
-    def load_file(path)
+    def load_file(path, allow_filesystem_tools: nil)
       config = Configuration.load_file(path)
-      swarm = config.to_swarm
+      swarm = config.to_swarm(allow_filesystem_tools: allow_filesystem_tools)
 
       # Apply hooks if any are configured (YAML-only feature)
       if hooks_configured?(config)
@@ -236,7 +242,7 @@ module SwarmSDK
     def hooks_configured?(config)
       config.swarm_hooks.any? ||
         config.all_agents_hooks.any? ||
-        config.agents.any? { |_, agent_def| agent_def.hooks&.any? }
+        config.agents.any? { |_, agent_config| agent_config[:hooks]&.any? }
     end
 
     # Parse configuration error and extract structured information
@@ -324,8 +330,17 @@ module SwarmSDK
           field: "swarm.lead",
         )
 
-      # Unknown agent in connections
+      # Unknown agent in connections (old format)
       when /Agent '([^']+)' has connection to unknown agent '([^']+)'/i
+        agent_name = Regexp.last_match(1)
+        error_hash.merge!(
+          type: :invalid_reference,
+          field: "swarm.agents.#{agent_name}.delegates_to",
+          agent: agent_name,
+        )
+
+      # Unknown agent in connections (new format with composable swarms)
+      when /Agent '([^']+)' delegates to unknown target '([^']+)'/i
         agent_name = Regexp.last_match(1)
         error_hash.merge!(
           type: :invalid_reference,
@@ -398,16 +413,32 @@ module SwarmSDK
     # WebFetch tool LLM processing configuration
     attr_accessor :webfetch_provider, :webfetch_model, :webfetch_base_url, :webfetch_max_tokens
 
+    # Filesystem tools control
+    attr_accessor :allow_filesystem_tools
+
     def initialize
       @webfetch_provider = nil
       @webfetch_model = nil
       @webfetch_base_url = nil
       @webfetch_max_tokens = 4096
+      @allow_filesystem_tools = parse_env_bool("SWARM_SDK_ALLOW_FILESYSTEM_TOOLS", default: true)
     end
 
     # Check if WebFetch LLM processing is enabled
     def webfetch_llm_enabled?
       !@webfetch_provider.nil? && !@webfetch_model.nil?
+    end
+
+    private
+
+    def parse_env_bool(key, default:)
+      return default unless ENV.key?(key)
+
+      value = ENV[key].to_s.downcase
+      return true if ["true", "yes", "1", "on", "enabled"].include?(value)
+      return false if ["false", "no", "0", "off", "disabled"].include?(value)
+
+      default
     end
   end
 

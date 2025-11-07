@@ -13,8 +13,9 @@ module SwarmMemory
         #
         # @return [void]
         def register!
-          # Only register if SwarmCLI is present
-          return unless defined?(SwarmCLI)
+          # Only register if SwarmCLI::CommandRegistry is available
+          # Check for the specific class, not just the module
+          return unless defined?(SwarmCLI::CommandRegistry)
 
           # Load CLI commands explicitly (Zeitwerk might not have loaded it yet)
           require_relative "../cli/commands"

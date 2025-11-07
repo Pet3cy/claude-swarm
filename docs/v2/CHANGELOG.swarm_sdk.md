@@ -5,7 +5,273 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.1.2]
+## [Unreleased]
+
+### Added
+
+- **Safe Return Statements in Node Transformers**: Input and output transformers now support `return` statements for natural control flow
+  - **Automatic lambda conversion**: Blocks passed to `input {}` and `output {}` are automatically converted to lambdas via `ProcHelpers.to_lambda`
+  - **Safe early exits**: Use `return` for early exits without risking program termination
+  - **Natural control flow**: Write intuitive conditional logic with standard Ruby `return` keyword
+  - **Examples**: `return ctx.skip_execution(content: "cached") if cached?`, `return ctx.halt_workflow(content: "error") if invalid?`
+  - **Implementation**: Converts Proc to UnboundMethod via `define_method`, then wraps in lambda where `return` only exits the method
+  - **Backward compatible**: Existing code without `return` statements continues to work unchanged
+  - **Files**: `lib/swarm_sdk/proc_helpers.rb`, `lib/swarm_sdk/node/builder.rb`
+  - **Tests**: 8 comprehensive tests in `test/swarm_sdk/proc_helpers_test.rb` covering closures, keyword args, block args, and multiple return paths
+
+- **Per-Node Tool Overrides**: Agents can now have different tool sets in different nodes
+  - **Node-specific tools**: Override agent's global tool configuration on a per-node basis
+  - **Fluent syntax**: Chain with delegation: `agent(:backend).delegates_to(:tester).tools(:Read, :Edit, :Write)`
+  - **Use case**: Restrict tools for specific workflow stages (e.g., planning node with thinking tools only, execution node with file tools)
+  - **Example**: `agent(:planner).tools(:Think, :Read)` in planning node, `agent(:planner).tools(:Write, :Edit, :Bash)` in implementation node
+  - **Implementation**: New `tools(*tool_names)` method on `AgentConfig`, stored in node configuration as tool override
+  - **Backward compatible**: Omit `.tools()` to use agent's global tool configuration
+  - **Files**: `lib/swarm_sdk/node/agent_config.rb`, `lib/swarm_sdk/node/builder.rb`, `lib/swarm_sdk/node_orchestrator.rb`
+
+## [2.2.0] - 2025-11-06
+
+### Fixed
+
+- **Snapshot Restoration Critical Bugs**: Fixed two critical bugs preventing proper state restoration
+  - **Bug 1 - Delegation Instance Validation**: Delegation instances incorrectly rejected during restoration
+    - **Issue**: `bob@jarvis` delegation failed validation even when both agents existed
+    - **Root cause**: Validation checked if base agent (`bob`) existed as primary agent in snapshot, but bob only appeared as delegation
+    - **Fix**: Changed validation to check if base agent exists in **current configuration** instead of snapshot
+    - **Impact**: Delegation instances can now be restored correctly from snapshots and events
+  - **Bug 2 - System Prompt Ordering**: System prompts applied then immediately removed
+    - **Issue**: `with_instructions()` adds system message, but `messages.clear` was called after, removing it
+    - **Root cause**: Wrong order of operations - system prompt added before clearing messages
+    - **Fix**: Clear messages first, then add system prompt, then restore conversation
+    - **Impact**: System prompts now correctly preserved during restoration for all agents
+  - **Result**: Event sourcing fully functional, delegation workflows restore correctly
+  - **Files**: `lib/swarm_sdk/state_restorer.rb` - Lines 140-141, 210-225, 340-356
+
+- **Event Timestamp Precision**: Microsecond-precision timestamps for correct event ordering
+  - **Issue**: Events emitted rapidly within same second had identical timestamps, causing arbitrary sort order
+  - **Impact**: Message reconstruction from events produced incorrect conversation order (tool results before tool calls)
+  - **Root cause**: `Time.now.utc.iso8601` defaults to second precision, events within same second indistinguishable
+  - **Fix**: Use `Time.now.utc.iso8601(6)` for microsecond precision (e.g., `2025-11-05T19:10:58.123456Z`)
+  - **Files**: `log_stream.rb:54`, `log_collector.rb:65`
+  - **Result**: Events now sort correctly even when emitted microseconds apart
+  - **Critical for**: Snapshot reconstruction, delegation conversations, rapid tool executions
+
+- **Rails/Puma Event Loss in Multi-Threaded Environments**: Complete fix for event streaming in production
+  - **Issue**: Events lost on subsequent requests when using `restore()` before `execute()` in Rails/Puma
+  - **Root cause 1**: Callbacks stored in class instance variables didn't propagate to child fibers
+  - **Root cause 2**: `restore()` triggered agent initialization before logging setup, skipping callback registration
+  - **Root cause 3**: Callbacks passed stale `@agent_context.swarm_id` that overrode Fiber-local storage
+  - **Fix 1**: LogCollector uses Fiber-local storage (`Fiber[:log_callbacks]`) for thread-safe callback propagation
+  - **Fix 2**: Retroactive callback registration via `setup_logging_for_all_agents` when agents initialized early
+  - **Fix 3**: Removed explicit `swarm_id`/`parent_swarm_id` from LogStream.emit calls in callbacks
+  - **Fix 4**: Scheduler leak prevention - force cleanup of lingering Async schedulers between requests
+  - **Fix 5**: Fresh callback array per execution to prevent accumulation
+  - **Result**: All events (agent_step, tool_call, delegation, etc.) now work correctly in Puma/Sidekiq
+  - **Rails integration**: Works seamlessly without service code changes
+
+### Added
+
+- **Configurable System Prompt Restoration**: Control whether system prompts come from current config or historical snapshot
+  - **`preserve_system_prompts`** parameter in `swarm.restore()` and `orchestrator.restore()` (default: `false`)
+  - **Default behavior (`false`)**: System prompts from current agent definitions (YAML + SDK defaults + plugin injections)
+    - Enables system prompt iteration without creating new sessions
+    - Configuration is source of truth for agent behavior
+    - External session management with prompt updates works seamlessly
+  - **Historical mode (`true`)**: System prompts from snapshot (exact historical state)
+    - For debugging: "What instructions was agent following when bug occurred?"
+    - For auditing: "What exact prompts were active at that time?"
+    - For reproducibility: "Replay with exact historical context"
+  - **Applies to all agents**: Primary agents and delegation instances
+  - **Includes all injections**: YAML config, SDK defaults, SwarmMemory instructions, plugin additions
+  - **Non-breaking**: Backward compatible, all existing code works unchanged
+  - **Documentation**: Complete guide in `docs/v2/guides/snapshots.md` with examples and comparisons
+
+- **System-Wide Filesystem Tools Control**: Global security setting to disable filesystem tools across all agents
+  - **`SwarmSDK.settings.allow_filesystem_tools`** - Global setting to enable/disable filesystem tools (default: true)
+  - **Environment variable**: `SWARM_SDK_ALLOW_FILESYSTEM_TOOLS` - Set via environment for production deployments
+  - **Parameter override**: `allow_filesystem_tools:` parameter in `SwarmSDK.build`, `load`, and `load_file`
+  - **Filesystem tools**: Read, Write, Edit, MultiEdit, Grep, Glob, Bash
+  - **Validation**: Build-time validation catches forbidden tools early with clear error messages
+  - **Non-breaking**: Defaults to `true` for backward compatibility
+  - **Security boundary**: External to swarm configuration - cannot be overridden by YAML/DSL
+  - **Tools still allowed**: Think, TodoWrite, Clock, WebFetch, ScratchpadRead/Write/List, Memory tools
+  - **Use cases**: Multi-tenant platforms, sandboxed execution, containerized environments, compliance requirements
+  - **Priority resolution**: Explicit parameter > Global setting > Environment variable > Default (true)
+  - **26 comprehensive tests** covering all configuration and validation scenarios
+  - **Documentation**: Complete implementation guide in `FILESYSTEM_TOOLS_CONTROL_PLAN.md`
+
+- **Snapshot Reconstruction from Events**: Complete StateSnapshot reconstruction from event logs
+  - **`SwarmSDK::SnapshotFromEvents`** class reconstructs full swarm state from event stream
+  - **100% state reconstruction** - All components recoverable: conversations, context state, scratchpad, read tracking, delegation instances
+  - **Event sourcing ready** - Events are single source of truth, snapshots derived on-demand
+  - **Time travel debugging** - Reconstruct state at any point in time by filtering events
+  - **Session persistence** - Store only events in database, reconstruct snapshots when needed
+  - **`SwarmSDK::EventsToMessages`** helper class for message reconstruction with chronological ordering
+  - **Database/Redis patterns** - Complete examples for event-based session storage
+  - **Hybrid optimization** - Periodic snapshots + delta events for performance
+  - **Performance**: 1,000 events in ~10-20ms, 10,000 events in ~100-200ms
+  - **29 comprehensive tests** verifying event data capture and reconstruction accuracy
+  - **Documentation**: Complete guide in `docs/v2/guides/snapshots.md` with patterns and examples
+
+- **Event Timestamp Guarantee**: All events now guaranteed to have timestamps
+  - **Automatic timestamp injection** in `LogCollector.emit` if missing
+  - **Format**: ISO 8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`)
+  - **Preserves existing timestamps** - Won't overwrite if already present
+  - **Dual injection points** - LogStream and LogCollector both ensure timestamps
+  - **Chronological ordering** - Enables proper event sequencing for reconstruction
+  - **Updated test**: Verifies timestamp presence and preservation
+
+- **Context Threshold Tracking**: New event for tracking which warning thresholds were hit
+  - **`context_threshold_hit`** event emitted when threshold crossed for first time
+  - **Contains**: `threshold` (integer: 60, 80, 90, 95), `current_usage_percentage`
+  - **Enables reconstruction** of `context_state.warning_thresholds_hit` from events
+  - **Separate from context_limit_warning** - Hit tracking vs informational warning
+
+- **Read Tracking Digest in Events**: File read digests now included in tool_result metadata
+  - **`metadata.read_digest`** - SHA256 digest of read file content
+  - **`metadata.read_path`** - Absolute path to file
+  - **Added via `extract_tool_tracking_digest`** method after tool execution
+  - **Queries ReadTracker** after read completes to get calculated digest
+  - **Enables reconstruction** of complete read_tracking state from events
+  - **Works for all file types** - Text files, binary files, documents
+
+- **Memory Read Tracking Digest in Events**: Memory read digests included in tool_result metadata
+  - **`metadata.read_digest`** - SHA256 digest of memory entry content
+  - **`metadata.read_path`** - Memory entry path
+  - **Unified handling** with file read tracking via same extraction method
+  - **Enables reconstruction** of complete memory_read_tracking state from events
+  - **Cross-gem coordination** - SwarmMemory and SwarmSDK work together seamlessly
+
+- **Execution ID and Complete Swarm ID Tracking**: All log events now include comprehensive execution tracking fields
+  - **`execution_id`**: Uniquely identifies a single `swarm.execute()` or `orchestrator.execute()` call
+    - Format: `exec_{swarm_id}_{random_hex}` for swarms (e.g., `exec_main_a3f2b1c8`)
+    - Format: `exec_workflow_{random_hex}` for workflows (e.g., `exec_workflow_abc123`)
+    - Enables calculating total cost/tokens for a single execution
+    - Allows building complete execution traces across all agents and tools
+  - **`swarm_id`**: Identifies which swarm/node emitted the event
+    - Hierarchical format for NodeOrchestrator nodes (e.g., `workflow/node:planning`)
+    - Tracks execution flow through nested swarms and workflow stages
+  - **`parent_swarm_id`**: Identifies the parent swarm for nested execution contexts
+  - **Fiber-local storage implementation**: Uses Ruby 3.2+ Fiber storage for automatic propagation
+    - IDs automatically inherit to child fibers (tools, delegations, nested executions)
+    - Mini-swarms in workflows inherit orchestrator's execution_id while maintaining node-specific swarm_ids
+    - Zero manual propagation needed - all handled by `LogStream.emit()` auto-injection
+  - **Smart cleanup pattern**: Uses `block_given?` to determine cleanup responsibility
+    - Standalone swarms clear Fiber storage after execution
+    - Mini-swarms preserve parent's execution context for workflow continuity
+  - **Comprehensive coverage**: 30 out of 31 event types now have complete tracking
+    - All events except optional `claude_code_conversion_warning` (backward compatibility)
+  - **Production-ready**: Minimal code changes (3 files, ~28 lines), zero performance impact
+  - **Fully tested**: 10 comprehensive test cases covering uniqueness, inheritance, isolation, and cleanup
+
+- **Composable Swarms**: Build reusable swarm components that can be composed together
+  - **New `id()` DSL method**: Set unique swarm identifier (required when using composable swarms)
+  - **New `swarms {}` DSL block**: Register external swarms for delegation
+  - **New `register()` method**: Three registration methods:
+    - `register "name", file: "./swarm.rb"` - Load from file
+    - `register "name", yaml: yaml_string` - Load from YAML string
+    - `register "name" { ... }` - Define inline with DSL block
+  - **`keep_context` parameter**: Control conversation persistence per swarm (default: true)
+  - **Hierarchical swarm IDs**: Parent/child tracking (e.g., `main/code_review/security`)
+  - **Transparent delegation**: Use swarms in `delegates_to` like regular agents
+  - **Lazy loading & caching**: Sub-swarms loaded on first access and cached
+  - **Circular dependency detection**: Runtime prevention of infinite delegation loops
+  - **Event tracking**: All events include `swarm_id` and `parent_swarm_id` fields
+  - **SwarmRegistry class**: Manages sub-swarm lifecycle and cleanup
+  - **SwarmLoader class**: Multi-source loader (files, YAML strings, blocks)
+  - **Deep nesting support**: Unlimited levels of swarm composition
+  - **Cleanup cascade**: Proper resource cleanup through hierarchy
+  - **YAML support**: `id:` and `swarms:` sections with file/inline definitions
+  - **Comprehensive tests**: 36 new tests, 100% pass rate
+
+- **Per-Delegation Agent Instances**: Dual-mode delegation support with isolated and shared modes
+  - **New `shared_across_delegations` configuration** (default: `false`)
+    - `false` (default): Each delegator gets its own isolated instance with separate conversation history
+    - `true`: All delegators share the same primary agent instance (legacy behavior)
+  - **Prevents context mixing**: Multiple agents delegating to the same target no longer share conversation history by default
+  - **Instance naming**: Delegation instances follow `"delegate@delegator"` pattern (e.g., `"tester@frontend"`)
+  - **Memory sharing**: Plugin storage (SwarmMemory) shared by base name across all instances
+  - **Tool state isolation**: TodoWrite, ReadTracker, and other stateful tools isolated per instance
+  - **Nested delegation support**: Works correctly with multi-level delegation chains
+  - **Fiber-safe concurrency**: Added `Async::Semaphore` to `Chat.ask()` to prevent message corruption when multiple delegation instances call shared agents in parallel
+  - **Atomic caching**: NodeOrchestrator caches delegation instances together with primary agents for context preservation
+  - **Agent name validation**: Agent names cannot contain '@' character (reserved for delegation instances)
+  - **Automatic deduplication**: Duplicate entries in `delegates_to` are automatically removed
+  - **Comprehensive test coverage**: 17 new tests covering isolated mode, shared mode, nested delegation, cleanup, and more
+
+- **YAML-to-DSL Internal Refactor**: Configuration class now uses DSL internally for swarm construction
+  - **New `Configuration.to_swarm` implementation**: Translates YAML to Ruby DSL calls instead of direct API
+  - **Better separation of concerns**: YAML parsing separated from swarm building logic
+  - **Node workflow support in YAML**: Full support for multi-stage node-based workflows
+  - **Improved translation methods**: `translate_agents`, `translate_all_agents`, `translate_nodes`, `translate_swarm_hooks`
+  - **Stricter validation**: Agent descriptions now required in YAML (caught earlier with better error messages)
+  - **Test coverage**: Added `yaml_node_support_test.rb` with comprehensive node workflow tests
+
+- **YAML Hooks & Permissions**: Fixed and improved YAML configuration for hooks and permissions
+  - **Hooks now work correctly**: Fixed translation from YAML to DSL
+  - **Permissions properly translated**: Complex permission configurations now work in YAML
+  - **Documentation improvements**: Updated YAML reference with correct examples
+  - **Cleaner agent builder**: Removed redundant hook/permission handling code
+
+### Fixed
+
+- **StateSnapshot tool_calls serialization**: Fixed bug where tool_calls couldn't be serialized
+  - **Issue**: `msg.tool_calls.map(&:to_h)` failed because tool_calls is a Hash, not Array
+  - **Fix**: Changed to `msg.tool_calls.values.map(&:to_h)` to properly serialize
+  - **Impact**: Snapshots with tool calls now serialize correctly
+  - **Location**: `lib/swarm_sdk/state_snapshot.rb:154`
+
+- **ReadTracker and StorageReadTracker return digest**: Both trackers now return calculated digest
+  - **Changed**: `register_read` methods now return SHA256 digest string
+  - **Enables**: Digest extraction after tool execution for event metadata
+  - **Backward compatible**: Return value wasn't previously used
+
+### Changed
+
+- **Breaking: Default tools reduced to essential file operations only**
+  - **Old default tools**: Read, Grep, Glob, WebFetch, TodoWrite, Clock, Think
+  - **New default tools**: Read, Grep, Glob
+  - **Removed from defaults**: WebFetch, TodoWrite, Clock, Think
+  - **Rationale**: Follows principle of least privilege - users have complete control over agent capabilities
+  - **Migration**: Explicitly add removed tools if needed: `tools :Read, :Grep, :Glob, :WebFetch, :TodoWrite, :Clock, :Think`
+  - **Impact**: Agents will no longer have WebFetch, TodoWrite, Clock, or Think unless explicitly added
+  - **Documentation updated**: All guides and references now show correct default tools
+
+- **Breaking: Default delegation behavior changed**
+  - **Old behavior**: Multiple agents delegating to same target shared conversation history
+  - **New behavior**: Each delegator gets isolated instance with separate history (prevents context mixing)
+  - **Migration**: Add `shared_across_delegations: true` to agents that need the old shared behavior
+  - **Impact**: Existing swarms will see different behavior - agents no longer share delegation contexts by default
+
+- **Ruby version upgraded**: 3.4.2 → 3.4.5
+  - Updated `.ruby-version` file
+  - All dependencies compatible with Ruby 3.4.5
+
+- **RubyLLM upgraded**: 1.8.2 → 1.9.0
+  - Updated to latest RubyLLM gem version
+  - Updated ruby_llm-mcp integration
+  - Disabled MCP lazy loading for better compatibility
+  - See RubyLLM changelog for full details
+
+- **YAML Configuration Loading**: Improved YAML parsing and validation
+  - **Stricter validation**: Required fields now validated earlier with better error messages
+  - **Better error context**: Error messages include field paths and agent names
+  - **Node workflow validation**: Full validation for node dependencies and transformers
+
+- **TodoWrite system reminders**: Only injected when TodoWrite tool is available
+  - Fixed bug where TodoWrite reminders appeared even when tool was disabled
+  - System reminders now conditional based on agent's actual toolset
+  - Cleaner agent output when TodoWrite is not needed
+
+### Fixed
+
+- **Node context preservation bug**: Fixed issue where `inject_cached_agents` would be overwritten by fresh initialization
+  - Added forced initialization before injection to ensure cached instances are preserved
+- **Nested delegation race condition**: Added per-instance semaphore to prevent concurrent `ask()` calls from corrupting shared agent message history
+- **Hash iteration bug**: Fixed "can't add key during iteration" error in nested delegation by using `.to_a`
+- **YAML hooks translation**: Fixed hooks not being properly translated from YAML to DSL
+- **YAML permissions handling**: Fixed permissions configurations not working correctly in YAML
+
+## [2.1.3]
 
 ### Added
 
@@ -85,9 +351,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enables clean separation between core SDK and plugin features (memory, skills, etc.)
   - Plugins can preserve their configuration when agents are cloned in NodeOrchestrator
 
-- **NodeOrchestrator**: Passes scratchpad configuration to mini-swarms
-  - Bug fix: `scratchpad_enabled` now correctly propagated to node-level swarms
-  - Ensures `use_scratchpad false` works properly in node workflows
+- **NodeOrchestrator**: Configurable scratchpad sharing modes
+  - `scratchpad: :enabled` - Share scratchpad across all nodes
+  - `scratchpad: :per_node` - Isolated scratchpad per node
+  - `scratchpad: :disabled` - No scratchpad tools (default)
 
 - **CLI ConfigLoader**: Accepts both Swarm and NodeOrchestrator instances
   - Bug fix: CLI now correctly handles NodeOrchestrator execution
@@ -282,17 +549,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         directory: .swarm/assistant-memory
   ```
 
-- **Scratchpad Configuration DSL** - Enable/disable at swarm level
+- **Scratchpad Configuration DSL** - Configure mode at swarm/workflow level
   ```ruby
   SwarmSDK.build do
-    use_scratchpad true  # or false (default: true)
+    scratchpad :enabled   # or :per_node (nodes only), :disabled (default: :disabled)
   end
   ```
 
 - **Scratchpad Configuration YAML**
   ```yaml
   swarm:
-    use_scratchpad: true  # or false
+    scratchpad: enabled  # or per_node (nodes only), disabled
   ```
 
 - **Agent Start Events** - New log event after agent initialization
@@ -330,8 +597,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Future-ready for SQLite and FAISS adapters
 
 - **Default tools** - Conditional inclusion
-  - Core defaults: Read, Grep, Glob, TodoWrite, Think, WebFetch
-  - Scratchpad tools: Added if `use_scratchpad true` (default)
+  - Core defaults: Read, Grep, Glob
+  - Scratchpad tools: Added if `scratchpad: :enabled` (default)
   - Memory tools: Added if agent has `memory` configured
   - Enables fine-grained control over tool availability
 
@@ -371,7 +638,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - **Migration**: Old persisted scratchpad.json files will not load
 
 4. **Default tools behavior changed**: Memory and Scratchpad are conditional
-   - Scratchpad: Enabled by default via `use_scratchpad true`
+   - Scratchpad: Enabled by default via `scratchpad: :enabled`
    - Memory: Opt-in via `memory` configuration
    - **Migration**: Explicitly configure if needed
 

@@ -65,7 +65,7 @@ flowchart TB
         BASH_TOOL["Bash Tool"]
         DELEGATE_TOOL["Delegation Tools<br/>(call other agents)"]
         PLUGIN_TOOLS["Plugin Tools<br/>(from PluginRegistry)"]
-        DEFAULT_TOOLS["Default Tools<br/>(Think, TodoWrite, Clock)"]
+        DEFAULT_TOOLS["Default Tools<br/>(Read, Grep, Glob)"]
         SCRATCHPAD["Scratchpad Tools<br/>(volatile storage)"]
     end
 
@@ -82,7 +82,7 @@ flowchart TB
     subgraph "Logging & Events"
         LOG_STREAM["LogStream<br/>(event emitter)"]
         LOG_COLLECTOR["LogCollector<br/>(aggregates events)"]
-        LOG_EVENTS["Events: swarm_start, user_prompt,<br/>tool_call, tool_result,<br/>agent_step, agent_stop, swarm_stop"]
+        LOG_EVENTS["Events: swarm_start, user_prompt,<br/>llm_api_request, llm_api_response,<br/>tool_call, tool_result,<br/>agent_step, agent_stop, swarm_stop"]
     end
 
     subgraph "Hooks System"
@@ -269,7 +269,9 @@ Swarm.execute → AgentInitializer →
 ```
 Agent.ask(prompt) →
   user_prompt hooks →
+  llm_api_request event (captures request to LLM) →
   RubyLLM (rate limited) →
+  llm_api_response event (captures response from LLM) →
   Tool calls →
     pre_tool_use hooks →
     Tool execution (with permissions) →
@@ -283,7 +285,7 @@ Agent.ask(prompt) →
 - **Bash Tool**: Execute shell commands
 - **Delegation Tools**: Recursively call other Agent::Chat instances
 - **Plugin Tools**: PluginRegistry → create_tool → (e.g., MemoryWrite → Storage)
-- **Default Tools**: Think (reasoning), TodoWrite (task mgmt), Clock (time)
+- **Default Tools**: Read, Grep, Glob (file operations and search)
 - **Scratchpad Tools**: Volatile shared storage across agents
 
 ### 6. Memory Integration Flow

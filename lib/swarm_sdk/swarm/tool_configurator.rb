@@ -17,10 +17,6 @@ module SwarmSDK
         :Read,
         :Grep,
         :Glob,
-        :TodoWrite,
-        :Think,
-        :WebFetch,
-        :Clock,
       ].freeze
 
       # Scratchpad tools (added if scratchpad is enabled)
@@ -28,6 +24,17 @@ module SwarmSDK
         :ScratchpadWrite,
         :ScratchpadRead,
         :ScratchpadList,
+      ].freeze
+
+      # Filesystem tools that can be globally disabled for security
+      FILESYSTEM_TOOLS = [
+        :Read,
+        :Write,
+        :Edit,
+        :MultiEdit,
+        :Grep,
+        :Glob,
+        :Bash,
       ].freeze
 
       def initialize(swarm, scratchpad_storage, plugin_storages = {})
@@ -144,6 +151,19 @@ module SwarmSDK
       # @param agent_name [Symbol] Agent name
       # @param agent_definition [AgentDefinition] Agent definition
       def register_explicit_tools(chat, tool_configs, agent_name:, agent_definition:)
+        # Validate filesystem tools if globally disabled
+        unless @swarm.allow_filesystem_tools
+          # Extract tool names from hashes and convert to symbols for comparison
+          forbidden = tool_configs.map { |tc| tc[:name].to_sym }.select { |name| FILESYSTEM_TOOLS.include?(name) }
+          unless forbidden.empty?
+            raise ConfigurationError,
+              "Filesystem tools are globally disabled (SwarmSDK.settings.allow_filesystem_tools = false) " \
+                "but agent '#{agent_name}' attempts to use: #{forbidden.join(", ")}.\n\n" \
+                "This is a system-wide security setting that cannot be overridden by swarm configuration.\n" \
+                "To use filesystem tools, set SwarmSDK.settings.allow_filesystem_tools = true before loading the swarm."
+          end
+        end
+
         tool_configs.each do |tool_config|
           tool_name = tool_config[:name]
           permissions_config = tool_config[:permissions]
@@ -177,6 +197,9 @@ module SwarmSDK
         # Register core default tools (unless disabled)
         if agent_definition.disable_default_tools != true
           DEFAULT_TOOLS.each do |tool_name|
+            # Skip filesystem tools if globally disabled
+            next if !@swarm.allow_filesystem_tools && FILESYSTEM_TOOLS.include?(tool_name)
+
             register_tool_if_not_disabled(chat, tool_name, explicit_tool_names, agent_name, agent_definition)
           end
 
@@ -229,15 +252,21 @@ module SwarmSDK
         plugin = PluginRegistry.plugin_for_tool(tool_name)
         raise ConfigurationError, "Tool #{tool_name} is not provided by any plugin" unless plugin
 
-        # Get plugin storage for this agent
+        # V7.0: Extract base name for storage lookup (handles delegation instances)
+        # For primary agents: :tester → :tester (no change)
+        # For delegation instances: "tester@frontend" → :tester (extracts base)
+        base_name = agent_name.to_s.split("@").first.to_sym
+
+        # Get plugin storage using BASE NAME (shared across instances)
         plugin_storages = @plugin_storages[plugin.name] || {}
-        storage = plugin_storages[agent_name]
+        storage = plugin_storages[base_name] # ← Changed from agent_name to base_name
 
         # Build context for tool creation
+        # Pass full agent_name for tool state tracking (TodoWrite, ReadTracker, etc.)
         context = {
-          agent_name: agent_name,
+          agent_name: agent_name, # Full instance name for tool's use
           directory: directory,
-          storage: storage,
+          storage: storage, # Shared storage by base name
           agent_definition: agent_definition,
           chat: chat,
           tool_configurator: self,
@@ -303,15 +332,21 @@ module SwarmSDK
       def tool_disabled?(tool_name, disable_config)
         return false if disable_config.nil?
 
+        # Normalize tool_name to symbol for comparison
+        tool_name_sym = tool_name.to_sym
+
         if disable_config == true
           # Disable all default tools
           true
         elsif disable_config.is_a?(Symbol)
           # Single tool name
-          disable_config == tool_name
+          disable_config == tool_name_sym
+        elsif disable_config.is_a?(String)
+          # Single tool name as string (from YAML)
+          disable_config.to_sym == tool_name_sym
         elsif disable_config.is_a?(Array)
-          # Disable only tools in the array
-          disable_config.include?(tool_name)
+          # Disable only tools in the array - normalize to symbols for comparison
+          disable_config.map(&:to_sym).include?(tool_name_sym)
         else
           false
         end

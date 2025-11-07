@@ -124,8 +124,8 @@ module SwarmMemory
         # Read current content (this will raise ArgumentError if entry doesn't exist)
         content = @storage.read(file_path: file_path)
 
-        # Enforce read-before-edit
-        unless Core::StorageReadTracker.entry_read?(@agent_name, file_path)
+        # Enforce read-before-edit with content verification
+        unless Core::StorageReadTracker.entry_read?(@agent_name, file_path, @storage)
           return validation_error(
             "Cannot edit memory entry without reading it first. " \
               "You must use MemoryRead on 'memory://#{file_path}' before editing it. " \

@@ -68,15 +68,29 @@ module SwarmSDK
     # Default tools available to all agents
     DEFAULT_TOOLS = ToolConfigurator::DEFAULT_TOOLS
 
-    attr_reader :name, :agents, :lead_agent, :mcp_clients
+    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions, :swarm_id, :parent_swarm_id, :swarm_registry, :scratchpad_storage, :allow_filesystem_tools
+    attr_accessor :delegation_call_stack
 
     # Check if scratchpad tools are enabled
     #
     # @return [Boolean]
     def scratchpad_enabled?
-      @scratchpad_enabled
+      @scratchpad_mode == :enabled
     end
     attr_writer :config_for_hooks
+
+    # Check if first message has been sent (for system reminder injection)
+    #
+    # @return [Boolean]
+    def first_message_sent?
+      @first_message_sent
+    end
+
+    # Set first message sent flag (used by snapshot/restore)
+    #
+    # @param value [Boolean] New value
+    # @return [void]
+    attr_writer :first_message_sent
 
     # Class-level MCP log level configuration
     @mcp_log_level = DEFAULT_MCP_LOG_LEVEL
@@ -103,8 +117,6 @@ module SwarmSDK
       def apply_mcp_logging_configuration
         return if @mcp_logging_configured
 
-        SwarmSDK::MCP.lazy_load
-
         RubyLLM::MCP.configure do |config|
           config.log_level = @mcp_log_level
         end
@@ -116,22 +128,49 @@ module SwarmSDK
     # Initialize a new Swarm
     #
     # @param name [String] Human-readable swarm name
+    # @param swarm_id [String, nil] Optional swarm ID (auto-generated if not provided)
+    # @param parent_swarm_id [String, nil] Optional parent swarm ID (nil for root swarms)
     # @param global_concurrency [Integer] Max concurrent LLM calls across entire swarm
     # @param default_local_concurrency [Integer] Default max concurrent tool calls per agent
-    # @param scratchpad [Tools::Stores::Scratchpad, nil] Optional scratchpad instance (for testing)
-    # @param scratchpad_enabled [Boolean] Whether to enable scratchpad tools (default: true)
-    def initialize(name:, global_concurrency: DEFAULT_GLOBAL_CONCURRENCY, default_local_concurrency: DEFAULT_LOCAL_CONCURRENCY, scratchpad: nil, scratchpad_enabled: true)
+    # @param scratchpad [Tools::Stores::Scratchpad, nil] Optional scratchpad instance (for testing/internal use)
+    # @param scratchpad_mode [Symbol, String] Scratchpad mode (:enabled or :disabled). :per_node not allowed for non-node swarms.
+    # @param allow_filesystem_tools [Boolean, nil] Whether to allow filesystem tools (nil uses global setting)
+    def initialize(name:, swarm_id: nil, parent_swarm_id: nil, global_concurrency: DEFAULT_GLOBAL_CONCURRENCY, default_local_concurrency: DEFAULT_LOCAL_CONCURRENCY, scratchpad: nil, scratchpad_mode: :enabled, allow_filesystem_tools: nil)
       @name = name
+      @swarm_id = swarm_id || generate_swarm_id(name)
+      @parent_swarm_id = parent_swarm_id
       @global_concurrency = global_concurrency
       @default_local_concurrency = default_local_concurrency
-      @scratchpad_enabled = scratchpad_enabled
+
+      # Handle scratchpad_mode parameter
+      # For Swarm: :enabled or :disabled (not :per_node - that's for nodes)
+      @scratchpad_mode = validate_swarm_scratchpad_mode(scratchpad_mode)
+
+      # Resolve allow_filesystem_tools with priority:
+      # 1. Explicit parameter (if not nil)
+      # 2. Global settings
+      @allow_filesystem_tools = if allow_filesystem_tools.nil?
+        SwarmSDK.settings.allow_filesystem_tools
+      else
+        allow_filesystem_tools
+      end
+
+      # Swarm registry for managing sub-swarms (initialized later if needed)
+      @swarm_registry = nil
+
+      # Delegation call stack for circular dependency detection
+      @delegation_call_stack = []
 
       # Shared semaphore for all agents
       @global_semaphore = Async::Semaphore.new(@global_concurrency)
 
       # Shared scratchpad storage for all agents (volatile)
-      # Use provided scratchpad storage (for testing) or create volatile one
-      @scratchpad_storage = scratchpad || Tools::Stores::ScratchpadStorage.new
+      # Use provided scratchpad storage (for testing) or create volatile one based on mode
+      @scratchpad_storage = if scratchpad
+        scratchpad # Testing/internal use - explicit instance provided
+      elsif @scratchpad_mode == :enabled
+        Tools::Stores::ScratchpadStorage.new
+      end
 
       # Per-agent plugin storages (persistent)
       # Format: { plugin_name => { agent_name => storage } }
@@ -147,6 +186,7 @@ module SwarmSDK
       # Agent definitions and instances
       @agent_definitions = {}
       @agents = {}
+      @delegation_instances = {} # { "delegate@delegator" => Agent::Chat }
       @agents_initialized = false
       @agent_contexts = {}
 
@@ -157,6 +197,10 @@ module SwarmSDK
 
       # Track if first message has been sent
       @first_message_sent = false
+
+      # Track if agent_start events have been emitted
+      # This prevents duplicate emissions and ensures events are emitted when logging is ready
+      @agent_start_events_emitted = false
     end
 
     # Add an agent to the swarm
@@ -222,8 +266,25 @@ module SwarmSDK
       logs = []
       current_prompt = prompt
 
+      # Force cleanup of any lingering scheduler from previous requests
+      # This ensures we always take the clean Path C in Async()
+      # See: Async expert analysis - prevents scheduler leak in Puma
+      if Fiber.scheduler && !Async::Task.current?
+        Fiber.set_scheduler(nil)
+      end
+
+      # Set fiber-local execution context
+      # Use ||= to inherit parent's execution_id if one exists (for mini-swarms)
+      # Child fibers (tools, delegations) inherit automatically
+      Fiber[:execution_id] ||= generate_execution_id
+      Fiber[:swarm_id] = @swarm_id
+      Fiber[:parent_swarm_id] = @parent_swarm_id
+
       # Setup logging FIRST if block given (so swarm_start event can be emitted)
       if block_given?
+        # Force fresh callback array for this execution
+        Fiber[:log_callbacks] = []
+
         # Register callback to collect logs and forward to user's block
         LogCollector.on_log do |entry|
           logs << entry
@@ -251,6 +312,17 @@ module SwarmSDK
 
       # Lazy initialization of agents (with optional logging)
       initialize_agents unless @agents_initialized
+
+      # If agents were initialized BEFORE logging was set up (e.g., via restore()),
+      # we need to retroactively set up logging callbacks and emit agent_start events
+      if block_given? && @agents_initialized && !@agent_start_events_emitted
+        # Setup logging callbacks for all agents (they were skipped during initialization)
+        setup_logging_for_all_agents
+
+        # Emit agent_start events now that logging is ready
+        emit_agent_start_events
+        @agent_start_events_emitted = true
+      end
 
       # Execution loop (supports reprompting)
       result = nil
@@ -355,6 +427,14 @@ module SwarmSDK
       # Cleanup MCP clients after execution
       cleanup
 
+      # Only clear Fiber storage if we set up logging (same pattern as LogCollector)
+      # Mini-swarms are called without block, so they don't clear
+      if block_given?
+        Fiber[:execution_id] = nil
+        Fiber[:swarm_id] = nil
+        Fiber[:parent_swarm_id] = nil
+      end
+
       # Reset logging state for next execution if we set it up
       #
       # IMPORTANT: Only reset if we set up logging (block_given? == true).
@@ -447,6 +527,8 @@ module SwarmSDK
           LogStream.emit(
             type: "model_lookup_warning",
             agent: warning[:agent],
+            swarm_id: @swarm_id,
+            parent_swarm_id: @parent_swarm_id,
             model: warning[:model],
             error_message: warning[:error_message],
             suggestions: warning[:suggestions],
@@ -465,18 +547,25 @@ module SwarmSDK
     #
     # @return [void]
     def cleanup
-      return if @mcp_clients.empty?
+      # Check if there's anything to clean up
+      return if @mcp_clients.empty? && (!@delegation_instances || @delegation_instances.empty?)
 
+      # Stop MCP clients for all agents (primaries + delegations tracked by instance name)
       @mcp_clients.each do |agent_name, clients|
         clients.each do |client|
-          client.stop if client.alive?
+          # Always call stop - this sets @running = false and stops background threads
+          client.stop
           RubyLLM.logger.debug("SwarmSDK: Stopped MCP client '#{client.name}' for agent #{agent_name}")
         rescue StandardError => e
-          RubyLLM.logger.error("SwarmSDK: Error stopping MCP client '#{client.name}' for agent #{agent_name}: #{e.message}")
+          # Don't fail cleanup if stopping one client fails
+          RubyLLM.logger.debug("SwarmSDK: Error stopping MCP client '#{client.name}': #{e.message}")
         end
       end
 
       @mcp_clients.clear
+
+      # Clear delegation instances (V7.0: Added for completeness)
+      @delegation_instances&.clear
     end
 
     # Register a named hook that can be referenced in agent configurations
@@ -517,7 +606,154 @@ module SwarmSDK
       self
     end
 
+    # Reset context for all agents
+    #
+    # Clears conversation history for all agents. This is used by composable swarms
+    # to reset sub-swarm context when keep_context: false is specified.
+    #
+    # @return [void]
+    def reset_context!
+      @agents.each_value do |agent_chat|
+        agent_chat.clear_conversation if agent_chat.respond_to?(:clear_conversation)
+      end
+    end
+
+    # Create snapshot of current conversation state
+    #
+    # Returns a Snapshot object containing:
+    # - All agent conversations (@messages arrays)
+    # - Agent context state (warnings, compression, TodoWrite tracking, skills)
+    # - Delegation instance conversations
+    # - Scratchpad contents (volatile shared storage)
+    # - Read tracking state (which files each agent has read with digests)
+    # - Memory read tracking state (which memory entries each agent has read with digests)
+    #
+    # Configuration (agent definitions, tools, prompts) stays in your YAML/DSL
+    # and is NOT included in snapshots.
+    #
+    # @return [Snapshot] Snapshot object with convenient serialization methods
+    #
+    # @example Save snapshot to JSON file
+    #   snapshot = swarm.snapshot
+    #   snapshot.write_to_file("session.json")
+    #
+    # @example Convert to hash or JSON string
+    #   snapshot = swarm.snapshot
+    #   hash = snapshot.to_hash
+    #   json_string = snapshot.to_json
+    def snapshot
+      StateSnapshot.new(self).snapshot
+    end
+
+    # Restore conversation state from snapshot
+    #
+    # Accepts a Snapshot object, hash, or JSON string. Validates compatibility
+    # between snapshot and current swarm configuration, restores agent conversations,
+    # context state, scratchpad, and read tracking. Returns RestoreResult with
+    # warnings about any agents that couldn't be restored due to configuration
+    # mismatches.
+    #
+    # The swarm must be created with the SAME configuration (agent definitions,
+    # tools, prompts) as when the snapshot was created. Only conversation state
+    # is restored from the snapshot.
+    #
+    # @param snapshot [Snapshot, Hash, String] Snapshot object, hash, or JSON string
+    # @return [RestoreResult] Result with warnings about skipped agents
+    #
+    # @example Restore from Snapshot object
+    #   swarm = SwarmSDK.build { ... }  # Same config as snapshot
+    #   snapshot = Snapshot.from_file("session.json")
+    #   result = swarm.restore(snapshot)
+    #   if result.success?
+    #     puts "All agents restored"
+    #   else
+    #     puts result.summary
+    #     result.warnings.each { |w| puts "  - #{w[:message]}" }
+    #   end
+    #
+    # Restore swarm state from snapshot
+    #
+    # By default, uses current system prompts from agent definitions (YAML + SDK defaults + plugin injections).
+    # Set preserve_system_prompts: true to use historical prompts from snapshot.
+    #
+    # @param snapshot [Snapshot, Hash, String] Snapshot object, hash, or JSON string
+    # @param preserve_system_prompts [Boolean] Use historical system prompts instead of current config (default: false)
+    # @return [RestoreResult] Result with warnings about partial restores
+    def restore(snapshot, preserve_system_prompts: false)
+      StateRestorer.new(self, snapshot, preserve_system_prompts: preserve_system_prompts).restore
+    end
+
+    # Override swarm IDs for composable swarms
+    #
+    # Used by SwarmLoader to set hierarchical IDs when loading sub-swarms.
+    # This is called after the swarm is built to ensure proper parent/child relationships.
+    #
+    # @param swarm_id [String] New swarm ID
+    # @param parent_swarm_id [String] New parent swarm ID
+    # @return [void]
+    def override_swarm_ids(swarm_id:, parent_swarm_id:)
+      @swarm_id = swarm_id
+      @parent_swarm_id = parent_swarm_id
+    end
+
+    # Set swarm registry for composable swarms
+    #
+    # Used by Builder to set the registry after swarm creation.
+    # This must be called before agent initialization to enable swarm delegation.
+    #
+    # @param registry [SwarmRegistry] Configured swarm registry
+    # @return [void]
+    attr_writer :swarm_registry
+
     private
+
+    # Validate and normalize scratchpad mode for Swarm
+    #
+    # Regular Swarms support :enabled or :disabled.
+    # Rejects :per_node since it only makes sense for NodeOrchestrator with multiple nodes.
+    #
+    # @param value [Symbol, String] Scratchpad mode (strings from YAML converted to symbols)
+    # @return [Symbol] :enabled or :disabled
+    # @raise [ArgumentError] If :per_node used, or invalid value
+    def validate_swarm_scratchpad_mode(value)
+      # Convert strings from YAML to symbols
+      value = value.to_sym if value.is_a?(String)
+
+      case value
+      when :enabled, :disabled
+        value
+      when :per_node
+        raise ArgumentError,
+          "scratchpad: :per_node is only valid for NodeOrchestrator with nodes. " \
+            "For regular Swarms, use :enabled or :disabled."
+      else
+        raise ArgumentError,
+          "Invalid scratchpad mode for Swarm: #{value.inspect}. " \
+            "Use :enabled or :disabled."
+      end
+    end
+
+    # Generate a unique swarm ID from name
+    #
+    # Creates a swarm ID by sanitizing the name and appending a random suffix.
+    # Used when swarm_id is not explicitly provided.
+    #
+    # @param name [String] Swarm name
+    # @return [String] Generated swarm ID (e.g., "dev_team_a3f2b1c8")
+    def generate_swarm_id(name)
+      sanitized = name.to_s.gsub(/[^a-z0-9_-]/i, "_").downcase
+      "#{sanitized}_#{SecureRandom.hex(4)}"
+    end
+
+    # Generate a unique execution ID
+    #
+    # Creates an execution ID that uniquely identifies a single swarm.execute() call.
+    # Format: "exec_{swarm_id}_{random_hex}"
+    #
+    # @return [String] Generated execution ID (e.g., "exec_main_a3f2b1c8")
+    def generate_execution_id
+      "exec_#{@swarm_id}_#{SecureRandom.hex(8)}"
+    end
 
     # Initialize all agents using AgentInitializer
     #
@@ -542,44 +778,87 @@ module SwarmSDK
       @agent_contexts = initializer.agent_contexts
       @agents_initialized = true
 
-      # Emit agent_start events for all agents
-      emit_agent_start_events
+      # NOTE: agent_start events are emitted in execute() when logging is set up
+      # This ensures events are never lost, even if agents are initialized early (e.g., by restore())
+    end
+
+    # Setup logging callbacks for all agents
+    #
+    # Called when agents were initialized before logging was set up (e.g., via restore()).
+    # Retroactively registers RubyLLM callbacks (on_tool_call, on_end_message, etc.)
+    # so events are properly emitted during execution.
+    # Safe to call multiple times - RubyLLM callbacks are replaced, not appended.
+    #
+    # @return [void]
+    def setup_logging_for_all_agents
+      # Setup for PRIMARY agents
+      @agents.each_value do |chat|
+        chat.setup_logging if chat.respond_to?(:setup_logging)
+      end
+
+      # Setup for DELEGATION instances
+      @delegation_instances.each_value do |chat|
+        chat.setup_logging if chat.respond_to?(:setup_logging)
+      end
     end
 
     # Emit agent_start events for all initialized agents
     def emit_agent_start_events
-      # Only emit if LogStream is enabled
       return unless LogStream.emitter
 
+      # Emit for PRIMARY agents
       @agents.each do |agent_name, chat|
-        agent_def = @agent_definitions[agent_name]
-
-        # Build plugin storage info for logging
-        plugin_storage_info = {}
-        @plugin_storages.each do |plugin_name, agent_storages|
-          next unless agent_storages.key?(agent_name)
-
-          plugin_storage_info[plugin_name] = {
-            enabled: true,
-            # Get additional info from agent definition if available
-            config: agent_def.respond_to?(plugin_name) ? extract_plugin_config_info(agent_def.public_send(plugin_name)) : nil,
-          }
-        end
-
-        LogStream.emit(
-          type: "agent_start",
-          agent: agent_name,
-          swarm_name: @name,
-          model: agent_def.model,
-          provider: agent_def.provider || "openai",
-          directory: agent_def.directory,
-          system_prompt: agent_def.system_prompt,
-          tools: chat.tools.keys,
-          delegates_to: agent_def.delegates_to,
-          plugin_storages: plugin_storage_info,
-          timestamp: Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        )
+        emit_agent_start_for(agent_name, chat, is_delegation: false)
       end
+
+      # Emit for DELEGATION instances
+      @delegation_instances.each do |instance_name, chat|
+        base_name = extract_base_name(instance_name)
+        emit_agent_start_for(instance_name.to_sym, chat, is_delegation: true, base_name: base_name)
+      end
+
+      # Mark as emitted to prevent duplicate emissions
+      @agent_start_events_emitted = true
+    end
+
+    # Helper for emitting agent_start event
+    def emit_agent_start_for(agent_name, chat, is_delegation:, base_name: nil)
+      base_name ||= agent_name
+      agent_def = @agent_definitions[base_name]
+
+      # Build plugin storage info using base name
+      plugin_storage_info = {}
+      @plugin_storages.each do |plugin_name, agent_storages|
+        next unless agent_storages.key?(base_name)
+
+        plugin_storage_info[plugin_name] = {
+          enabled: true,
+          config: agent_def.respond_to?(plugin_name) ? extract_plugin_config_info(agent_def.public_send(plugin_name)) : nil,
+        }
+      end
+
+      LogStream.emit(
+        type: "agent_start",
+        agent: agent_name,
+        swarm_id: @swarm_id,
+        parent_swarm_id: @parent_swarm_id,
+        swarm_name: @name,
+        model: agent_def.model,
+        provider: agent_def.provider || "openai",
+        directory: agent_def.directory,
+        system_prompt: agent_def.system_prompt,
+        tools: chat.tools.keys,
+        delegates_to: agent_def.delegates_to,
+        plugin_storages: plugin_storage_info,
+        is_delegation_instance: is_delegation,
+        base_agent: (base_name if is_delegation),
+        timestamp: Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ"),
+      )
+    end
+
+    # Extract base name from instance name
+    def extract_base_name(instance_name)
+      instance_name.to_s.split("@").first.to_sym
     end
 
     # Normalize tools to internal format (kept for add_agent)
@@ -672,6 +951,8 @@ module SwarmSDK
         LogStream.emit(
           type: "swarm_start",
           agent: context.metadata[:lead_agent], # Include agent for consistency
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           swarm_name: context.metadata[:swarm_name],
           lead_agent: context.metadata[:lead_agent],
           prompt: context.metadata[:prompt],
@@ -686,6 +967,8 @@ module SwarmSDK
 
         LogStream.emit(
           type: "swarm_stop",
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           swarm_name: context.metadata[:swarm_name],
           lead_agent: context.metadata[:lead_agent],
           last_agent: context.metadata[:last_agent], # Agent that produced final response
@@ -707,6 +990,8 @@ module SwarmSDK
         LogStream.emit(
           type: "user_prompt",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           model: context.metadata[:model] || "unknown",
           provider: context.metadata[:provider] || "unknown",
           message_count: context.metadata[:message_count] || 0,
@@ -727,6 +1012,8 @@ module SwarmSDK
         LogStream.emit(
           type: "agent_step",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           model: context.metadata[:model],
           content: context.metadata[:content],
           tool_calls: context.metadata[:tool_calls],
@@ -748,6 +1035,8 @@ module SwarmSDK
         LogStream.emit(
           type: "agent_stop",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           model: context.metadata[:model],
           content: context.metadata[:content],
           tool_calls: context.metadata[:tool_calls],
@@ -768,6 +1057,8 @@ module SwarmSDK
         LogStream.emit(
           type: "tool_call",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           tool_call_id: context.tool_call.id,
           tool: context.tool_call.name,
           arguments: context.tool_call.parameters,
@@ -785,6 +1076,8 @@ module SwarmSDK
         LogStream.emit(
           type: "tool_result",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           tool_call_id: context.tool_result.tool_call_id,
           tool: context.tool_result.tool_name,
           result: context.tool_result.content,
@@ -800,6 +1093,8 @@ module SwarmSDK
         LogStream.emit(
           type: "context_limit_warning",
           agent: context.agent_name,
+          swarm_id: @swarm_id,
+          parent_swarm_id: @parent_swarm_id,
           model: context.metadata[:model] || "unknown",
           threshold: "#{context.metadata[:threshold]}%",
           current_usage: "#{context.metadata[:percentage]}%",

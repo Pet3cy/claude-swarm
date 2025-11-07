@@ -13,6 +13,25 @@ module SwarmSDK
       # - Check context warnings
       #
       # This is a stateful helper that's instantiated per Agent::Chat instance.
+      #
+      # ## Thread Safety and Fiber-Local Storage
+      #
+      # IMPORTANT: LogStream.emit calls in this class DO NOT explicitly pass
+      # swarm_id, parent_swarm_id, or execution_id. These values are automatically
+      # injected from Fiber-local storage (Fiber[:swarm_id], etc.) by LogStream.emit.
+      #
+      # Why: In threaded environments (Puma, Sidekiq), swarm/agent instances may be
+      # reused across multiple requests/jobs. If we explicitly pass @agent_context.swarm_id,
+      # callbacks would use STALE values from the first request, causing events to be
+      # lost or misattributed.
+      #
+      # By relying on Fiber-local storage, each request/job gets the correct context
+      # even when reusing the same swarm instance. Fiber storage is set at the start
+      # of Swarm#execute and inherited by child fibers (tool calls, delegations).
+      #
+      # This design works correctly in both:
+      # - Single-threaded environments (rails runner, console)
+      # - Multi-threaded environments (Puma, Sidekiq)
       class ContextTracker
         include LoggingHelpers
 
@@ -74,11 +93,20 @@ module SwarmSDK
             # Mark threshold as hit and emit warning
             @agent_context.hit_warning_threshold?(threshold)
 
+            # Emit context_threshold_hit event for snapshot reconstruction
+            LogStream.emit(
+              type: "context_threshold_hit",
+              agent: @agent_context.name,
+              threshold: threshold,
+              current_usage_percentage: current_percentage.round(2),
+            )
+
             # Trigger automatic compression at 60% threshold
             if threshold == Context::COMPRESSION_THRESHOLD
               trigger_automatic_compression
             end
 
+            # Emit legacy context_limit_warning for backwards compatibility
             LogStream.emit(
               type: "context_limit_warning",
               agent: @agent_context.name,
@@ -107,6 +135,9 @@ module SwarmSDK
               cumulative_input_tokens: @chat.cumulative_input_tokens,
               cumulative_output_tokens: @chat.cumulative_output_tokens,
               cumulative_total_tokens: @chat.cumulative_total_tokens,
+              cumulative_cached_tokens: @chat.cumulative_cached_tokens,
+              cumulative_cache_creation_tokens: @chat.cumulative_cache_creation_tokens,
+              effective_input_tokens: @chat.effective_input_tokens,
               context_limit: @chat.context_limit,
               tokens_used_percentage: "#{@chat.context_usage_percentage}%",
               tokens_remaining: @chat.tokens_remaining,
@@ -118,6 +149,8 @@ module SwarmSDK
           {
             input_tokens: message.input_tokens,
             output_tokens: message.output_tokens,
+            cached_tokens: message.cached_tokens,
+            cache_creation_tokens: message.cache_creation_tokens,
             total_tokens: (message.input_tokens || 0) + (message.output_tokens || 0),
             input_cost: cost_info[:input_cost],
             output_cost: cost_info[:output_cost],

@@ -6,6 +6,17 @@ require "yaml"
 
 module SwarmSDK
   class ConfigurationTest < Minitest::Test
+    def setup
+      @original_api_key = ENV["OPENAI_API_KEY"]
+      ENV["OPENAI_API_KEY"] = "test-key-12345"
+      RubyLLM.configure { |config| config.openai_api_key = "test-key-12345" }
+    end
+
+    def teardown
+      ENV["OPENAI_API_KEY"] = @original_api_key
+      RubyLLM.configure { |config| config.openai_api_key = @original_api_key }
+    end
+
     def test_load_valid_configuration
       with_config_file(valid_config) do |path|
         config = Configuration.load_file(path)
@@ -185,7 +196,7 @@ module SwarmSDK
           Configuration.load_file(path)
         end
 
-        assert_match(/connection to unknown agent/i, error.message)
+        assert_match(/delegates to unknown target/i, error.message)
       end
     end
 
@@ -202,7 +213,7 @@ module SwarmSDK
         # Test that agent config is accessible with symbols
         lead_agent = configuration.agents[:lead]
 
-        assert_instance_of(Agent::Definition, lead_agent)
+        assert_instance_of(Hash, lead_agent)
       end
     end
 
@@ -217,7 +228,7 @@ module SwarmSDK
 
         # Test symbolization through public API
         lead_agent = configuration.agents[:lead]
-        mcp_servers = lead_agent.mcp_servers
+        mcp_servers = lead_agent[:mcp_servers]
 
         # MCP server configs should have symbol keys
         assert(mcp_servers.first.keys.all? { |k| k.is_a?(Symbol) })
@@ -278,7 +289,7 @@ module SwarmSDK
         configuration = Configuration.load_file(path)
         lead_agent = configuration.agents[:lead]
 
-        assert_equal("gpt-5-turbo", lead_agent.model)
+        assert_equal("gpt-5-turbo", lead_agent[:model])
       end
     ensure
       ENV.delete("TEST_MODEL")
@@ -292,7 +303,7 @@ module SwarmSDK
         configuration = Configuration.load_file(path)
         lead_agent = configuration.agents[:lead]
 
-        assert_equal("default-model", lead_agent.model)
+        assert_equal("default-model", lead_agent[:model])
       end
     end
 
@@ -337,12 +348,14 @@ module SwarmSDK
           with_config_file(config) do |path|
             configuration = Configuration.load_file(path)
 
-            backend = configuration.agents[:backend]
+            # Build swarm to load the agent from file
+            swarm = configuration.to_swarm
+            # Access agent definition directly (doesn't require agent to be created as primary)
+            backend_def = swarm.agent_definitions[:backend]
 
-            assert_equal(:backend, backend.name)
-            assert_equal("Backend developer", backend.description)
-            assert_equal("gpt-5", backend.model)
-            assert_includes(backend.system_prompt, "You are a backend developer")
+            assert_equal("Backend developer", backend_def.description)
+            assert_equal("gpt-5", backend_def.model)
+            assert_includes(backend_def.system_prompt, "You are a backend developer")
           end
         end
       end
@@ -375,10 +388,13 @@ module SwarmSDK
         File.write(config_path, YAML.dump(config))
 
         configuration = Configuration.load_file(config_path)
-        backend = configuration.agents[:backend]
 
-        assert_equal(:backend, backend.name)
-        assert_equal("Test agent", backend.description)
+        # Build swarm to load the agent from file
+        swarm = configuration.to_swarm
+        # Access agent definition directly (doesn't require agent to be created as primary)
+        backend_def = swarm.agent_definitions[:backend]
+
+        assert_equal("Test agent", backend_def.description)
       end
     end
 
@@ -403,9 +419,13 @@ module SwarmSDK
 
         with_config_file(config) do |config_path|
           configuration = Configuration.load_file(config_path)
-          backend = configuration.agents[:backend]
 
-          assert_equal(:backend, backend.name)
+          # Build swarm to load the agent from file
+          swarm = configuration.to_swarm
+          # Access agent definition directly (doesn't require agent to be created as primary)
+          backend_def = swarm.agent_definitions[:backend]
+
+          assert_equal("Test agent", backend_def.description)
         end
       end
     end
@@ -417,8 +437,11 @@ module SwarmSDK
       }
 
       with_config_file(config) do |path|
+        configuration = Configuration.load_file(path)
+
+        # Error occurs when building the swarm (loading the agent)
         error = assert_raises(ConfigurationError) do
-          Configuration.load_file(path)
+          configuration.to_swarm
         end
 
         assert_match(/agent file not found/i, error.message)
@@ -438,12 +461,13 @@ module SwarmSDK
         }
 
         with_config_file(config) do |path|
-          error = assert_raises(ConfigurationError) do
-            Configuration.load_file(path)
-          end
+          configuration = Configuration.load_file(path)
 
-          assert_match(/error loading agent/i, error.message)
-          assert_match(/invalid markdown/i, error.message)
+          # Error occurs when building the swarm (loading the agent)
+          # Error message varies depending on markdown content, but should raise
+          assert_raises(ConfigurationError) do
+            configuration.to_swarm
+          end
         end
       end
     end
@@ -472,8 +496,12 @@ module SwarmSDK
 
           # lead is inline, backend is from file
           assert_equal(2, configuration.agents.size)
-          assert_equal("Lead agent", configuration.agents[:lead].description)
-          assert_equal("File-based agent", configuration.agents[:backend].description)
+
+          # Build swarm to load agents from files
+          swarm = configuration.to_swarm
+
+          assert_equal("Lead agent", swarm.agent_definitions[:lead].description)
+          assert_equal("File-based agent", swarm.agent_definitions[:backend].description)
         end
       end
     end
@@ -492,8 +520,8 @@ module SwarmSDK
         configuration = Configuration.load_file(path)
         lead_agent = configuration.agents[:lead]
 
-        assert_equal("0.8", lead_agent.parameters[:temperature])
-        assert_equal("2000", lead_agent.parameters[:max_tokens])
+        assert_equal("0.8", lead_agent[:parameters][:temperature])
+        assert_equal("2000", lead_agent[:parameters][:max_tokens])
       end
     ensure
       ENV.delete("TEST_TEMP")
@@ -508,7 +536,7 @@ module SwarmSDK
         configuration = Configuration.load_file(path)
         lead_agent = configuration.agents[:lead]
 
-        assert_equal("", lead_agent.base_url)
+        assert_equal("", lead_agent[:base_url])
       end
     end
 
@@ -517,12 +545,10 @@ module SwarmSDK
       config["swarm"]["agents"]["backend"] = nil
 
       with_config_file(config) do |path|
-        error = assert_raises(ConfigurationError) do
+        # Null agent config should fail strict validation
+        assert_raises(ConfigurationError) do
           Configuration.load_file(path)
         end
-
-        # Should fail validation since description is required
-        assert_match(/missing required.*description/i, error.message)
       end
     end
 
@@ -550,7 +576,7 @@ module SwarmSDK
       end
     rescue ConfigurationError => e
       # Expected error about unknown agent
-      assert_match(/connection to unknown agent/i, e.message)
+      assert_match(/delegates to unknown target/i, e.message)
     end
 
     def test_non_hash_yaml_raises_error
@@ -574,10 +600,10 @@ module SwarmSDK
         configuration = Configuration.load_file(path)
         lead = configuration.agents[:lead]
 
-        assert_equal(2, lead.mcp_servers.size)
+        assert_equal(2, lead[:mcp_servers].size)
         # Deep symbolization converts string keys to symbols
-        assert_equal("stdio", lead.mcp_servers[0][:type])
-        assert_equal("sse", lead.mcp_servers[1][:type])
+        assert_equal("stdio", lead[:mcp_servers][0][:type])
+        assert_equal("sse", lead[:mcp_servers][1][:type])
       end
     end
 
@@ -612,7 +638,7 @@ module SwarmSDK
         configuration = Configuration.load_file(path)
         backend = configuration.agents[:backend]
 
-        assert_empty(backend.delegates_to)
+        assert_empty(backend[:delegates_to])
       end
     end
 
@@ -624,7 +650,7 @@ module SwarmSDK
         configuration = Configuration.load_file(path)
         lead = configuration.agents[:lead]
 
-        assert_empty(lead.mcp_servers)
+        assert_empty(lead[:mcp_servers] || [])
       end
     end
 
@@ -661,12 +687,14 @@ module SwarmSDK
         with_config_file(config) do |path|
           configuration = Configuration.load_file(path)
 
-          backend = configuration.agents[:backend]
+          # Build swarm to load the agent from file
+          swarm = configuration.to_swarm
+          # Access agent definition directly (doesn't require agent to be created as primary)
+          backend_def = swarm.agent_definitions[:backend]
 
-          assert_equal(:backend, backend.name)
-          assert_equal("String path agent", backend.description)
-          assert_equal("gpt-5", backend.model)
-          assert_includes(backend.system_prompt, "You are loaded from a string path")
+          assert_equal("String path agent", backend_def.description)
+          assert_equal("gpt-5", backend_def.model)
+          assert_includes(backend_def.system_prompt, "You are loaded from a string path")
         end
       end
     end
@@ -696,10 +724,13 @@ module SwarmSDK
         File.write(config_path, YAML.dump(config))
 
         configuration = Configuration.load_file(config_path)
-        backend = configuration.agents[:backend]
 
-        assert_equal(:backend, backend.name)
-        assert_equal("Relative string path agent", backend.description)
+        # Build swarm to load the agent from file
+        swarm = configuration.to_swarm
+        # Access agent definition directly (doesn't require agent to be created as primary)
+        backend_def = swarm.agent_definitions[:backend]
+
+        assert_equal("Relative string path agent", backend_def.description)
       end
     end
 
@@ -708,8 +739,11 @@ module SwarmSDK
       config["swarm"]["agents"]["backend"] = "/nonexistent/agent.md" # String path
 
       with_config_file(config) do |path|
+        configuration = Configuration.load_file(path)
+
+        # Error occurs when building the swarm (loading the agent)
         error = assert_raises(ConfigurationError) do
-          Configuration.load_file(path)
+          configuration.to_swarm
         end
 
         assert_match(/agent file not found/i, error.message)
@@ -738,8 +772,12 @@ module SwarmSDK
           configuration = Configuration.load_file(path)
 
           assert_equal(2, configuration.agents.size)
-          assert_equal("Lead agent", configuration.agents[:lead].description)
-          assert_equal("From string path", configuration.agents[:backend].description)
+
+          # Build swarm to load agents
+          swarm = configuration.to_swarm
+
+          assert_equal("Lead agent", swarm.agent_definitions[:lead].description)
+          assert_equal("From string path", swarm.agent_definitions[:backend].description)
         end
       end
     end

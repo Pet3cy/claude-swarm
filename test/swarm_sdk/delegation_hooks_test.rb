@@ -288,6 +288,7 @@ module SwarmSDK
         model: "gpt-5",
         system_prompt: "You build APIs",
         directory: ".",
+        shared_across_delegations: true, # Use shared instance so test mocks work
       ))
 
       swarm.lead = :lead

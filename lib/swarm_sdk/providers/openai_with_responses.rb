@@ -145,7 +145,7 @@ module SwarmSDK
       rescue NoMethodError => e
         # Catch fetch/dig errors on nil and provide better context
         if e.message.include?("undefined method") && (e.message.include?("fetch") || e.message.include?("dig"))
-          log_parse_error(e.class.name, e.message, response.body)
+          log_parse_error(e.class.name, e.message, response.body, e.backtrace)
           nil
         else
           raise
@@ -377,30 +377,36 @@ module SwarmSDK
       # This differs from chat/completions which nests under 'function':
       # { type: "function", function: { name: "tool_name", ... } }
       #
+      # RubyLLM 1.9.0+: Uses tool.params_schema for unified schema generation.
+      # This supports both old param helper and new params DSL, and includes
+      # proper JSON Schema formatting (strict, additionalProperties, etc.)
+      #
       # @param tool [RubyLLM::Tool] Tool to convert
       # @return [Hash] Tool definition in Responses API format
       def responses_tool_for(tool)
+        # Use tool.params_schema which returns a complete JSON Schema hash
+        # This works with both param helper and params DSL
+        parameters_schema = tool.params_schema || empty_parameters_schema
+
         {
           type: "function",
           name: tool.name,
           description: tool.description,
-          parameters: {
-            type: "object",
-            properties: tool.parameters.transform_values { |param| param_schema(param) },
-            required: tool.parameters.select { |_, p| p.required }.keys,
-          },
+          parameters: parameters_schema,
         }
       end
 
-      # Build parameter schema for a tool parameter
+      # Empty parameter schema for tools with no parameters
       #
-      # @param param [RubyLLM::Tool::Parameter] Parameter to convert
-      # @return [Hash] Parameter schema
-      def param_schema(param)
+      # @return [Hash] Empty JSON Schema matching OpenAI's format
+      def empty_parameters_schema
         {
-          type: param.type,
-          description: param.description,
-        }.compact
+          "type" => "object",
+          "properties" => {},
+          "required" => [],
+          "additionalProperties" => false,
+          "strict" => true,
+        }
       end
 
       # Parse Responses API response
@@ -562,7 +568,7 @@ module SwarmSDK
       # @param error_class [String] Error class name
       # @param error_message [String] Error message
       # @param response_body [Object] Response body that failed to parse
-      def log_parse_error(error_class, error_message, response_body)
+      def log_parse_error(error_class, error_message, response_body, error_backtrace = nil)
         if @agent_name
           # Emit structured JSON log through LogStream
           LogStream.emit(
@@ -570,11 +576,12 @@ module SwarmSDK
             agent: @agent_name,
             error_class: error_class,
             error_message: error_message,
+            error_backtrace: error_backtrace,
             response_body: response_body.inspect,
           )
         else
           # Fallback to RubyLLM logger if agent name not set
-          RubyLLM.logger.error("SwarmSDK: #{error_class}: #{error_message}\nResponse: #{response_body.inspect}")
+          RubyLLM.logger.error("SwarmSDK: #{error_class}: #{error_message}\nResponse: #{response_body.inspect}\nError backtrace: #{error_backtrace.join("\n")}")
         end
       end
     end
