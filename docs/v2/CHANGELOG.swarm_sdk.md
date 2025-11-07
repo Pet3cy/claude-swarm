@@ -352,9 +352,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Plugins can preserve their configuration when agents are cloned in NodeOrchestrator
 
 - **NodeOrchestrator**: Configurable scratchpad sharing modes
-  - `scratchpad: :enabled` - Share scratchpad across all nodes (default)
+  - `scratchpad: :enabled` - Share scratchpad across all nodes
   - `scratchpad: :per_node` - Isolated scratchpad per node
-  - `scratchpad: :disabled` - No scratchpad tools
+  - `scratchpad: :disabled` - No scratchpad tools (default)
 
 - **CLI ConfigLoader**: Accepts both Swarm and NodeOrchestrator instances
   - Bug fix: CLI now correctly handles NodeOrchestrator execution

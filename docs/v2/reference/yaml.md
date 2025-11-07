@@ -221,10 +221,10 @@ Scratchpad is volatile (in-memory only) and provides temporary storage for cross
 ```yaml
 # Regular swarm
 swarm:
-  scratchpad: enabled   # default
-  scratchpad: disabled  # no scratchpad
+  scratchpad: enabled   # enable scratchpad
+  scratchpad: disabled  # no scratchpad (default)
 
-# With nodes - shared across all nodes (default)
+# With nodes - shared across all nodes
 swarm:
   scratchpad: enabled
 
