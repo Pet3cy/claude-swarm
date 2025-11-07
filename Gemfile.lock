@@ -18,7 +18,7 @@ PATH
       pdf-reader (~> 2.15)
       reverse_markdown (~> 3.0.0)
       roo (~> 3.0.0)
-      swarm_sdk (~> 2.1)
+      swarm_sdk (~> 2.2)
       tty-box
       tty-cursor
       tty-link
@@ -32,7 +32,7 @@ PATH
       informers (~> 1.2.1)
       rice (~> 4.6.0)
       ruby_llm (~> 1.9)
-      swarm_sdk (~> 2.1)
+      swarm_sdk (~> 2.2)
       zeitwerk (~> 2.6)
     swarm_sdk (2.2.0)
       async (~> 2.0)
