@@ -92,24 +92,36 @@ module SwarmSDK
           return validation_error("Path is a directory, not a file. Use Bash with ls to read directories.")
         end
 
-        # Register this read in the tracker (use resolved path)
-        Stores::ReadTracker.register_read(@agent_name, resolved_path)
-
         # Check if it's a document and try to convert it
         converter = find_converter_for_file(resolved_path)
         if converter
           result = converter.new.convert(resolved_path)
+          # For document files, register the converted text content
+          # Extract text from result (may be wrapped in system-reminder tags)
+          if result.is_a?(String)
+            # Remove system-reminder wrapper if present to get clean text for digest
+            text_content = result.gsub(%r{<system-reminder>.*?</system-reminder>}m, "").strip
+            Stores::ReadTracker.register_read(@agent_name, resolved_path, text_content)
+          end
           return result
         end
 
         # Try to read as text, handle binary files separately
         content = read_file_content(resolved_path)
 
-        # If content is a Content object (binary file), return it directly
-        return content if content.is_a?(RubyLLM::Content)
+        # If content is a Content object (binary file), track with binary digest and return
+        if content.is_a?(RubyLLM::Content)
+          # For binary files, read raw bytes for digest
+          binary_content = File.binread(resolved_path)
+          Stores::ReadTracker.register_read(@agent_name, resolved_path, binary_content)
+          return content
+        end
 
         # Return early if we got an error message or system reminder
         return content if content.is_a?(String) && (content.start_with?("Error:") || content.start_with?("<system-reminder>"))
+
+        # At this point, we have valid text content - register the read with digest
+        Stores::ReadTracker.register_read(@agent_name, resolved_path, content)
 
         # Check if file is empty
         if content.empty?

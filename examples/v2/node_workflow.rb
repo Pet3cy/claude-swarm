@@ -13,7 +13,7 @@
 #
 # Run: ruby examples/node_workflow.rb
 
-require_relative "../lib/swarm_sdk"
+require "swarm_sdk"
 
 swarm = SwarmSDK.build do
   name("Haiku Workflow")
@@ -27,7 +27,6 @@ swarm = SwarmSDK.build do
       Your job is to break down tasks into smaller subtasks. Extract the intent of the user's prompt and break it down into smaller subtasks.
       Return a list of subtasks.
     PROMPT
-    tools(include_default: false)
   end
 
   agent(:implementer) do
@@ -37,7 +36,6 @@ swarm = SwarmSDK.build do
     system_prompt(<<~PROMPT)
       Your job is to execute the subtasks given to you.
     PROMPT
-    tools(include_default: false)
   end
 
   agent(:verifier) do
@@ -47,12 +45,12 @@ swarm = SwarmSDK.build do
     system_prompt(<<~PROMPT)
       Your job is to verify work given to you and return a summary of your findings
     PROMPT
-    tools(include_default: false)
   end
 
   # Stage 1: Planning
   node(:planning) do
     # Input transformer - ctx.content is the initial prompt
+    # Demonstrates using return for early exit with skip_execution
     input do |ctx|
       <<~PROMPT
         Please break down the following prompt into smaller subtasks:

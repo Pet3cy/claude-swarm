@@ -1097,5 +1097,277 @@ module SwarmSDK
       assert(reviewer_config_1[:reset_context])
       assert(reviewer_config_2[:reset_context])
     end
+
+    # Tests for scratchpad modes
+    def test_scratchpad_enabled_mode_shares_across_nodes
+      swarm = SwarmSDK.build do
+        name("Scratchpad Enabled Test")
+        scratchpad(:enabled)
+
+        agent(:agent1) do
+          model(@model_id)
+          provider(@provider)
+          description("Agent 1")
+          system_prompt("You are agent 1")
+          coding_agent(false)
+        end
+
+        agent(:agent2) do
+          model(@model_id)
+          provider(@provider)
+          description("Agent 2")
+          system_prompt("You are agent 2")
+          coding_agent(false)
+        end
+
+        node(:node1) do
+          agent(:agent1)
+        end
+
+        node(:node2) do
+          agent(:agent2)
+          depends_on(:node1)
+        end
+
+        start_node(:node1)
+      end
+
+      # Verify scratchpad mode
+      assert_equal(:enabled, swarm.scratchpad)
+      assert_predicate(swarm, :scratchpad_enabled?)
+      assert_predicate(swarm, :shared_scratchpad?)
+      refute_predicate(swarm, :per_node_scratchpad?)
+
+      # Verify both nodes will use the same scratchpad instance
+      node1_scratchpad = swarm.scratchpad_for(:node1)
+      node2_scratchpad = swarm.scratchpad_for(:node2)
+
+      assert_same(node1_scratchpad, node2_scratchpad, "Nodes should share same scratchpad in :enabled mode")
+    end
+
+    def test_scratchpad_per_node_mode_isolates_nodes
+      swarm = SwarmSDK.build do
+        name("Scratchpad Per-Node Test")
+        scratchpad(:per_node)
+
+        agent(:agent1) do
+          model(@model_id)
+          provider(@provider)
+          description("Agent 1")
+          system_prompt("You are agent 1")
+          coding_agent(false)
+        end
+
+        node(:node1) do
+          agent(:agent1)
+        end
+
+        node(:node2) do
+          agent(:agent1)
+          depends_on(:node1)
+        end
+
+        start_node(:node1)
+      end
+
+      # Verify scratchpad mode
+      assert_equal(:per_node, swarm.scratchpad)
+      assert_predicate(swarm, :scratchpad_enabled?)
+      refute_predicate(swarm, :shared_scratchpad?)
+      assert_predicate(swarm, :per_node_scratchpad?)
+
+      # Verify each node gets its own scratchpad instance (lazy init)
+      node1_scratchpad = swarm.scratchpad_for(:node1)
+      node2_scratchpad = swarm.scratchpad_for(:node2)
+
+      refute_nil(node1_scratchpad)
+      refute_nil(node2_scratchpad)
+      refute_same(node1_scratchpad, node2_scratchpad, "Nodes should have separate scratchpads in :per_node mode")
+    end
+
+    def test_scratchpad_disabled_mode_returns_nil
+      swarm = SwarmSDK.build do
+        name("Scratchpad Disabled Test")
+        scratchpad(:disabled)
+
+        agent(:agent1) do
+          model(@model_id)
+          provider(@provider)
+          description("Agent 1")
+          system_prompt("You are agent 1")
+          coding_agent(false)
+        end
+
+        node(:node1) do
+          agent(:agent1)
+        end
+
+        start_node(:node1)
+      end
+
+      # Verify scratchpad mode
+      assert_equal(:disabled, swarm.scratchpad)
+      refute_predicate(swarm, :scratchpad_enabled?)
+      refute_predicate(swarm, :shared_scratchpad?)
+
+      # Verify scratchpad_for returns nil
+      assert_nil(swarm.scratchpad_for(:node1))
+      assert_empty(swarm.all_scratchpads)
+    end
+
+    # Tests for per-node tool overrides
+    def test_per_node_tool_override_dsl
+      swarm = SwarmSDK.build do
+        name("Tool Override Test")
+
+        agent(:backend) do
+          model(@model_id)
+          provider(@provider)
+          description("Backend")
+          system_prompt("You build APIs")
+          tools(:Read, :Edit, :Write, :Bash)
+          coding_agent(false)
+        end
+
+        node(:planning) do
+          agent(:backend).tools(:Read, :Think)
+        end
+
+        node(:implementation) do
+          agent(:backend).tools(:Read, :Edit, :Write)
+        end
+
+        start_node(:planning)
+      end
+
+      # Verify global definition has 4 tools
+      global_def = swarm.agent_definitions[:backend]
+
+      assert_equal(4, global_def.tools.size)
+
+      # Verify planning node override
+      planning_config = swarm.nodes[:planning].agent_configs.find { |ac| ac[:agent] == :backend }
+
+      assert_equal([:Read, :Think], planning_config[:tools])
+
+      # Verify implementation node override
+      impl_config = swarm.nodes[:implementation].agent_configs.find { |ac| ac[:agent] == :backend }
+
+      assert_equal([:Read, :Edit, :Write], impl_config[:tools])
+    end
+
+    def test_per_node_tool_override_yaml
+      yaml = <<~YAML
+        version: 2
+        swarm:
+          name: Tool Override YAML
+          lead: backend
+
+          agents:
+            backend:
+              description: Backend
+              model: #{@model_id}
+              system_prompt: You build APIs
+              tools:
+                - Read
+                - Edit
+                - Write
+                - Bash
+
+          nodes:
+            planning:
+              agents:
+                - agent: backend
+                  tools:
+                    - Read
+                    - Think
+
+            implementation:
+              agents:
+                - agent: backend
+                  tools:
+                    - Read
+                    - Edit
+                    - Write
+
+          start_node: planning
+      YAML
+
+      config = Configuration.new(yaml)
+      config.load_and_validate
+      swarm = config.to_swarm
+
+      # Verify planning node override
+      planning_config = swarm.nodes[:planning].agent_configs.find { |ac| ac[:agent] == :backend }
+
+      assert_equal([:Read, :Think], planning_config[:tools])
+
+      # Verify implementation node override
+      impl_config = swarm.nodes[:implementation].agent_configs.find { |ac| ac[:agent] == :backend }
+
+      assert_equal([:Read, :Edit, :Write], impl_config[:tools])
+    end
+
+    def test_per_node_nil_tools_uses_global
+      swarm = SwarmSDK.build do
+        name("Default Tools Test")
+
+        agent(:backend) do
+          model(@model_id)
+          provider(@provider)
+          description("Backend")
+          system_prompt("You code")
+          tools(:Read, :Write)
+          coding_agent(false)
+        end
+
+        node(:planning) do
+          agent(:backend) # No tools() called - should use global
+        end
+
+        start_node(:planning)
+      end
+
+      # Verify nil means use global
+      planning_config = swarm.nodes[:planning].agent_configs.find { |ac| ac[:agent] == :backend }
+
+      assert_nil(planning_config[:tools], "Nil tools should mean 'use global definition'")
+    end
+
+    def test_per_node_tool_override_combined_with_delegation
+      swarm = SwarmSDK.build do
+        name("Combined Override Test")
+
+        agent(:backend) do
+          model(@model_id)
+          provider(@provider)
+          description("Backend")
+          system_prompt("You build")
+          tools(:Read, :Write)
+          coding_agent(false)
+        end
+
+        agent(:tester) do
+          model(@model_id)
+          provider(@provider)
+          description("Tester")
+          system_prompt("You test")
+          tools(:Read, :Bash)
+          coding_agent(false)
+        end
+
+        node(:implementation) do
+          agent(:backend).delegates_to(:tester).tools(:Read, :Edit, :Write, :Bash)
+        end
+
+        start_node(:implementation)
+      end
+
+      # Verify both delegation and tools are set
+      impl_config = swarm.nodes[:implementation].agent_configs.find { |ac| ac[:agent] == :backend }
+
+      assert_equal([:tester], impl_config[:delegates_to])
+      assert_equal([:Read, :Edit, :Write, :Bash], impl_config[:tools])
+    end
   end
 end

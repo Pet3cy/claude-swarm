@@ -16,9 +16,15 @@ module SwarmSDK
   #     message_count: 5
   #   )
   #
-  # ## Fiber Safety
+  # ## Thread Safety
   #
-  # LogStream is fiber-safe when following this pattern:
+  # LogStream is thread-safe and fiber-safe:
+  # - Uses Fiber storage for per-request isolation in multi-threaded servers (Puma, Sidekiq)
+  # - Each thread/request has its own emitter instance
+  # - Child fibers inherit the emitter from their parent fiber
+  # - No cross-thread contamination of log events
+  #
+  # Usage pattern:
   # 1. Set emitter BEFORE starting Async execution
   # 2. During Async execution, only emit() (reads emitter)
   # 3. Each event includes agent context for identification
@@ -35,34 +41,57 @@ module SwarmSDK
       # Emit a log event
       #
       # Adds timestamp and forwards to the registered emitter.
+      # Auto-injects execution_id, swarm_id, and parent_swarm_id from Fiber storage.
+      # Explicit values in data override auto-injected ones.
       #
       # @param data [Hash] Event data (type, agent, and event-specific fields)
       # @return [void]
       def emit(**data)
-        return unless @emitter
+        emitter = Fiber[:log_stream_emitter]
+        return unless emitter
 
-        entry = data.merge(timestamp: Time.now.utc.iso8601).compact
+        # Auto-inject execution context from Fiber storage
+        # Explicit values in data override auto-injected ones
+        auto_injected = {
+          execution_id: Fiber[:execution_id],
+          swarm_id: Fiber[:swarm_id],
+          parent_swarm_id: Fiber[:parent_swarm_id],
+        }.compact
 
-        @emitter.emit(entry)
+        entry = auto_injected.merge(data).merge(timestamp: Time.now.utc.iso8601(6)).compact
+
+        emitter.emit(entry)
       end
 
       # Set the emitter (for dependency injection in tests)
       #
+      # Stores emitter in Fiber storage for thread-safe, per-request isolation.
+      #
       # @param emitter [#emit] Object responding to emit(Hash)
-      attr_accessor :emitter
+      # @return [void]
+      def emitter=(emitter)
+        Fiber[:log_stream_emitter] = emitter
+      end
+
+      # Get the current emitter
+      #
+      # @return [#emit, nil] Current emitter or nil if not set
+      def emitter
+        Fiber[:log_stream_emitter]
+      end
 
       # Reset the emitter (for test cleanup)
       #
       # @return [void]
       def reset!
-        @emitter = nil
+        Fiber[:log_stream_emitter] = nil
       end
 
       # Check if logging is enabled
       #
       # @return [Boolean] true if an emitter is configured
       def enabled?
-        !@emitter.nil?
+        !Fiber[:log_stream_emitter].nil?
       end
     end
   end

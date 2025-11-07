@@ -18,10 +18,16 @@ module SwarmSDK
     class ContextManager
       SYSTEM_REMINDER_REGEX = %r{<system-reminder>.*?</system-reminder>}m
 
+      # Expose compression state for snapshot/restore
+      # NOTE: @compression_applied initializes to nil (not false), only set to true when compression runs
+      attr_reader :compression_applied
+      attr_writer :compression_applied
+
       def initialize
         # Ephemeral content to append to messages for this turn only
         # Format: { message_index => [array of reminder strings] }
         @ephemeral_content = {}
+        # NOTE: @compression_applied is NOT initialized here - starts as nil
       end
 
       # Track ephemeral content to append to a specific message

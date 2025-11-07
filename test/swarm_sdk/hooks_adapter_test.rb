@@ -65,5 +65,227 @@ module SwarmSDK
 
       assert_equal(expected, SwarmSDK::Hooks::Adapter::AGENT_LEVEL_EVENTS)
     end
+
+    def test_apply_hooks_with_swarm_hooks
+      config = create_mock_config(swarm_hooks: {
+        swarm_start: [{
+          "command" => "echo 'swarm starting'",
+          "timeout" => 10,
+        }],
+      })
+
+      swarm = Swarm.new(name: "Test")
+
+      # Should not raise error
+      SwarmSDK::Hooks::Adapter.apply_hooks(swarm, config)
+    end
+
+    def test_apply_hooks_with_all_agents_hooks
+      config = create_mock_config(all_agents_hooks: {
+        pre_tool_use: [{
+          "matcher" => "Write",
+          "command" => "echo 'validating'",
+          "timeout" => 5,
+        }],
+      })
+
+      swarm = Swarm.new(name: "Test")
+
+      # Should not raise error
+      SwarmSDK::Hooks::Adapter.apply_hooks(swarm, config)
+    end
+
+    def test_apply_hooks_with_no_hooks
+      config = create_mock_config(swarm_hooks: nil, all_agents_hooks: nil)
+      swarm = Swarm.new(name: "Test")
+
+      # Should not raise error with nil hooks
+      SwarmSDK::Hooks::Adapter.apply_hooks(swarm, config)
+    end
+
+    def test_apply_hooks_with_empty_hooks
+      config = create_mock_config(swarm_hooks: {}, all_agents_hooks: {})
+      swarm = Swarm.new(name: "Test")
+
+      # Should not raise error with empty hooks
+      SwarmSDK::Hooks::Adapter.apply_hooks(swarm, config)
+    end
+
+    def test_apply_hooks_with_invalid_swarm_event
+      # Test that invalid swarm-level events raise error through public API
+      config = create_mock_config(swarm_hooks: {
+        pre_tool_use: [{
+          "command" => "echo 'invalid'",
+        }],
+      })
+
+      swarm = Swarm.new(name: "Test")
+
+      error = assert_raises(SwarmSDK::ConfigurationError) do
+        SwarmSDK::Hooks::Adapter.apply_hooks(swarm, config)
+      end
+
+      assert_match(/Invalid swarm-level hook event/, error.message)
+    end
+
+    def test_apply_hooks_with_invalid_agent_event
+      # Test that invalid agent-level events raise error through public API
+      config = create_mock_config(all_agents_hooks: {
+        swarm_start: [{
+          "command" => "echo 'invalid'",
+        }],
+      })
+
+      swarm = Swarm.new(name: "Test")
+
+      error = assert_raises(SwarmSDK::ConfigurationError) do
+        SwarmSDK::Hooks::Adapter.apply_hooks(swarm, config)
+      end
+
+      assert_match(/Invalid agent-level hook event/, error.message)
+    end
+
+    def test_apply_agent_hooks_with_invalid_event
+      swarm = Swarm.new(name: "Test")
+      swarm.add_agent(create_agent(
+        name: :test,
+        description: "Test",
+        model: "gpt-4o",
+        system_prompt: "Test",
+      ))
+
+      agent = swarm.agent(:test)
+
+      # Invalid event at agent level
+      hooks_config = {
+        swarm_start: [{
+          "command" => "echo 'invalid'",
+        }],
+      }
+
+      error = assert_raises(SwarmSDK::ConfigurationError) do
+        SwarmSDK::Hooks::Adapter.apply_agent_hooks(agent, :test, hooks_config, "Test")
+      end
+
+      assert_match(/Invalid agent-level hook event/, error.message)
+    end
+
+    def test_apply_agent_hooks_with_symbol_keys
+      swarm = Swarm.new(name: "Test")
+      swarm.add_agent(create_agent(
+        name: :test,
+        description: "Test",
+        model: "gpt-4o",
+        system_prompt: "Test",
+      ))
+
+      agent = swarm.agent(:test)
+
+      # Symbol keys (from symbolized YAML)
+      hooks_config = {
+        pre_tool_use: [{
+          command: "echo 'test'",
+          timeout: 10,
+        }],
+      }
+
+      # Should not raise error
+      SwarmSDK::Hooks::Adapter.apply_agent_hooks(agent, :test, hooks_config, "Test")
+    end
+
+    def test_apply_agent_hooks_with_string_keys
+      swarm = Swarm.new(name: "Test")
+      swarm.add_agent(create_agent(
+        name: :test,
+        description: "Test",
+        model: "gpt-4o",
+        system_prompt: "Test",
+      ))
+
+      agent = swarm.agent(:test)
+
+      # String keys (from raw YAML)
+      hooks_config = {
+        pre_tool_use: [{
+          "command" => "echo 'test'",
+          "timeout" => 10,
+        }],
+      }
+
+      # Should not raise error
+      SwarmSDK::Hooks::Adapter.apply_agent_hooks(agent, :test, hooks_config, "Test")
+    end
+
+    def test_apply_agent_hooks_with_matcher
+      swarm = Swarm.new(name: "Test")
+      swarm.add_agent(create_agent(
+        name: :test,
+        description: "Test",
+        model: "gpt-4o",
+        system_prompt: "Test",
+      ))
+
+      agent = swarm.agent(:test)
+
+      hooks_config = {
+        pre_tool_use: [{
+          "matcher" => "Write|Edit",
+          "command" => "echo 'validating'",
+          "timeout" => 5,
+        }],
+      }
+
+      # Should not raise error
+      SwarmSDK::Hooks::Adapter.apply_agent_hooks(agent, :test, hooks_config, "Test")
+    end
+
+    def test_apply_swarm_hooks_with_valid_events
+      # Test all valid swarm events through public API
+      config = create_mock_config(swarm_hooks: {
+        swarm_start: [{
+          "command" => "echo 'start'",
+        }],
+        swarm_stop: [{
+          "command" => "echo 'stop'",
+        }],
+      })
+
+      swarm = Swarm.new(name: "Test")
+
+      # Should not raise error
+      SwarmSDK::Hooks::Adapter.apply_hooks(swarm, config)
+    end
+
+    def test_apply_all_agents_hooks_with_valid_events
+      # Test various valid agent events through public API
+      config = create_mock_config(all_agents_hooks: {
+        pre_tool_use: [{ "command" => "echo 'pre'" }],
+        post_tool_use: [{ "command" => "echo 'post'" }],
+        user_prompt: [{ "command" => "echo 'prompt'" }],
+        agent_step: [{ "command" => "echo 'step'" }],
+        agent_stop: [{ "command" => "echo 'stop'" }],
+        first_message: [{ "command" => "echo 'first'" }],
+        pre_delegation: [{ "command" => "echo 'pre_deleg'" }],
+        post_delegation: [{ "command" => "echo 'post_deleg'" }],
+        context_warning: [{ "command" => "echo 'warning'" }],
+      })
+
+      swarm = Swarm.new(name: "Test")
+
+      # Should not raise error
+      SwarmSDK::Hooks::Adapter.apply_hooks(swarm, config)
+    end
+
+    private
+
+    def create_mock_config(swarm_hooks: nil, all_agents_hooks: nil)
+      config = Minitest::Mock.new
+      # May be called multiple times: for nil check and iteration
+      config.expect(:swarm_hooks, swarm_hooks)
+      config.expect(:swarm_hooks, swarm_hooks) if swarm_hooks
+      config.expect(:all_agents_hooks, all_agents_hooks)
+      config.expect(:all_agents_hooks, all_agents_hooks) if all_agents_hooks
+      config
+    end
   end
 end

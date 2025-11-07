@@ -150,6 +150,7 @@ module SwarmSDK
         raise StateError, "Agent context not set. Call setup_context first." unless @agent_context
 
         @context_tracker.setup_logging
+        inject_llm_instrumentation
       end
 
       # Emit model lookup warning if one occurred during initialization
@@ -164,6 +165,8 @@ module SwarmSDK
         LogStream.emit(
           type: "model_lookup_warning",
           agent: agent_name,
+          swarm_id: @agent_context&.swarm_id,
+          parent_swarm_id: @agent_context&.parent_swarm_id,
           model: @model_lookup_error[:model],
           error_message: @model_lookup_error[:error_message],
           suggestions: @model_lookup_error[:suggestions].map { |s| { id: s.id, name: s.name, context_window: s.context_window } },
@@ -221,6 +224,17 @@ module SwarmSDK
         !@active_skill_path.nil?
       end
 
+      # Clear conversation history
+      #
+      # Removes all messages from the conversation history and clears tool executions.
+      # Used by composable swarms when keep_context: false is specified.
+      #
+      # @return [void]
+      def clear_conversation
+        @messages.clear if @messages.respond_to?(:clear)
+        @context_manager&.clear_ephemeral
+      end
+
       # Override ask to inject system reminders and periodic TodoWrite reminders
       #
       # Note: This is called BEFORE HookIntegration#ask (due to module include order),
@@ -230,63 +244,72 @@ module SwarmSDK
       # @param options [Hash] Additional options to pass to complete
       # @return [RubyLLM::Message] LLM response
       def ask(prompt, **options)
-        # Check if this is the first user message
-        is_first = SystemReminderInjector.first_message?(self)
+        # Serialize ask() calls to prevent message corruption from concurrent fibers
+        # Uses Async::Semaphore (not Mutex) because SwarmSDK runs in fiber context
+        # This protects against parallel delegation scenarios where multiple delegation
+        # instances call the same underlying primary agent (e.g., tester@frontend and
+        # tester@backend both calling database in parallel).
+        @ask_semaphore ||= Async::Semaphore.new(1)
 
-        if is_first
-          # Collect plugin reminders first
-          plugin_reminders = collect_plugin_reminders(prompt, is_first_message: true)
+        @ask_semaphore.acquire do
+          # Check if this is the first user message
+          is_first = SystemReminderInjector.first_message?(self)
 
-          # Build full prompt with embedded plugin reminders
-          full_prompt = prompt
-          plugin_reminders.each do |reminder|
-            full_prompt = "#{full_prompt}\n\n#{reminder}"
-          end
+          if is_first
+            # Collect plugin reminders first
+            plugin_reminders = collect_plugin_reminders(prompt, is_first_message: true)
 
-          # Inject first message reminders (includes system reminders + toolset + after)
-          # SystemReminderInjector will embed all reminders in the prompt via add_message
-          SystemReminderInjector.inject_first_message_reminders(self, full_prompt)
-
-          # Trigger user_prompt hook manually since we're bypassing the normal ask flow
-          if @hook_executor
-            hook_result = trigger_user_prompt(prompt)
-
-            # Check if hook halted execution
-            if hook_result[:halted]
-              # Return a halted message instead of calling LLM
-              return RubyLLM::Message.new(
-                role: :assistant,
-                content: hook_result[:halt_message],
-                model_id: model.id,
-              )
+            # Build full prompt with embedded plugin reminders
+            full_prompt = prompt
+            plugin_reminders.each do |reminder|
+              full_prompt = "#{full_prompt}\n\n#{reminder}"
             end
 
-            # NOTE: We ignore modified_prompt for first message since reminders already injected
+            # Inject first message reminders (includes system reminders + toolset + after)
+            # SystemReminderInjector will embed all reminders in the prompt via add_message
+            SystemReminderInjector.inject_first_message_reminders(self, full_prompt)
+
+            # Trigger user_prompt hook manually since we're bypassing the normal ask flow
+            if @hook_executor
+              hook_result = trigger_user_prompt(prompt)
+
+              # Check if hook halted execution
+              if hook_result[:halted]
+                # Return a halted message instead of calling LLM
+                return RubyLLM::Message.new(
+                  role: :assistant,
+                  content: hook_result[:halt_message],
+                  model_id: model.id,
+                )
+              end
+
+              # NOTE: We ignore modified_prompt for first message since reminders already injected
+            end
+
+            # Call complete to get LLM response
+            complete(**options)
+          else
+            # Build prompt with embedded reminders (if needed)
+            full_prompt = prompt
+
+            # Add periodic TodoWrite reminder if needed (only if agent has TodoWrite tool)
+            if tools.key?("TodoWrite") && SystemReminderInjector.should_inject_todowrite_reminder?(self, @last_todowrite_message_index)
+              full_prompt = "#{full_prompt}\n\n#{SystemReminderInjector::TODOWRITE_PERIODIC_REMINDER}"
+              # Update tracking
+              @last_todowrite_message_index = SystemReminderInjector.find_last_todowrite_index(self)
+            end
+
+            # Collect plugin reminders and embed them
+            plugin_reminders = collect_plugin_reminders(full_prompt, is_first_message: false)
+            plugin_reminders.each do |reminder|
+              full_prompt = "#{full_prompt}\n\n#{reminder}"
+            end
+
+            # Normal ask behavior for subsequent messages
+            # This calls super which goes to HookIntegration's ask override
+            # HookIntegration will call add_message, and we'll extract reminders there
+            super(full_prompt, **options)
           end
-
-          # Call complete to get LLM response
-          complete(**options)
-        else
-          # Build prompt with embedded reminders (if needed)
-          full_prompt = prompt
-
-          # Add periodic TodoWrite reminder if needed
-          if SystemReminderInjector.should_inject_todowrite_reminder?(self, @last_todowrite_message_index)
-            full_prompt = "#{full_prompt}\n\n#{SystemReminderInjector::TODOWRITE_PERIODIC_REMINDER}"
-            # Update tracking
-            @last_todowrite_message_index = SystemReminderInjector.find_last_todowrite_index(self)
-          end
-
-          # Collect plugin reminders and embed them
-          plugin_reminders = collect_plugin_reminders(full_prompt, is_first_message: false)
-          plugin_reminders.each do |reminder|
-            full_prompt = "#{full_prompt}\n\n#{reminder}"
-          end
-
-          # Normal ask behavior for subsequent messages
-          # This calls super which goes to HookIntegration's ask override
-          # HookIntegration will call add_message, and we'll extract reminders there
-          super(full_prompt, **options)
         end
       end
 
@@ -674,7 +697,15 @@ module SwarmSDK
       # This is needed for setting agent_name and other provider-specific settings.
       #
       # @return [RubyLLM::Provider::Base] Provider instance
-      attr_reader :provider, :global_semaphore, :local_semaphore, :real_model_info, :context_tracker, :context_manager
+      attr_reader :provider, :global_semaphore, :local_semaphore, :real_model_info, :context_tracker, :context_manager, :agent_context, :last_todowrite_message_index, :active_skill_path
+
+      # Setters for snapshot/restore
+      attr_writer :last_todowrite_message_index, :active_skill_path
+
+      # Expose messages array (inherited from RubyLLM::Chat but not publicly accessible)
+      #
+      # @return [Array<RubyLLM::Message>] Conversation messages
+      attr_reader :messages
 
       # Get context window limit for the current model
       #
@@ -716,6 +747,37 @@ module SwarmSDK
       # @return [Integer] Total output tokens used in conversation
       def cumulative_output_tokens
         messages.select { |msg| msg.role == :assistant }.sum { |msg| msg.output_tokens || 0 }
+      end
+
+      # Calculate cumulative cached tokens across all assistant messages
+      #
+      # Cached tokens are portions of prompts served from the provider's cache.
+      # OpenAI reports this automatically for prompts >1024 tokens.
+      # Anthropic/Bedrock expose cache control via Content::Raw blocks.
+      #
+      # @return [Integer] Total cached tokens used in conversation
+      def cumulative_cached_tokens
+        messages.select { |msg| msg.role == :assistant }.sum { |msg| msg.cached_tokens || 0 }
+      end
+
+      # Calculate cumulative cache creation tokens
+      #
+      # Cache creation tokens are written to the cache (Anthropic/Bedrock only).
+      # These are charged at the normal input rate when first created.
+      #
+      # @return [Integer] Total tokens written to cache
+      def cumulative_cache_creation_tokens
+        messages.select { |msg| msg.role == :assistant }.sum { |msg| msg.cache_creation_tokens || 0 }
+      end
+
+      # Calculate effective input tokens (excluding cache hits)
+      #
+      # This represents the actual tokens charged for input, excluding cached portions.
+      # Useful for accurate cost tracking when using prompt caching.
+      #
+      # @return [Integer] Actual input tokens charged (input minus cached)
+      def effective_input_tokens
+        cumulative_input_tokens - cumulative_cached_tokens
       end
 
       # Calculate total tokens used (input + output)
@@ -777,6 +839,85 @@ module SwarmSDK
 
       private
 
+      # Inject LLM instrumentation middleware for API request/response logging
+      #
+      # This middleware captures HTTP requests/responses to LLM providers and
+      # emits structured events via LogStream. Only injected when logging is enabled.
+      #
+      # @return [void]
+      def inject_llm_instrumentation
+        # Safety checks
+        return unless @provider
+
+        faraday_conn = @provider.connection&.connection
+        return unless faraday_conn
+
+        # Check if middleware is already present to prevent duplicates
+        return if @llm_instrumentation_injected
+
+        # Get provider name for logging
+        provider_name = @provider.class.name.split("::").last.downcase
+
+        # Inject middleware at beginning of stack (position 0)
+        # This ensures we capture raw requests before any transformations
+        # Use fully qualified name to ensure Zeitwerk loads it
+        faraday_conn.builder.insert(
+          0,
+          SwarmSDK::Agent::LLMInstrumentationMiddleware,
+          on_request: method(:handle_llm_api_request),
+          on_response: method(:handle_llm_api_response),
+          provider_name: provider_name,
+        )
+
+        # Mark as injected to prevent duplicates
+        @llm_instrumentation_injected = true
+
+        RubyLLM.logger.debug("SwarmSDK: Injected LLM instrumentation middleware for agent #{@agent_name}")
+      rescue StandardError => e
+        # Don't fail initialization if instrumentation fails
+        RubyLLM.logger.error("SwarmSDK: Failed to inject LLM instrumentation: #{e.message}")
+      end
+
+      # Handle LLM API request event
+      #
+      # Emits llm_api_request event via LogStream with request details.
+      #
+      # @param data [Hash] Request data from middleware
+      # @return [void]
+      def handle_llm_api_request(data)
+        return unless LogStream.emitter
+
+        LogStream.emit(
+          type: "llm_api_request",
+          agent: @agent_name,
+          swarm_id: @agent_context&.swarm_id,
+          parent_swarm_id: @agent_context&.parent_swarm_id,
+          **data,
+        )
+      rescue StandardError => e
+        RubyLLM.logger.error("SwarmSDK: Error emitting llm_api_request event: #{e.message}")
+      end
+
+      # Handle LLM API response event
+      #
+      # Emits llm_api_response event via LogStream with response details.
+      #
+      # @param data [Hash] Response data from middleware
+      # @return [void]
+      def handle_llm_api_response(data)
+        return unless LogStream.emitter
+
+        LogStream.emit(
+          type: "llm_api_response",
+          agent: @agent_name,
+          swarm_id: @agent_context&.swarm_id,
+          parent_swarm_id: @agent_context&.parent_swarm_id,
+          **data,
+        )
+      rescue StandardError => e
+        RubyLLM.logger.error("SwarmSDK: Error emitting llm_api_response event: #{e.message}")
+      end
+
       # Call LLM with retry logic for transient failures
       #
       # Retries up to 10 times with fixed 10-second delays for:
@@ -802,10 +943,13 @@ module SwarmSDK
               LogStream.emit(
                 type: "llm_retry_exhausted",
                 agent: @agent_name,
+                swarm_id: @agent_context&.swarm_id,
+                parent_swarm_id: @agent_context&.parent_swarm_id,
                 model: @model&.id,
                 attempts: attempts,
                 error_class: e.class.name,
                 error_message: e.message,
+                error_backtrace: e.backtrace,
               )
               raise
             end
@@ -814,11 +958,14 @@ module SwarmSDK
             LogStream.emit(
               type: "llm_retry_attempt",
               agent: @agent_name,
+              swarm_id: @agent_context&.swarm_id,
+              parent_swarm_id: @agent_context&.parent_swarm_id,
               model: @model&.id,
               attempt: attempts,
               max_retries: max_retries,
               error_class: e.class.name,
               error_message: e.message,
+              error_backtrace: e.backtrace,
               retry_delay: delay,
             )
 

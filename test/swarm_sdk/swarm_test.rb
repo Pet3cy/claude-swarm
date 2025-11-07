@@ -501,10 +501,11 @@ module SwarmSDK
 
       swarm.lead = :lead
 
-      # Initialize and mock agents
+      # Initialize agents to create delegation instances
       swarm.agent(swarm.agent_names.first)
 
-      backend_agent = swarm.agent(:backend)
+      # Backend is only used as a delegate, so access the delegation instance
+      backend_agent = swarm.delegation_instances["backend@lead"]
       backend_mock_response = Struct.new(:content).new("Backend response")
       backend_agent.define_singleton_method(:ask) do |_task|
         backend_mock_response
@@ -894,6 +895,106 @@ module SwarmSDK
       assert(agent.tools.key?(:Read))
       assert(agent.tools.key?(:Write))
       assert(agent.tools.key?(:Edit))
+    end
+
+    # Tests for scratchpad mode validation
+    def test_swarm_scratchpad_enabled_mode
+      swarm = SwarmSDK.build do
+        name("Scratchpad Test")
+        scratchpad(:enabled)
+
+        agent(:dev) do
+          description("Developer")
+          model("gpt-4o-mini")
+          system_prompt("You code")
+          coding_agent(false)
+        end
+
+        lead(:dev)
+      end
+
+      assert_predicate(swarm, :scratchpad_enabled?)
+      refute_nil(swarm.scratchpad_storage)
+    end
+
+    def test_swarm_scratchpad_disabled_mode
+      swarm = SwarmSDK.build do
+        name("Scratchpad Disabled Test")
+        scratchpad(:disabled)
+
+        agent(:dev) do
+          description("Developer")
+          model("gpt-4o-mini")
+          system_prompt("You code")
+          coding_agent(false)
+        end
+
+        lead(:dev)
+      end
+
+      refute_predicate(swarm, :scratchpad_enabled?)
+      assert_nil(swarm.scratchpad_storage)
+    end
+
+    def test_swarm_rejects_per_node_mode
+      error = assert_raises(ArgumentError) do
+        SwarmSDK.build do
+          name("Invalid")
+          scratchpad(:per_node) # Should fail for regular Swarm
+
+          agent(:dev) do
+            description("Developer")
+            model("gpt-4o-mini")
+            system_prompt("You code")
+            coding_agent(false)
+          end
+
+          lead(:dev)
+        end
+      end
+
+      assert_match(/:per_node is only valid for NodeOrchestrator/, error.message)
+      assert_match(/use :enabled or :disabled/, error.message)
+    end
+
+    def test_swarm_scratchpad_default_is_disabled
+      swarm = SwarmSDK.build do
+        name("Default Test")
+        # Don't set scratchpad - should default to :disabled
+
+        agent(:dev) do
+          description("Developer")
+          model("gpt-4o-mini")
+          system_prompt("You code")
+          coding_agent(false)
+        end
+
+        lead(:dev)
+      end
+
+      refute_predicate(swarm, :scratchpad_enabled?)
+      assert_nil(swarm.scratchpad_storage)
+    end
+
+    def test_swarm_scratchpad_yaml_string_conversion
+      yaml = <<~YAML
+        version: 2
+        swarm:
+          name: String Test
+          scratchpad: disabled
+
+          agents:
+            dev:
+              description: Developer
+              model: gpt-4o-mini
+              system_prompt: You code
+
+          lead: dev
+      YAML
+
+      swarm = SwarmSDK.load(yaml, base_dir: ".")
+
+      refute_predicate(swarm, :scratchpad_enabled?)
     end
 
     private

@@ -14,10 +14,12 @@ module SwarmSDK
       #
       # @param delegate_name [String] Name of the delegate agent (e.g., "backend")
       # @param delegate_description [String] Description of the delegate agent
-      # @param delegate_chat [AgentChat] The chat instance for the delegate agent
+      # @param delegate_chat [AgentChat, nil] The chat instance for the delegate agent (nil if delegating to swarm)
       # @param agent_name [Symbol, String] Name of the agent using this tool
       # @param swarm [Swarm] The swarm instance
       # @param hook_registry [Hooks::Registry] Registry for callbacks
+      # @param call_stack [Array] Delegation call stack for circular dependency detection
+      # @param swarm_registry [SwarmRegistry, nil] Registry for sub-swarms (nil if not using composable swarms)
       # @param delegating_chat [Agent::Chat, nil] The chat instance of the agent doing the delegating (for accessing hooks)
       def initialize(
         delegate_name:,
@@ -26,6 +28,8 @@ module SwarmSDK
         agent_name:,
         swarm:,
         hook_registry:,
+        call_stack:,
+        swarm_registry: nil,
         delegating_chat: nil
       )
         super()
@@ -36,6 +40,8 @@ module SwarmSDK
         @agent_name = agent_name
         @swarm = swarm
         @hook_registry = hook_registry
+        @call_stack = call_stack
+        @swarm_registry = swarm_registry
         @delegating_chat = delegating_chat
 
         # Generate tool name in the expected format: DelegateTaskTo[AgentName]
@@ -63,6 +69,13 @@ module SwarmSDK
       # @param task [String] Task to delegate
       # @return [String] Result from delegate agent or error message
       def execute(task:)
+        # Check for circular dependency
+        if @call_stack.include?(@delegate_target)
+          emit_circular_warning
+          return "Error: Circular delegation detected: #{@call_stack.join(" -> ")} -> #{@delegate_target}. " \
+            "Please restructure your delegation to avoid infinite loops."
+        end
+
         # Get agent-specific hooks from the delegating chat instance
         agent_hooks = if @delegating_chat&.respond_to?(:hook_agent_hooks)
           @delegating_chat.hook_agent_hooks || {}
@@ -94,9 +107,16 @@ module SwarmSDK
           return result.value
         end
 
-        # Proceed with delegation
-        response = @delegate_chat.ask(task)
-        delegation_result = response.content
+        # Determine delegation type and proceed
+        delegation_result = if @delegate_chat
+          # Delegate to agent
+          delegate_to_agent(task)
+        elsif @swarm_registry&.registered?(@delegate_target)
+          # Delegate to registered swarm
+          delegate_to_swarm(task)
+        else
+          raise ConfigurationError, "Unknown delegation target: #{@delegate_target}"
+        end
 
         # Trigger post_delegation callback
         post_context = Hooks::Context.new(
@@ -127,10 +147,12 @@ module SwarmSDK
         LogStream.emit(
           type: "delegation_error",
           agent: @agent_name,
+          swarm_id: @swarm.swarm_id,
+          parent_swarm_id: @swarm.parent_swarm_id,
           delegate_to: @tool_name,
           error_class: e.class.name,
           error_message: "Request timed out",
-          backtrace: e.backtrace&.first(5) || [],
+          error_backtrace: e.backtrace&.first(5) || [],
         )
         "Error: Request to #{@tool_name} timed out. The agent may be overloaded or the LLM service is not responding. Please try again or simplify the task."
       rescue Faraday::Error => e
@@ -138,10 +160,12 @@ module SwarmSDK
         LogStream.emit(
           type: "delegation_error",
           agent: @agent_name,
+          swarm_id: @swarm.swarm_id,
+          parent_swarm_id: @swarm.parent_swarm_id,
           delegate_to: @tool_name,
           error_class: e.class.name,
           error_message: e.message,
-          backtrace: e.backtrace&.first(5) || [],
+          error_backtrace: e.backtrace&.first(5) || [],
         )
         "Error: Network error communicating with #{@tool_name}: #{e.class.name}. Please check connectivity and try again."
       rescue StandardError => e
@@ -150,14 +174,75 @@ module SwarmSDK
         LogStream.emit(
           type: "delegation_error",
           agent: @agent_name,
+          swarm_id: @swarm.swarm_id,
+          parent_swarm_id: @swarm.parent_swarm_id,
           delegate_to: @tool_name,
           error_class: e.class.name,
           error_message: e.message,
-          backtrace: backtrace_array,
+          error_backtrace: backtrace_array,
         )
         # Return error string for LLM
         backtrace_str = backtrace_array.join("\n  ")
         "Error: #{@tool_name} encountered an error: #{e.class.name}: #{e.message}\nBacktrace:\n  #{backtrace_str}"
+      end
+
+      private
+
+      # Delegate to an agent
+      #
+      # @param task [String] Task to delegate
+      # @return [String] Result from agent
+      def delegate_to_agent(task)
+        # Push delegate target onto call stack to track delegation chain
+        @call_stack.push(@delegate_target)
+        begin
+          response = @delegate_chat.ask(task)
+          response.content
+        ensure
+          # Always pop from stack, even if delegation fails
+          @call_stack.pop
+        end
+      end
+
+      # Delegate to a registered swarm
+      #
+      # @param task [String] Task to delegate
+      # @return [String] Result from swarm's lead agent
+      def delegate_to_swarm(task)
+        # Load sub-swarm (lazy load + cache)
+        subswarm = @swarm_registry.load_swarm(@delegate_target)
+
+        # Push delegate target onto call stack to track delegation chain
+        @call_stack.push(@delegate_target)
+        begin
+          # Execute sub-swarm's lead agent
+          lead_agent = subswarm.agents[subswarm.lead_agent]
+          response = lead_agent.ask(task)
+          result = response.content
+
+          # Reset if keep_context: false
+          @swarm_registry.reset_if_needed(@delegate_target)
+
+          result
+        ensure
+          # Always pop from stack, even if delegation fails
+          @call_stack.pop
+        end
+      end
+
+      # Emit circular dependency warning event
+      #
+      # @return [void]
+      def emit_circular_warning
+        LogStream.emit(
+          type: "delegation_circular_dependency",
+          agent: @agent_name,
+          swarm_id: @swarm.swarm_id,
+          parent_swarm_id: @swarm.parent_swarm_id,
+          target: @delegate_target,
+          call_stack: @call_stack,
+          timestamp: Time.now.utc.iso8601,
+        )
       end
     end
   end

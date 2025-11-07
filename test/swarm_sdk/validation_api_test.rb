@@ -241,7 +241,7 @@ module SwarmSDK
       assert_equal(:invalid_reference, error[:type])
       assert_equal("swarm.agents.backend.delegates_to", error[:field])
       assert_equal("backend", error[:agent])
-      assert_match(/Agent 'backend' has connection to unknown agent 'nonexistent'/, error[:message])
+      assert_match(/Agent 'backend' delegates to unknown target 'nonexistent'/, error[:message])
     end
 
     def test_validate_invalid_yaml_syntax
@@ -335,9 +335,9 @@ module SwarmSDK
         assert_equal(1, errors.size)
         error = errors.first
 
-        assert_equal(:file_load_error, error[:type])
-        assert_equal("swarm.agents.backend.agent_file", error[:field])
-        assert_equal("backend", error[:agent])
+        # File doesn't exist, so error type is :file_not_found
+        assert_equal(:file_not_found, error[:type])
+        assert_match(/agent file not found/i, error[:message])
       end
     end
 

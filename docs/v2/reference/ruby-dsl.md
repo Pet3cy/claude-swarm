@@ -49,11 +49,22 @@ SwarmSDK.configure {|config| ... } → void
 - `webfetch_model` (String): Model name for WebFetch tool (e.g., "claude-3-5-haiku-20241022")
 - `webfetch_base_url` (String, optional): Custom base URL for the provider
 - `webfetch_max_tokens` (Integer): Maximum tokens for WebFetch LLM responses (default: 4096)
+- `allow_filesystem_tools` (Boolean): Enable/disable filesystem tools globally (default: true)
 
 **Description:**
-Global configuration that applies to all swarms. Currently used to configure the WebFetch tool's LLM processing behavior.
+Global configuration that applies to all swarms.
 
+**WebFetch Configuration:**
 When `webfetch_provider` and `webfetch_model` are set, the WebFetch tool will process fetched web content using the configured LLM. Without this configuration, WebFetch returns raw markdown.
+
+**Filesystem Tools Security:**
+When `allow_filesystem_tools` is set to `false`, all filesystem tools (Read, Write, Edit, MultiEdit, Grep, Glob, Bash) are globally disabled across all swarms. This is a security boundary that cannot be overridden by swarm configurations. Non-filesystem tools (Scratchpad tools, Memory tools) continue to work normally.
+
+Use cases:
+- **Multi-tenant platforms**: Prevent user-provided swarms from accessing the filesystem
+- **Sandboxed execution**: Containerized environments with read-only filesystems
+- **Compliance requirements**: Data analysis workloads that forbid file operations
+- **Production security**: CI/CD pipelines where agents should only interact via APIs
 
 **Example:**
 ```ruby
@@ -71,7 +82,18 @@ SwarmSDK.configure do |config|
   config.webfetch_base_url = "http://localhost:11434"
 end
 
-# Reset to defaults (disables WebFetch LLM processing)
+# Disable filesystem tools globally (security)
+SwarmSDK.configure do |config|
+  config.allow_filesystem_tools = false
+end
+
+# Can also set directly
+SwarmSDK.settings.allow_filesystem_tools = false
+
+# Or via environment variable
+ENV['SWARM_SDK_ALLOW_FILESYSTEM_TOOLS'] = 'false'
+
+# Reset to defaults (disables WebFetch LLM processing, enables filesystem tools)
 SwarmSDK.reset_settings!
 ```
 
@@ -83,10 +105,11 @@ Build a swarm using the DSL.
 
 **Signature:**
 ```ruby
-SwarmSDK.build(&block) → Swarm | NodeOrchestrator
+SwarmSDK.build(allow_filesystem_tools: nil, &block) → Swarm | NodeOrchestrator
 ```
 
 **Parameters:**
+- `allow_filesystem_tools` (Boolean, optional): Override global setting to enable/disable filesystem tools (default: nil, uses global setting)
 - `block` (required): Configuration block
 
 **Returns:**
@@ -102,6 +125,17 @@ swarm = SwarmSDK.build do
   agent :backend do
     model "gpt-5"
     tools :Read, :Write, :Bash
+  end
+end
+
+# Override global setting to disable filesystem tools for this specific swarm
+swarm = SwarmSDK.build(allow_filesystem_tools: false) do
+  name "Restricted Analyst"
+  lead :analyst
+
+  agent :analyst do
+    model "gpt-5"
+    tools :Think, :WebFetch  # Only non-filesystem tools
   end
 end
 ```
@@ -126,6 +160,39 @@ Updates RubyLLM's model registry to ensure latest model information is available
 
 Methods available in the `SwarmSDK.build` block.
 
+### id
+
+Set the swarm ID (unique identifier).
+
+**Signature:**
+```ruby
+id(swarm_id) → void
+```
+
+**Parameters:**
+- `swarm_id` (String, required): Unique swarm identifier
+
+**When required:**
+- **Required** when using composable swarms (`swarms {}` block)
+- **Optional** otherwise (auto-generates if omitted)
+
+**Description:**
+Sets a unique identifier for the swarm. This ID is used for:
+- Hierarchical swarm tracking in events (`swarm_id`, `parent_swarm_id`)
+- Building parent/child relationships in composable swarms
+- Identifying swarms in logs and monitoring
+
+If omitted and not using composable swarms, an ID is auto-generated from the swarm name with a random suffix (e.g., `"development_team_a3f2b1c8"`).
+
+**Example:**
+```ruby
+id "development_team"
+id "code_review_v2"
+id "main_app"
+```
+
+---
+
 ### name
 
 Set the swarm name.
@@ -142,6 +209,161 @@ name(swarm_name) → void
 ```ruby
 name "Development Team"
 name "Code Review Swarm"
+```
+
+---
+
+### swarms
+
+Register external swarms for composable swarms feature.
+
+**Signature:**
+```ruby
+swarms(&block) → void
+```
+
+**Parameters:**
+- `block` (required): Block containing `register()` calls
+
+**Description:**
+Enables composable swarms - the ability to delegate to other swarms as if they were agents. Each registered swarm can be referenced in `delegates_to` just like regular agents.
+
+**A swarm IS an agent** - delegating to a child swarm is identical to delegating to an agent. The child swarm's lead agent serves as its public interface.
+
+**Three registration methods:**
+1. **File path**: Load from .rb or .yml file
+2. **YAML string**: Pass YAML content directly
+3. **Inline block**: Define swarm inline with Ruby DSL
+
+**Example:**
+```ruby
+swarms do
+  # Method 1: From file
+  register "code_review", file: "./swarms/code_review.rb"
+
+  # Method 2: From YAML string
+  yaml_content = File.read("testing.yml")
+  register "testing", yaml: yaml_content, keep_context: false
+
+  # Method 3: Inline block
+  register "deployment" do
+    id "deploy_team"
+    name "Deployment Team"
+    lead :deployer
+
+    agent :deployer do
+      model "gpt-4o"
+      system "You handle deployments"
+    end
+  end
+end
+```
+
+---
+
+### swarms.register
+
+Register a sub-swarm within the `swarms {}` block.
+
+**Signature:**
+```ruby
+register(name, file: nil, yaml: nil, keep_context: true, &block) → void
+```
+
+**Parameters:**
+- `name` (String, required): Registration name for the swarm
+- `file` (String, optional): Path to swarm file (.rb or .yml)
+- `yaml` (String, optional): YAML configuration content
+- `keep_context` (Boolean, optional): Preserve conversation between calls (default: true)
+- `block` (Proc, optional): Inline swarm definition
+
+**Rules:**
+- Exactly ONE of `file:`, `yaml:`, or `&block` must be provided
+- Cannot provide multiple sources (raises ArgumentError)
+- Must provide at least one source (raises ArgumentError)
+
+**Description:**
+Registers a sub-swarm that can be delegated to like a regular agent. The swarm is lazy-loaded on first access and cached for reuse.
+
+**Keep Context:**
+- `keep_context: true` (default): Swarm maintains conversation history across delegations
+- `keep_context: false`: Swarm context is reset after each delegation completes
+
+**Hierarchical IDs:**
+Sub-swarms automatically get hierarchical IDs: `"parent_id/registration_name"`
+
+**Example - From File:**
+```ruby
+swarms do
+  register "code_review", file: "./swarms/code_review.rb"
+  register "testing", file: "./swarms/testing.yml", keep_context: false
+end
+```
+
+**Example - From YAML String:**
+```ruby
+# Load YAML from anywhere (API, database, etc.)
+yaml_config = HTTP.get("https://api.example.com/swarms/testing.yml").body
+
+swarms do
+  register "testing", yaml: yaml_config, keep_context: false
+end
+```
+
+**Example - Inline Block:**
+```ruby
+swarms do
+  register "testing", keep_context: false do
+    id "testing_team"
+    name "Testing Team"
+    lead :tester
+
+    agent :tester do
+      model "gpt-4o-mini"
+      description "Test specialist"
+      system "You write and run tests"
+      tools :Think, :Bash
+    end
+
+    agent :qa do
+      model "gpt-4o"
+      description "QA specialist"
+      system "You validate quality"
+    end
+  end
+end
+```
+
+**Example - Mixing Sources:**
+```ruby
+swarms do
+  # From file
+  register "code_review", file: "./swarms/code_review.rb"
+
+  # From YAML string (fetched dynamically)
+  testing_yaml = SwarmConfig.find("testing").yaml_content
+  register "testing", yaml: testing_yaml
+
+  # Inline definition
+  register "deployment" do
+    id "deploy_team"
+    name "Deployment"
+    lead :deployer
+    agent :deployer do
+      model "gpt-4o"
+      system "Deploy code"
+    end
+  end
+end
+```
+
+**Usage with Delegation:**
+```ruby
+agent :backend do
+  # Delegate to both local agents and registered swarms
+  delegates_to "database", "code_review", "testing"
+  # backend can delegate to database (local agent) and code_review/testing (swarms)
+end
 ```
 
 ---
@@ -166,30 +388,58 @@ lead :coordinator
 
 ---
 
-### use_scratchpad
+### scratchpad
 
-Enable or disable shared scratchpad tools for all agents.
+Configure scratchpad mode for the swarm or workflow.
 
 **Signature:**
 ```ruby
-use_scratchpad(enabled) → void
+scratchpad(mode) → void
 ```
 
 **Parameters:**
-- `enabled` (Boolean, required): Whether to enable scratchpad tools
+- `mode` (Symbol, required): Scratchpad mode
+  - For regular Swarms: `:enabled` or `:disabled`
+  - For NodeOrchestrator (workflows with nodes): `:enabled`, `:per_node`, or `:disabled`
 
-**Default:** `true` (scratchpad tools enabled)
+**Default:** `:disabled`
 
 **Description:**
-Controls whether agents have access to scratchpad tools (ScratchpadWrite, ScratchpadRead, ScratchpadList). Scratchpad is volatile (in-memory only) and shared across all agents in the swarm.
+Controls scratchpad availability and sharing behavior:
 
-**Example:**
+- **`:enabled`**: Scratchpad tools available (ScratchpadWrite, ScratchpadRead, ScratchpadList)
+  - Regular Swarm: All agents share one scratchpad
+  - NodeOrchestrator: All nodes share one scratchpad across the workflow
+- **`:per_node`**: (NodeOrchestrator only) Each node gets isolated scratchpad storage
+- **`:disabled`**: No scratchpad tools available
+
+Scratchpad is volatile (in-memory only) and provides temporary storage for cross-agent or cross-node communication.
+
+**Examples:**
 ```ruby
-# Enable scratchpad (default)
-use_scratchpad true
+# Regular Swarm - enable or disable
+SwarmSDK.build do
+  scratchpad :enabled  # Enable scratchpad
+  scratchpad :disabled # Disable scratchpad (default)
+end
 
-# Disable scratchpad
-use_scratchpad false
+# NodeOrchestrator - shared across nodes
+SwarmSDK.build do
+  scratchpad :enabled  # All nodes share one scratchpad
+
+  node :planning { agent(:planner) }
+  node :implementation { agent(:coder) }
+  start_node :planning
+end
+
+# NodeOrchestrator - isolated per node
+SwarmSDK.build do
+  scratchpad :per_node  # Each node gets its own scratchpad
+
+  node :planning { agent(:planner) }
+  node :implementation { agent(:coder) }
+  start_node :planning
+end
 ```
 
 ---
@@ -671,6 +921,87 @@ delegates_to :frontend  # Cumulative - adds to existing list
 
 ---
 
+### shared_across_delegations
+
+Control whether multiple agents share the same instance when delegating to this agent.
+
+**Signature:**
+```ruby
+shared_across_delegations(enabled) → self
+```
+
+**Parameters:**
+- `enabled` (Boolean, required):
+  - `false` (default): Create isolated instances per delegator (recommended)
+  - `true`: Share the same instance across all delegators
+
+**Default:** `false` (isolated mode)
+
+**Description:**
+
+By default, when multiple agents delegate to the same target agent, each delegator gets its own isolated instance with a separate conversation history. This prevents context mixing and ensures clean delegation boundaries.
+
+**Isolated Mode (default):**
+```
+frontend → tester@frontend (isolated instance)
+backend  → tester@backend  (isolated instance)
+```
+
+**Shared Mode (opt-in):**
+```
+frontend → database (shared primary)
+backend  → database (shared primary)
+```
+
+**When to use shared mode:**
+- Stateful coordination agents that need shared state
+- Database agents that maintain transaction state
+- Agents that benefit from seeing all delegation contexts
+
+**When to use isolated mode (default):**
+- Testing agents that analyze different codebases
+- Review agents that evaluate different PRs
+- Any agent where context mixing would be problematic
+
+**Example:**
+```ruby
+# Default: isolated instances (recommended)
+agent :tester do
+  description "Testing agent"
+  # Each delegator gets separate tester instance
+end
+
+# Opt-in: shared instance
+agent :database do
+  description "Database coordination agent"
+  shared_across_delegations true  # All delegators share this instance
+end
+
+# Usage
+agent :frontend do
+  delegates_to :tester    # Gets tester@frontend
+  delegates_to :database  # Gets shared database
+end
+
+agent :backend do
+  delegates_to :tester    # Gets tester@backend (separate from frontend's)
+  delegates_to :database  # Gets same shared database as frontend
+end
+```
+
+**Memory Sharing:**
+
+Plugin storage (like SwarmMemory) is **always shared** by base agent name, regardless of isolation mode:
+- `tester@frontend` and `tester@backend` share the same memory storage
+- Only conversation history and tool state (TodoWrite, etc.) are isolated
+- This allows instances to share knowledge while maintaining separate conversations
+
+**Concurrency Protection:**
+
+When using shared mode, SwarmSDK automatically serializes concurrent calls to the same agent instance using fiber-safe semaphores. This prevents message corruption when multiple delegation instances call the same shared agent in parallel.
+
+---
+
 ### memory
 
 Configure persistent memory storage for this agent.
@@ -972,7 +1303,7 @@ max_concurrent_tools 20  # Allow more parallelism
 
 ### disable_default_tools
 
-Include default tools (Read, Grep, Glob, TodoWrite, Think, and scratchpad tools).
+Include default tools (Read, Grep, Glob, and scratchpad tools).
 
 **Signature:**
 ```ruby
@@ -1391,7 +1722,7 @@ agent(name, reset_context: true) → AgentConfig
   - `true` (default): Fresh context for each node execution
   - `false`: Preserve conversation history from previous nodes
 
-**Returns:** `AgentConfig` with `.delegates_to(*names)` method
+**Returns:** `AgentConfig` with `.delegates_to(*names)` and `.tools(*names)` methods
 
 **Example:**
 ```ruby
@@ -1403,6 +1734,12 @@ agent(:backend, reset_context: false).delegates_to(:tester)
 
 # Without delegation, preserving context
 agent(:planner, reset_context: false)
+
+# Override tools for this node
+agent(:backend).tools(:Read, :Think)
+
+# Combine delegation and tool override
+agent(:backend).delegates_to(:tester).tools(:Read, :Edit, :Write)
 ```
 
 **When to use `reset_context: false`:**
@@ -1498,16 +1835,16 @@ input do |ctx|
   "Implement:\nPlan: #{plan}\nDesign: #{design}"
 end
 
-# Skip execution (caching)
+# Skip execution (caching) - using return
 input do |ctx|
   cached = check_cache(ctx.content)
-  if cached
-    { skip_execution: true, content: cached }
-  else
-    ctx.content
-  end
+  return ctx.skip_execution(content: cached) if cached
+
+  ctx.content
 end
 ```
+
+**Return statements work safely**: Input blocks are automatically converted to lambdas, allowing you to use `return` for clean early exits without exiting your program.
 
 ---
 
@@ -1576,7 +1913,16 @@ output do |ctx|
   impl = ctx.content
   "Completed:\nPlan: #{plan}\nImpl: #{impl}"
 end
+
+# Early exit with return
+output do |ctx|
+  return ctx.halt_workflow(content: ctx.content) if converged?(ctx.content)
+
+  ctx.content
+end
 ```
+
+**Return statements work safely**: Output blocks are automatically converted to lambdas, allowing you to use `return` for clean early exits without exiting your program.
 
 ---
 

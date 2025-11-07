@@ -395,7 +395,7 @@ agent :planner do
   description "Task planner"
   model "gpt-4"
   system_prompt "Plan and track work"
-  # TodoWrite included by default
+  tools :Read, :Grep, :Glob, :TodoWrite  # Add TodoWrite explicitly
 end
 ```
 
@@ -538,7 +538,7 @@ agent :problem_solver do
   description "Problem solver"
   model "gpt-4"
   system_prompt "Use the Think tool frequently to reason through problems"
-  # Think included by default
+  tools :Read, :Grep, :Glob, :Think  # Add Think explicitly
 end
 ```
 
@@ -585,7 +585,7 @@ agent :researcher do
   description "Web researcher"
   model "gpt-4"
   system_prompt "Research information from web sources"
-  # WebFetch included by default
+  tools :Read, :Grep, :Glob, :WebFetch  # Add WebFetch explicitly
 end
 ```
 
@@ -631,8 +631,7 @@ WebFetch(url: "https://example.com/api-docs", prompt: "List all available API en
 agent :agent_name do
   description "..."
   model "gpt-4"
-  disable_default_tools [:Think, :WebFetch]  # Disable specific tools
-  # Or disable multiple: [:Think, :TodoWrite, :Grep]
+  disable_default_tools [:Read, :Grep]  # Disable specific tools
 end
 ```
 
@@ -678,8 +677,8 @@ end
 agent :selective_agent do
   description "Selective agent"
   model "gpt-4"
-  disable_default_tools [:Think, :TodoWrite]  # Disable these
-  # Still has: Read, Grep, Glob, Scratchpad tools
+  disable_default_tools [:Read, :Grep]  # Disable these
+  # Still has: Glob, Scratchpad tools
 end
 ```
 
@@ -1083,6 +1082,67 @@ Lead    ──┼──→ Security
 - **Linear**: Sequential tasks with clear order
 - **Hub and Spoke**: Parallel tasks coordinated by lead
 - **Specialist Pool**: Lead delegates to any specialist as needed
+
+#### Delegation Isolation Modes
+
+When multiple agents delegate to the same target agent, you can control whether they share conversation history or get isolated instances.
+
+**Problem this solves**: Without isolation, multiple agents delegating to the same target share conversation history, causing context mixing. For example, if both `frontend` and `backend` delegate to `tester`, the tester's conversation includes both delegations mixed together, making it confusing.
+
+**Solution: Isolated Instances (Default)**
+
+By default, each delegator gets its own isolated instance:
+
+```yaml
+agents:
+  tester:
+    description: "Testing agent"
+    # shared_across_delegations: false (default - isolated mode)
+
+  frontend:
+    description: "Frontend developer"
+    delegates_to: [tester]  # Gets tester@frontend
+
+  backend:
+    description: "Backend developer"
+    delegates_to: [tester]  # Gets tester@backend (separate instance)
+```
+
+**Result**:
+- `frontend` → `tester@frontend` (isolated conversation)
+- `backend` → `tester@backend` (separate isolated conversation)
+- No context mixing between frontend and backend's testing conversations
+
+**When to Use Shared Mode**
+
+For agents that benefit from seeing all delegation contexts:
+
+```yaml
+agents:
+  database:
+    description: "Database coordination agent"
+    shared_across_delegations: true  # Shared mode
+
+  frontend:
+    delegates_to: [database]
+
+  backend:
+    delegates_to: [database]
+```
+
+Both frontend and backend share the same database agent instance and conversation history.
+
+**Use shared mode for:**
+- Stateful coordination agents
+- Database agents maintaining transaction state
+- Agents that benefit from seeing all contexts
+
+**Memory Sharing (Always Enabled)**
+
+Regardless of isolation mode, **plugin storage is always shared** by base agent name:
+- `tester@frontend` and `tester@backend` share the same SwarmMemory storage
+- This allows delegation instances to share knowledge while maintaining separate conversations
+- Best of both worlds: isolated conversations + shared memory
 
 ### 3.5 Markdown Agent Files
 
@@ -1891,29 +1951,25 @@ end
 
 **Control Flow Methods**:
 
-NodeContext provides three methods for dynamic workflow control:
+NodeContext provides three methods for dynamic workflow control. Input and output blocks are automatically converted to lambdas, which means you can use `return` statements for clean early exits.
 
 **1. goto_node - Jump to any node**:
 ```ruby
 output do |ctx|
-  if needs_revision?(ctx.content)
-    # Jump back to revision node instead of continuing forward
-    ctx.goto_node(:revision, content: ctx.content)
-  else
-    ctx.content  # Continue to next node normally
-  end
+  # Using return for early exit (clean and natural)
+  return ctx.goto_node(:revision, content: ctx.content) if needs_revision?(ctx.content)
+
+  ctx.content  # Continue to next node normally
 end
 ```
 
 **2. halt_workflow - Stop entire workflow**:
 ```ruby
 output do |ctx|
-  if converged?(ctx.content)
-    # Stop workflow early with final result
-    ctx.halt_workflow(content: ctx.content)
-  else
-    ctx.content  # Continue to next node
-  end
+  # Using return for early exit
+  return ctx.halt_workflow(content: ctx.content) if converged?(ctx.content)
+
+  ctx.content  # Continue to next node
 end
 ```
 
@@ -1921,14 +1977,15 @@ end
 ```ruby
 input do |ctx|
   cached = check_cache(ctx.content)
-  if cached
-    # Skip expensive LLM call and use cached result
-    ctx.skip_execution(content: cached)
-  else
-    ctx.content  # Execute node normally
-  end
+
+  # Using return for early exit when cached
+  return ctx.skip_execution(content: cached) if cached
+
+  ctx.content  # Execute node normally
 end
 ```
+
+**Why `return` works safely**: Input and output blocks are automatically converted to lambdas, where `return` only exits the transformer block, not your entire program. This enables natural Ruby control flow patterns.
 
 **Creating loops with goto_node**:
 ```ruby
@@ -1936,12 +1993,10 @@ node :reasoning do
   agent(:thinker, reset_context: false)  # Preserve context across iterations
 
   output do |ctx|
-    # Loop until convergence
-    if ctx.all_results.size > 10
-      ctx.halt_workflow(content: "Max iterations reached")
-    else
-      ctx.goto_node(:reflection, content: ctx.content)
-    end
+    # Using return for early exit when max iterations reached
+    return ctx.halt_workflow(content: "Max iterations reached") if ctx.all_results.size > 10
+
+    ctx.goto_node(:reflection, content: ctx.content)
   end
 end
 
@@ -1961,11 +2016,10 @@ start_node :reasoning
 
 ```ruby
 output do |ctx|
-  if ctx.error
-    ctx.halt_workflow(content: "Error: #{ctx.error.message}")
-  else
-    ctx.goto_node(:next_node, content: ctx.content)
-  end
+  # Using return for early exit on error
+  return ctx.halt_workflow(content: "Error: #{ctx.error.message}") if ctx.error
+
+  ctx.goto_node(:next_node, content: ctx.content)
 end
 ```
 
@@ -3002,6 +3056,48 @@ Development: Full access, all tools
 Staging: Restricted access, validated outputs
 Production: Minimal access, extensive hooks
 ```
+
+**6. Disable filesystem tools globally (system-wide security)**:
+```ruby
+# For multi-tenant platforms or sandboxed environments
+SwarmSDK.configure do |config|
+  config.allow_filesystem_tools = false
+end
+
+# Or via environment variable (recommended for production)
+ENV['SWARM_SDK_ALLOW_FILESYSTEM_TOOLS'] = 'false'
+
+# Agents can now only use non-filesystem tools
+swarm = SwarmSDK.build do
+  name "API Analyst"
+  lead :analyst
+
+  agent :analyst do
+    description "Analyzes data via APIs only"
+    model "gpt-5"
+    # These work: Think, WebFetch, Clock, TodoWrite, Scratchpad*, Memory*
+    tools :Think, :WebFetch
+    # These are blocked: Read, Write, Edit, MultiEdit, Grep, Glob, Bash
+  end
+end
+
+# Override per-swarm if needed
+restricted_swarm = SwarmSDK.build(allow_filesystem_tools: false) do
+  # ... specific swarm that needs extra restriction
+end
+```
+
+**Use cases:**
+- **Multi-tenant platforms**: Prevent user-provided swarms from accessing filesystem
+- **Containerized deployments**: Read-only filesystems or restricted environments
+- **Compliance requirements**: Data analysis workloads that forbid file operations
+- **CI/CD pipelines**: Agents should only interact via APIs
+
+**Key features:**
+- **Security boundary**: Cannot be overridden by swarm YAML/DSL configuration
+- **Validation**: Errors caught at build time with clear messages
+- **Priority**: Explicit parameter > Global setting > Environment variable > Default (true)
+- **Non-breaking**: Defaults to `true` for backward compatibility
 
 ### 8.6 Cost Management
 

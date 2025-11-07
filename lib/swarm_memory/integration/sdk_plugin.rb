@@ -250,9 +250,12 @@ module SwarmMemory
           :interactive # Default
         end
 
-        # Store storage and mode for this agent
-        @storages[agent_name] = storage
-        @modes[agent_name] = mode
+        # V7.0: Extract base name for storage tracking (delegation instances share storage)
+        base_name = agent_name.to_s.split("@").first.to_sym
+
+        # Store storage and mode using BASE NAME
+        @storages[base_name] = storage # ← Changed from agent_name to base_name
+        @modes[base_name] = mode # ← Changed from agent_name to base_name
 
         # Get mode-specific tools
         allowed_tools = tools_for_mode(mode)
@@ -298,9 +301,12 @@ module SwarmMemory
       # @param is_first_message [Boolean] True if first message
       # @return [Array<String>] System reminders (0-2 reminders)
       def on_user_message(agent_name:, prompt:, is_first_message:)
-        storage = @storages[agent_name]
+        # V7.0: Extract base name for storage lookup (delegation instances share storage)
+        base_name = agent_name.to_s.split("@").first.to_sym
+        storage = @storages[base_name] # ← Changed from agent_name to base_name
+
         return [] unless storage&.semantic_index
-        return [] if prompt.empty?
+        return [] if prompt.nil? || prompt.empty?
 
         # Adaptive threshold based on query length
         # Short queries use lower threshold as they have less semantic richness

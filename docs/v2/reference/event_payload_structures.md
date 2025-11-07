@@ -2,7 +2,28 @@
 
 This document describes the exact structure of all SwarmSDK event payloads emitted via `LogStream.emit()`.
 
-All events automatically include a `timestamp` field (ISO8601 format) added by `LogStream.emit()`.
+## Common Fields
+
+All events automatically include these fields:
+
+- `timestamp` (String): ISO8601 format timestamp, added by `LogStream.emit()`
+- `swarm_id` (String): Unique identifier for the swarm that emitted this event
+- `parent_swarm_id` (String | nil): Parent swarm ID (null for root swarms)
+
+**Hierarchical Tracking:**
+For composable swarms, events include hierarchical swarm IDs:
+- Root swarm: `swarm_id: "main"`, `parent_swarm_id: null`
+- Child swarm: `swarm_id: "main/code_review"`, `parent_swarm_id: "main"`
+- Grandchild: `swarm_id: "main/code_review/security"`, `parent_swarm_id: "main/code_review"`
+
+**Agent Identification:**
+Most events include an `agent` field (Symbol) that identifies which agent emitted the event:
+- **Primary agents**: Simple name like `:backend`, `:frontend`
+- **Delegation instances**: Compound name like `:"backend@lead"`, `:"backend@frontend"`
+  - Format: `:"target@delegator"` where target is the delegated-to agent and delegator is the delegating agent
+  - Created when multiple agents delegate to the same target (unless `shared_across_delegations: true`)
+  - Each instance has isolated conversation history and tool state
+  - See the `agent_start` event documentation for more details
 
 ## Event Types
 
@@ -17,6 +38,8 @@ Emitted when `Swarm.execute()` is called, before any agent execution begins.
   type: "swarm_start",
   timestamp: "2025-01-15T10:30:45Z",          # Auto-added by LogStream
   agent: :lead_agent_name,                     # Lead agent name (for consistency)
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   swarm_name: "Development Team",              # Swarm name
   lead_agent: :lead_agent_name,                # Lead agent name
   prompt: "Build authentication system"        # User's task prompt
@@ -24,7 +47,7 @@ Emitted when `Swarm.execute()` is called, before any agent execution begins.
 ```
 
 **Field Locations**:
-- Root level: `type`, `timestamp`, `agent`, `swarm_name`, `lead_agent`, `prompt`
+- Root level: `type`, `timestamp`, `agent`, `swarm_id`, `parent_swarm_id`, `swarm_name`, `lead_agent`, `prompt`
 - No nested metadata
 
 ---
@@ -39,6 +62,8 @@ Emitted when swarm execution completes (success or error).
 {
   type: "swarm_stop",
   timestamp: "2025-01-15T10:35:22Z",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   swarm_name: "Development Team",
   lead_agent: :lead_agent_name,
   last_agent: "backend",                       # Agent that produced final response
@@ -52,7 +77,7 @@ Emitted when swarm execution completes (success or error).
 ```
 
 **Field Locations**:
-- Root level: All fields are at root level
+- Root level: All fields including `swarm_id` and `parent_swarm_id`
 - No nested metadata for this event
 
 ---
@@ -67,7 +92,9 @@ Emitted once per agent when agents are initialized (lazy initialization).
 {
   type: "agent_start",
   timestamp: "2025-01-15T10:30:46Z",
-  agent: :backend,                             # Agent name
+  agent: :backend,                             # Agent name (or delegation instance name)
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   swarm_name: "Development Team",
   model: "gpt-5",                              # Model ID
   provider: "openai",                          # Provider name
@@ -80,13 +107,54 @@ Emitted once per agent when agents are initialized (lazy initialization).
       enabled: true,
       config: { directory: ".swarm/backend-memory" }
     }
-  }
+  },
+  is_delegation_instance: false,               # True if this is a delegation instance
+  base_agent: nil                              # Base agent name (if delegation instance)
 }
 ```
 
 **Field Locations**:
-- Root level: All fields except plugin configs
+- Root level: All fields including `swarm_id` and `parent_swarm_id`
 - Nested in `plugin_storages`: Per-plugin configuration
+
+**Delegation Instances:**
+
+When multiple agents delegate to the same target agent, SwarmSDK creates isolated instances by default (controlled by `shared_across_delegations` config). These instances have unique names and separate state:
+
+```ruby
+# Primary agent
+{
+  type: "agent_start",
+  agent: :backend,
+  is_delegation_instance: false,
+  base_agent: nil,
+  ...
+}
+
+# Delegation instance (when lead delegates to backend)
+{
+  type: "agent_start",
+  agent: :"backend@lead",              # Format: target@delegator
+  is_delegation_instance: true,
+  base_agent: :backend,                # Original agent definition
+  ...
+}
+
+# Another delegation instance (when frontend delegates to backend)
+{
+  type: "agent_start",
+  agent: :"backend@frontend",          # Separate isolated instance
+  is_delegation_instance: true,
+  base_agent: :backend,
+  ...
+}
+```
+
+**Key Points:**
+- Each delegation instance has **isolated conversation history** and **separate tool state**
+- All instances use the **same configuration** (model, tools, prompts) from the base agent
+- The `agent` field shows the full instance name for proper tracking
+- Set `shared_across_delegations: true` on the base agent to share one instance across all delegators
 
 ---
 
@@ -101,6 +169,8 @@ Emitted when an agent completes with a final response (no more tool calls).
   type: "agent_stop",
   timestamp: "2025-01-15T10:31:20Z",
   agent: "backend",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   model: "gpt-5",
   content: "I've implemented the auth system",  # Final response text
   tool_calls: nil,                              # Always nil for agent_stop
@@ -127,7 +197,7 @@ Emitted when an agent completes with a final response (no more tool calls).
 ```
 
 **Field Locations**:
-- Root level: `type`, `timestamp`, `agent`, `model`, `content`, `tool_calls`, `finish_reason`, `tool_executions`, `metadata`
+- Root level: `type`, `timestamp`, `agent`, `swarm_id`, `parent_swarm_id`, `model`, `content`, `tool_calls`, `finish_reason`, `tool_executions`, `metadata`
 - Nested in `usage`: All token counts, costs, and context tracking
 - Nested in `metadata`: Minimal (most fields promoted to root)
 
@@ -329,7 +399,7 @@ Emitted when context usage crosses threshold percentages (60%, 80%, 90%, 95%).
 
 ### 11. agent_delegation
 
-Emitted when an agent delegates work to another agent.
+Emitted when an agent delegates work to another agent or swarm.
 
 **Location**: `lib/swarm_sdk/agent/chat/context_tracker.rb:186-193`
 
@@ -338,14 +408,18 @@ Emitted when an agent delegates work to another agent.
   type: "agent_delegation",
   timestamp: "2025-01-15T10:31:30Z",
   agent: "backend",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
   tool_call_id: "call_xyz789",
-  delegate_to: "frontend",                     # Target agent name
+  delegate_to: "frontend",                     # Target agent or swarm name
   arguments: {                                 # Delegation parameters
     prompt: "Build the login UI"
   },
   metadata: {}                                 # Agent context metadata
 }
 ```
+
+**Note**: `delegate_to` can be either a local agent name or a registered swarm name when using composable swarms.
 
 ---
 
@@ -360,12 +434,40 @@ Emitted when a delegated task completes and returns to the delegating agent.
   type: "delegation_result",
   timestamp: "2025-01-15T10:32:15Z",
   agent: "backend",                            # Agent that delegated
-  delegate_from: "frontend",                   # Agent that was delegated to
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
+  delegate_from: "frontend",                   # Agent or swarm that was delegated to
   tool_call_id: "call_xyz789",                 # Matches delegation tool_call_id
   result: "Login UI implemented",              # Result from delegate
   metadata: {}                                 # Agent context metadata
 }
 ```
+
+---
+
+### 12a. delegation_circular_dependency
+
+Emitted when circular delegation is detected (prevents infinite loops).
+
+**Location**: `lib/swarm_sdk/tools/delegate.rb:192-200`
+
+```ruby
+{
+  type: "delegation_circular_dependency",
+  timestamp: "2025-01-15T10:31:45Z",
+  agent: "agent_b",                            # Agent attempting delegation
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
+  target: "agent_a",                           # Target that would create cycle
+  call_stack: ["agent_a", "agent_b"]           # Current delegation chain
+}
+```
+
+**Description**: Emitted when runtime circular dependency detection prevents an infinite delegation loop. The delegation is blocked and an error message is returned to the LLM.
+
+**Example Scenarios:**
+- Agent A → Agent B → Agent A (circular within swarm)
+- Swarm S1 → Swarm S2 → Swarm S1 (circular across swarms)
 
 ---
 
@@ -433,6 +535,130 @@ Emitted when all LLM API retry attempts are exhausted.
 
 ---
 
+### 16. llm_api_request
+
+Emitted before sending HTTP request to LLM API provider (only when logging is enabled).
+
+**Location**: `lib/swarm_sdk/agent/llm_instrumentation_middleware.rb:57-68`
+
+```ruby
+{
+  type: "llm_api_request",
+  timestamp: "2025-01-15T10:31:15Z",
+  agent: "backend",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
+  provider: "openai",                          # Provider name (e.g., "anthropic", "openai")
+  body: {                                      # Complete request payload
+    model: "gpt-5",
+    messages: [
+      { role: "system", content: "You are..." },
+      { role: "user", content: "Build authentication" }
+    ],
+    temperature: 0.7,
+    max_tokens: 4096,
+    tools: [                                   # Tool definitions (if any)
+      {
+        name: "Read",
+        description: "Read a file",
+        input_schema: { ... }
+      }
+    ]
+  }
+}
+```
+
+**Field Locations**:
+- Root level: `type`, `timestamp`, `agent`, `swarm_id`, `parent_swarm_id`, `provider`, `body`
+- Nested in `body`: Complete LLM request payload (model, messages, parameters, tools)
+
+**Notes**:
+- Only emitted when logging is enabled (`swarm.execute` with block)
+- Body structure varies by provider (OpenAI, Anthropic, etc.)
+- HTTP-level details (method, URL, headers) are not included to reduce noise
+- Captures the exact request sent to the LLM API
+
+**Delegation Instance Example:**
+
+When a delegation instance makes an LLM API call, the `agent` field shows the full instance name:
+
+```ruby
+{
+  type: "llm_api_request",
+  agent: :"backend@lead",           # Delegation instance identifier
+  swarm_id: "main",
+  parent_swarm_id: nil,
+  provider: "openai",
+  body: { ... }
+}
+```
+
+This allows you to track which specific delegation instance (and therefore which delegation path) triggered the API call.
+
+---
+
+### 17. llm_api_response
+
+Emitted after receiving HTTP response from LLM API provider (only when logging is enabled).
+
+**Location**: `lib/swarm_sdk/agent/llm_instrumentation_middleware.rb:77-101`
+
+```ruby
+{
+  type: "llm_api_response",
+  timestamp: "2025-01-15T10:31:17Z",
+  agent: "backend",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
+  provider: "openai",                          # Provider name
+  body: {                                      # Complete response payload
+    id: "chatcmpl-123",
+    object: "chat.completion",
+    created: 1642234567,
+    model: "gpt-5",
+    choices: [
+      {
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "I'll implement the authentication system...",
+          tool_calls: [...]
+        },
+        finish_reason: "tool_calls"
+      }
+    ],
+    usage: {
+      prompt_tokens: 1850,
+      completion_tokens: 156,
+      total_tokens: 2006
+    }
+  },
+  duration_seconds: 2.145,                     # Request duration
+  usage: {                                     # Extracted from body
+    input_tokens: 1850,
+    output_tokens: 156,
+    total_tokens: 2006
+  },
+  model: "gpt-5",                              # Extracted from body
+  finish_reason: "tool_calls"                  # Extracted from body
+}
+```
+
+**Field Locations**:
+- Root level: `type`, `timestamp`, `agent`, `swarm_id`, `parent_swarm_id`, `provider`, `body`, `duration_seconds`, `usage`, `model`, `finish_reason`
+- Nested in `body`: Complete LLM response payload (varies by provider)
+- Nested in `usage`: Token counts (extracted from body for convenience)
+
+**Notes**:
+- Only emitted when logging is enabled (`swarm.execute` with block)
+- `usage`, `model`, and `finish_reason` are extracted from the body for convenience
+- Body structure varies by provider (OpenAI, Anthropic, etc.)
+- HTTP-level details (status, headers) are not included to reduce noise
+- Captures the exact response received from the LLM API
+- Duration includes full round-trip time (request + network + response)
+
+---
+
 ## Summary: Field Location Guide
 
 ### Always at Root Level
@@ -452,6 +678,8 @@ Emitted when all LLM API retry attempts are exhausted.
 | `user_prompt` | model, provider, message_count, tools, delegates_to | metadata.* (includes prompt) |
 | `tool_call` | tool_call_id, tool | arguments.*, metadata.* |
 | `tool_result` | tool_call_id, tool, result | metadata.* |
+| `llm_api_request` | provider | body.* |
+| `llm_api_response` | provider, duration_seconds, usage, model, finish_reason | body.*, usage.* |
 
 ### Important Notes
 
@@ -459,6 +687,8 @@ Emitted when all LLM API retry attempts are exhausted.
 2. **Tool Calls**: Nested as array of objects in `tool_calls` field within `agent_step` events
 3. **Prompt Location**: For `user_prompt` events, the prompt is in `metadata.prompt`, NOT at root level
 4. **Metadata Deduplication**: `agent_step` and `agent_stop` events have minimal metadata because most fields are promoted to root level (see `swarm.rb:723` and `swarm.rb:744`)
+5. **LLM API Events**: `llm_api_request` and `llm_api_response` events are only emitted when logging is enabled and capture the raw LLM API communication for debugging and monitoring
+6. **Delegation Instances**: The `agent` field can be either a simple agent name (`:backend`) or a delegation instance name (`:"backend@lead"`). Delegation instances are created automatically when multiple agents delegate to the same target (unless `shared_across_delegations: true`). Each instance has isolated state and appears as a distinct agent in all events, allowing you to track behavior and costs per delegation path.
 
 ---
 
@@ -469,3 +699,4 @@ Emitted when all LLM API retry attempts are exhausted.
 - **Agent Events**: `lib/swarm_sdk/agent/chat/context_tracker.rb` - Agent-level event tracking
 - **Hook Integration**: `lib/swarm_sdk/agent/chat/hook_integration.rb` - User prompt event preparation
 - **Logging Helpers**: `lib/swarm_sdk/agent/chat/logging_helpers.rb` - Tool call/result formatting
+- **LLM Instrumentation**: `lib/swarm_sdk/agent/llm_instrumentation_middleware.rb` - LLM API request/response capture
