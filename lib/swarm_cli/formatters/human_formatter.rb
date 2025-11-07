@@ -95,11 +95,20 @@ module SwarmCLI
           handle_breakpoint_enter(entry)
         when "breakpoint_exit"
           handle_breakpoint_exit(entry)
+        when "llm_retry_attempt"
+          handle_llm_retry_attempt(entry)
+        when "llm_retry_exhausted"
+          handle_llm_retry_exhausted(entry)
+        when "response_parse_error"
+          handle_response_parse_error(entry)
         end
       end
 
       # Called when swarm execution completes successfully
       def on_success(result:)
+        # Defensive: ensure all spinners are stopped before showing result
+        @spinner_manager.stop_all
+
         if @mode == :non_interactive
           # Full result display with summary
           @output.puts
@@ -115,6 +124,9 @@ module SwarmCLI
 
       # Called when swarm execution fails
       def on_error(error:, duration: nil)
+        # Defensive: ensure all spinners are stopped before showing error
+        @spinner_manager.stop_all
+
         @output.puts
         @output.puts @divider.full
         print_error(error)
@@ -573,6 +585,97 @@ module SwarmCLI
         @output.puts
         @output.puts @pastel.green("#{SwarmCLI::UI::Icons::SUCCESS} Breakpoint: Resuming execution")
         @output.puts
+      end
+
+      def handle_llm_retry_attempt(entry)
+        agent = entry[:agent]
+        attempt = entry[:attempt]
+        max_retries = entry[:max_retries]
+        error_class = entry[:error_class]
+        error_message = entry[:error_message]
+        retry_delay = entry[:retry_delay]
+
+        # Stop agent thinking spinner (if active)
+        unless @quiet
+          spinner_key = "agent_#{agent}".to_sym
+          @spinner_manager.stop(spinner_key) if @spinner_manager.active?(spinner_key)
+        end
+
+        lines = [
+          @pastel.yellow("LLM API request failed (attempt #{attempt}/#{max_retries})"),
+          @pastel.dim("Error: #{error_class}: #{error_message}"),
+          @pastel.dim("Retrying in #{retry_delay}s..."),
+        ]
+
+        @output.puts @panel.render(
+          type: :warning,
+          title: "RETRY #{@agent_badge.render(agent)}",
+          lines: lines,
+          indent: @depth_tracker.get(agent),
+        )
+
+        # Restart spinner for next attempt
+        unless @quiet
+          spinner_key = "agent_#{agent}".to_sym
+          @spinner_manager.start(spinner_key, "#{agent} is retrying...")
+        end
+      end
+
+      def handle_llm_retry_exhausted(entry)
+        agent = entry[:agent]
+        attempts = entry[:attempts]
+        error_class = entry[:error_class]
+        error_message = entry[:error_message]
+
+        # Stop agent thinking spinner (if active)
+        unless @quiet
+          spinner_key = "agent_#{agent}".to_sym
+          @spinner_manager.stop(spinner_key) if @spinner_manager.active?(spinner_key)
+        end
+
+        lines = [
+          @pastel.red("LLM API request failed after #{attempts} attempts"),
+          @pastel.dim("Error: #{error_class}: #{error_message}"),
+          @pastel.dim("No more retries available"),
+        ]
+
+        @output.puts @panel.render(
+          type: :error,
+          title: "RETRY EXHAUSTED #{@agent_badge.render(agent)}",
+          lines: lines,
+          indent: @depth_tracker.get(agent),
+        )
+      end
+
+      def handle_response_parse_error(entry)
+        agent = entry[:agent]
+        error_class = entry[:error_class]
+        error_message = entry[:error_message]
+
+        # Stop agent thinking spinner (if active)
+        unless @quiet
+          spinner_key = "agent_#{agent}".to_sym
+          @spinner_manager.stop(spinner_key) if @spinner_manager.active?(spinner_key)
+        end
+
+        lines = [
+          @pastel.red("Failed to parse LLM API response"),
+          @pastel.dim("Error: #{error_class}: #{error_message}"),
+        ]
+
+        # Add response body preview if available (truncated)
+        if entry[:response_body]
+          body_preview = entry[:response_body].to_s[0..200]
+          body_preview += "..." if entry[:response_body].to_s.length > 200
+          lines << @pastel.dim("Response: #{body_preview}")
+        end
+
+        @output.puts @panel.render(
+          type: :error,
+          title: "PARSE ERROR #{@agent_badge.render(agent)}",
+          lines: lines,
+          indent: @depth_tracker.get(agent),
+        )
       end
 
       def display_todo_list(agent, timestamp)
