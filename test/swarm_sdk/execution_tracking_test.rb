@@ -191,8 +191,9 @@ module SwarmSDK
 
     # Test Case 5: Instance Isolation
     def test_instance_isolation
-      swarm1 = build_test_swarm
-      swarm2 = build_test_swarm
+      # Use different names to ensure different swarm_ids
+      swarm1 = build_test_swarm_with_name("Test Swarm 1")
+      swarm2 = build_test_swarm_with_name("Test Swarm 2")
 
       execution_ids_1 = []
       execution_ids_2 = []
@@ -390,7 +391,11 @@ module SwarmSDK
     private
 
     def build_test_swarm
-      swarm = Swarm.new(name: "Test Swarm", scratchpad: Tools::Stores::ScratchpadStorage.new)
+      build_test_swarm_with_name("Test Swarm")
+    end
+
+    def build_test_swarm_with_name(name)
+      swarm = Swarm.new(name: name, scratchpad: Tools::Stores::ScratchpadStorage.new)
 
       swarm.add_agent(create_agent(
         name: :main,
