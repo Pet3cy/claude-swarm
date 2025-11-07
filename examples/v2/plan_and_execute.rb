@@ -13,8 +13,7 @@ swarm = SwarmSDK.build do
   agent(:assistant) do
     description("A versatile assistant that can plan and execute tasks")
     provider(:openai)
-    model("groq:openai/gpt-oss-120b")
-    base_url("https://proxy-shopify-ai.local.shop.dev/v1")
+    model("gpt-5")
     coding_agent(false)
 
     system_prompt(<<~PROMPT)

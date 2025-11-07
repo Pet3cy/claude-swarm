@@ -10,7 +10,7 @@
 #
 # Run: ruby examples/node_context_demo.rb
 
-require_relative "../lib/swarm_sdk"
+require "swarm_sdk"
 
 swarm = SwarmSDK.build do
   name("NodeContext Demo")

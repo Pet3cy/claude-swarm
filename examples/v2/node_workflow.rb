@@ -50,9 +50,8 @@ swarm = SwarmSDK.build do
   # Stage 1: Planning
   node(:planning) do
     # Input transformer - ctx.content is the initial prompt
+    # Demonstrates using return for early exit with skip_execution
     input do |ctx|
-      ctx.skip_execution(content: "I'm not going to plan anything.")
-      puts "planning did not skip execution."
       <<~PROMPT
         Please break down the following prompt into smaller subtasks:
 
