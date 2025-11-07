@@ -351,9 +351,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Enables clean separation between core SDK and plugin features (memory, skills, etc.)
   - Plugins can preserve their configuration when agents are cloned in NodeOrchestrator
 
-- **NodeOrchestrator**: Passes scratchpad configuration to mini-swarms
-  - Bug fix: `scratchpad_enabled` now correctly propagated to node-level swarms
-  - Ensures `use_scratchpad false` works properly in node workflows
+- **NodeOrchestrator**: Configurable scratchpad sharing modes
+  - `scratchpad: :enabled` - Share scratchpad across all nodes (default)
+  - `scratchpad: :per_node` - Isolated scratchpad per node
+  - `scratchpad: :disabled` - No scratchpad tools
 
 - **CLI ConfigLoader**: Accepts both Swarm and NodeOrchestrator instances
   - Bug fix: CLI now correctly handles NodeOrchestrator execution
@@ -548,17 +549,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
         directory: .swarm/assistant-memory
   ```
 
-- **Scratchpad Configuration DSL** - Enable/disable at swarm level
+- **Scratchpad Configuration DSL** - Configure mode at swarm/workflow level
   ```ruby
   SwarmSDK.build do
-    use_scratchpad true  # or false (default: true)
+    scratchpad :enabled   # or :per_node (nodes only), :disabled (default: :disabled)
   end
   ```
 
 - **Scratchpad Configuration YAML**
   ```yaml
   swarm:
-    use_scratchpad: true  # or false
+    scratchpad: enabled  # or per_node (nodes only), disabled
   ```
 
 - **Agent Start Events** - New log event after agent initialization
@@ -597,7 +598,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Default tools** - Conditional inclusion
   - Core defaults: Read, Grep, Glob
-  - Scratchpad tools: Added if `use_scratchpad true` (default)
+  - Scratchpad tools: Added if `scratchpad: :enabled` (default)
   - Memory tools: Added if agent has `memory` configured
   - Enables fine-grained control over tool availability
 
@@ -637,7 +638,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
    - **Migration**: Old persisted scratchpad.json files will not load
 
 4. **Default tools behavior changed**: Memory and Scratchpad are conditional
-   - Scratchpad: Enabled by default via `use_scratchpad true`
+   - Scratchpad: Enabled by default via `scratchpad: :enabled`
    - Memory: Opt-in via `memory` configuration
    - **Migration**: Explicitly configure if needed
 

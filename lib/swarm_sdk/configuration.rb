@@ -140,7 +140,7 @@ module SwarmSDK
     private
 
     def parse_scratchpad_mode(value)
-      return :enabled if value.nil? # Default
+      return :disabled if value.nil? # Default
 
       # Convert strings from YAML to symbols
       value = value.to_sym if value.is_a?(String)

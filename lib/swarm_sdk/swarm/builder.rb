@@ -54,7 +54,7 @@ module SwarmSDK
         @swarm_registry_config = [] # NEW - stores register() calls for composable swarms
         @nodes = {}
         @start_node = nil
-        @scratchpad = :enabled # Default: enabled (shared for nodes, just enabled for non-nodes)
+        @scratchpad = :disabled # Default: disabled
         @allow_filesystem_tools = allow_filesystem_tools
       end
 

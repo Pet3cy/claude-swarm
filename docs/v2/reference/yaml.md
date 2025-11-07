@@ -199,18 +199,50 @@ swarm:
 
 ---
 
-### use_scratchpad
+### scratchpad
 
-**Type:** Boolean (optional)
-**Default:** `true`
-**Description:** Enable or disable shared scratchpad tools for all agents in the swarm.
+**Type:** Symbol/String (optional)
+**Default:** `disabled`
+**Description:** Configure scratchpad mode for the swarm or workflow.
 
-When enabled, all agents get scratchpad tools (ScratchpadWrite, ScratchpadRead, ScratchpadList). Scratchpad is volatile (in-memory only) and shared across all agents.
+**Valid Values:**
+- For regular Swarms: `enabled`, `disabled`
+- For workflows with nodes: `enabled`, `per_node`, `disabled`
+
+**Modes:**
+- **`enabled`**: Scratchpad tools available (ScratchpadWrite, ScratchpadRead, ScratchpadList)
+  - Regular Swarm: All agents share one scratchpad
+  - With nodes: All nodes share one scratchpad across workflow
+- **`per_node`**: (Nodes only) Each node gets isolated scratchpad storage
+- **`disabled`**: No scratchpad tools available
+
+Scratchpad is volatile (in-memory only) and provides temporary storage for cross-agent or cross-node communication.
 
 ```yaml
+# Regular swarm
 swarm:
-  use_scratchpad: true   # default
-  use_scratchpad: false  # disable scratchpad
+  scratchpad: enabled   # default
+  scratchpad: disabled  # no scratchpad
+
+# With nodes - shared across all nodes (default)
+swarm:
+  scratchpad: enabled
+
+  nodes:
+    planning: { ... }
+    implementation: { ... }
+
+  start_node: planning
+
+# With nodes - isolated per node
+swarm:
+  scratchpad: per_node
+
+  nodes:
+    planning: { ... }
+    implementation: { ... }
+
+  start_node: planning
 ```
 
 ---
@@ -299,6 +331,7 @@ nodes:
     agents:
       - agent: backend
         delegates_to: [tester]
+        tools: [Read, Edit, Write]  # Override tools for this node
       - agent: tester
     dependencies: [planning]
     input_command: "cat plan.txt"
@@ -317,6 +350,27 @@ nodes:
 - `input_timeout` - Timeout for input_command (seconds, default: 60)
 - `output_command` - Bash command to transform output after execution
 - `output_timeout` - Timeout for output_command (seconds, default: 60)
+
+**Per-node agent configuration:**
+Each agent in a node's `agents` array can have:
+- `agent` (required) - Agent name (must be defined in global `agents` section)
+- `delegates_to` (optional) - Override delegation targets for this node
+- `reset_context` (optional) - Whether to reset context (default: true)
+- `tools` (optional) - Override tools for this node (replaces global agent tools)
+
+```yaml
+nodes:
+  planning:
+    agents:
+      - agent: backend
+        tools: [Read, Think]  # Restrict to read-only + reasoning in planning
+
+  implementation:
+    agents:
+      - agent: backend
+        delegates_to: [tester]
+        tools: [Read, Edit, Write, Bash]  # Full tools in implementation
+```
 
 ---
 
@@ -532,7 +586,7 @@ agents:
 **Default tools (when `default tools enabled`):**
 - `Read`, `Glob`, `Grep`, `TodoWrite`, `Think`, `WebFetch`
 
-**Scratchpad tools** (added if `use_scratchpad: true` at swarm level, default):
+**Scratchpad tools** (opt-in via `scratchpad: enabled` at swarm level):
 - `ScratchpadWrite`, `ScratchpadRead`, `ScratchpadList`
 
 **Memory tools** (added if agent has `memory` configured):
