@@ -388,30 +388,58 @@ lead :coordinator
 
 ---
 
-### use_scratchpad
+### scratchpad
 
-Enable or disable shared scratchpad tools for all agents.
+Configure scratchpad mode for the swarm or workflow.
 
 **Signature:**
 ```ruby
-use_scratchpad(enabled) → void
+scratchpad(mode) → void
 ```
 
 **Parameters:**
-- `enabled` (Boolean, required): Whether to enable scratchpad tools
+- `mode` (Symbol, required): Scratchpad mode
+  - For regular Swarms: `:enabled` or `:disabled`
+  - For NodeOrchestrator (workflows with nodes): `:enabled`, `:per_node`, or `:disabled`
 
-**Default:** `true` (scratchpad tools enabled)
+**Default:** `:disabled`
 
 **Description:**
-Controls whether agents have access to scratchpad tools (ScratchpadWrite, ScratchpadRead, ScratchpadList). Scratchpad is volatile (in-memory only) and shared across all agents in the swarm.
+Controls scratchpad availability and sharing behavior:
 
-**Example:**
+- **`:enabled`**: Scratchpad tools available (ScratchpadWrite, ScratchpadRead, ScratchpadList)
+  - Regular Swarm: All agents share one scratchpad
+  - NodeOrchestrator: All nodes share one scratchpad across the workflow
+- **`:per_node`**: (NodeOrchestrator only) Each node gets isolated scratchpad storage
+- **`:disabled`**: No scratchpad tools available
+
+Scratchpad is volatile (in-memory only) and provides temporary storage for cross-agent or cross-node communication.
+
+**Examples:**
 ```ruby
-# Enable scratchpad (default)
-use_scratchpad true
+# Regular Swarm - enable or disable
+SwarmSDK.build do
+  scratchpad :enabled  # Enable scratchpad
+  scratchpad :disabled # Disable scratchpad (default)
+end
 
-# Disable scratchpad
-use_scratchpad false
+# NodeOrchestrator - shared across nodes
+SwarmSDK.build do
+  scratchpad :enabled  # All nodes share one scratchpad
+
+  node :planning { agent(:planner) }
+  node :implementation { agent(:coder) }
+  start_node :planning
+end
+
+# NodeOrchestrator - isolated per node
+SwarmSDK.build do
+  scratchpad :per_node  # Each node gets its own scratchpad
+
+  node :planning { agent(:planner) }
+  node :implementation { agent(:coder) }
+  start_node :planning
+end
 ```
 
 ---

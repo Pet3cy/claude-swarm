@@ -957,10 +957,10 @@ module SwarmSDK
       assert_match(/use :enabled or :disabled/, error.message)
     end
 
-    def test_swarm_scratchpad_default_is_enabled
+    def test_swarm_scratchpad_default_is_disabled
       swarm = SwarmSDK.build do
         name("Default Test")
-        # Don't set scratchpad - should default to :enabled
+        # Don't set scratchpad - should default to :disabled
 
         agent(:dev) do
           description("Developer")
@@ -972,8 +972,8 @@ module SwarmSDK
         lead(:dev)
       end
 
-      assert_predicate(swarm, :scratchpad_enabled?)
-      refute_nil(swarm.scratchpad_storage)
+      refute_predicate(swarm, :scratchpad_enabled?)
+      assert_nil(swarm.scratchpad_storage)
     end
 
     def test_swarm_scratchpad_yaml_string_conversion
