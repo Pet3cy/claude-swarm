@@ -8,10 +8,6 @@
 # Run: bundle exec ruby -Ilib lib/swarm_sdk/examples/dsl/12_complete_integration.rb
 
 require "swarm_sdk"
-require_relative "../../../swarm_sdk/swarm_builder"
-require_relative "../../../swarm_sdk/agent_builder"
-require_relative "../../../swarm_sdk/all_agents_builder"
-require_relative "../../../swarm_sdk/permissions_builder"
 
 ENV["OPENAI_API_KEY"] = "test-key"
 
@@ -76,7 +72,7 @@ swarm = SwarmSDK.build do
 
     # Advanced flags
     bypass_permissions(false)
-    skip_base_prompt(false)
+    coding_agent(false)
     assume_model_exists(true)
     timeout(120)
 
@@ -113,7 +109,7 @@ puts "  ✓ Agent identity (system_prompt, description)"
 puts "  ✓ Capabilities (tools, delegates_to, directory)"
 puts "  ✓ MCP servers (filesystem via stdio)"
 puts "  ✓ LLM params (parameters, timeout)"
-puts "  ✓ Advanced flags (disable_default_tools, bypass_permissions, skip_base_prompt, assume_model_exists)"
+puts "  ✓ Advanced flags (disable_default_tools, bypass_permissions, coding_agent, assume_model_exists)"
 puts "  ✓ Permissions (all_agents and agent-level)"
 puts "  ✓ Hooks (swarm-level, agent-level, all_agents)"
 puts "  ✓ Delegation"

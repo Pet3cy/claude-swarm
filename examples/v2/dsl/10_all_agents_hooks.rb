@@ -8,9 +8,6 @@
 # Run: bundle exec ruby -Ilib lib/swarm_sdk/examples/dsl/10_all_agents_hooks.rb
 
 require "swarm_sdk"
-require_relative "../../../swarm_sdk/swarm_builder"
-require_relative "../../../swarm_sdk/agent_builder"
-require_relative "../../../swarm_sdk/all_agents_builder"
 
 ENV["OPENAI_API_KEY"] = "test-key"
 
