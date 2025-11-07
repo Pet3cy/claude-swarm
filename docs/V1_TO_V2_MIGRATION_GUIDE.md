@@ -43,15 +43,8 @@ SwarmSDK v2 is a **complete redesign** that's not backward compatible with Claud
 - 🧠 SwarmMemory for persistent agent knowledge
 - 🔌 Plugin system for extensibility
 - 📊 Structured logging and cost tracking
-- 🎮 Modern CLI with interactive REPL
+- 🎮 Interactive REPL
 - 🌐 Multiple LLM providers (Claude, OpenAI, Gemini, DeepSeek, etc.)
-
-### Do You Need Wrappers?
-
-**No wrappers needed!** SwarmSDK provides:
-- ✅ **Ruby DSL** - Programmatic API with IDE support
-- ✅ **YAML Configuration** - Declarative format (similar to v1)
-- ✅ **REPL** - A REPL for interacting with swarms
 
 ### Migration Effort
 
@@ -95,7 +88,7 @@ Single Ruby Process
 - ✅ Fast - Direct method calls
 - ✅ Flexible - Any LLM provider
 - ✅ Feature-rich - Hooks, workflows, memory
-- ✅ Better DX - Modern CLI, structured logging
+- ✅ Better DX - Ruby DSL, structured logging
 
 ---
 
@@ -238,7 +231,8 @@ swarm:
     lead:
       description: "Lead developer"
       directory: .
-      model: opus
+      model: claude-opus-4-1
+      provider: anthropic
       delegates_to: [frontend, backend]
       system_prompt: "You are the lead developer"
       tools: [Read, Edit, Bash]
@@ -313,7 +307,8 @@ swarm:
   agents:
     reviewer:
       description: "Code reviewer"
-      model: opus
+      model: claude-opus-4-1
+      provider: anthropic
       delegates_to: [implementer]
       system_prompt: "Review code and provide feedback"
       tools: [Read, Bash]
@@ -386,7 +381,8 @@ swarm:
     architect:
       description: "Lead architect"
       directory: .
-      model: opus
+      model: claude-opus-4-1
+      provider: anthropic
       delegates_to: [frontend, backend, qa]
       system_prompt: "Coordinate the development team"
       tools: [Read, Edit]
@@ -394,7 +390,8 @@ swarm:
     frontend:
       description: "Frontend specialist"
       directory: ./frontend
-      model: sonnet
+      model: claude-sonnet-4-5
+      provider: anthropic
       delegates_to: [qa]
       system_prompt: "Build React components"
       tools: [Read, Write, Edit, Bash]
@@ -402,7 +399,8 @@ swarm:
     backend:
       description: "Backend specialist"
       directory: ./backend
-      model: sonnet
+      model: claude-sonnet-4-5
+      provider: anthropic
       delegates_to: [qa]
       system_prompt: "Build REST APIs"
       tools: [Read, Write, Edit, Bash]
@@ -410,7 +408,8 @@ swarm:
     qa:
       description: "QA engineer"
       directory: .
-      model: sonnet
+      model: claude-sonnet-4-5
+      provider: anthropic
       system_prompt: "Test and review code"
       tools: [Read, Bash]
 ```
@@ -1070,12 +1069,6 @@ agents:
     tools: [Read, Write]
 ```
 
-### Warning: Claude Code Not Found
-
-**This is expected!** SwarmSDK doesn't use Claude Code.
-
-No action needed - this is the new architecture working correctly.
-
 ### Migration Checklist
 
 Use this checklist to ensure complete migration:
@@ -1089,6 +1082,7 @@ Use this checklist to ensure complete migration:
 - [ ] Renamed `mcps` to `mcp_servers` (if used)
 - [ ] Updated hook event names to lowercase (if used)
 - [ ] Added `description` to all agents
+- [ ] Added the `provider` key to all agents
 - [ ] Tested configuration with `swarm run`
 - [ ] Verified agent delegation works
 - [ ] Confirmed tools execute correctly
