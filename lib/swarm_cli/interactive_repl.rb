@@ -81,6 +81,9 @@ module SwarmCLI
       display_session_summary
       exit(130)
     ensure
+      # Defensive: ensure all spinners are stopped on exit
+      @formatter&.spinner_manager&.stop_all
+
       # Save history on exit
       save_persistent_history
     end
@@ -432,11 +435,12 @@ module SwarmCLI
         end
       end
 
+      # CRITICAL: Stop all spinners after execution completes
+      # This ensures spinner doesn't interfere with error/success display or REPL prompt
+      @formatter.spinner_manager.stop_all
+
       # Handle cancellation (result is nil when cancelled)
       if result.nil?
-        # Stop all active spinners
-        @formatter.spinner_manager.stop_all
-
         puts ""
         puts @colors[:warning].call("✗ Request cancelled by user")
         puts ""
@@ -459,6 +463,8 @@ module SwarmCLI
       # Add response to history
       @conversation_history << { role: "agent", content: result.content }
     rescue StandardError => e
+      # Defensive: ensure spinners are stopped on exception
+      @formatter.spinner_manager.stop_all
       @formatter.on_error(error: e)
     end
 

@@ -5,6 +5,28 @@ All notable changes to SwarmCLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.3]
+
+### Fixed
+
+- **Interactive REPL spinner cleanup** - Fixed spinners not stopping properly
+  - Bug: Spinners continued animating after swarm execution completed or on errors
+  - Bug: REPL prompt would overlap with spinner animation, causing terminal corruption
+  - Fix: Added `spinner_manager.stop_all()` after `execute_with_cancellation()` in all paths
+  - Fix: Added defensive cleanup in `on_success()`, `on_error()`, and `run()` ensure block
+  - Fix: Ensures spinners stop before displaying results, errors, or REPL prompt
+  - Impact: Fixes 100% of interactive mode sessions
+
+### Added
+
+- **LLM API Error and Retry Event Handlers** - CLI now shows LLM API errors and retries
+  - Added handler for `llm_retry_attempt` - Shows warning panel during retry attempts
+  - Added handler for `llm_retry_exhausted` - Shows error panel when retries are exhausted
+  - Added handler for `response_parse_error` - Shows error panel when response parsing fails
+  - Displays attempt numbers (e.g., "attempt 2/3"), retry delays, error messages
+  - Properly manages spinners during error display (stops "thinking" spinner, restarts "retrying" spinner)
+  - Provides clear visibility into API rate limits, timeouts, and parsing errors
+
 ## [2.1.2]
 
 ### Changed
