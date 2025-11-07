@@ -1,3 +1,11 @@
+## [1.0.7]
+
+### Fixed
+- **Preserve environment variables in MCP configurations**: Fixed environment variable interpolation to skip MCP server configurations
+  - Environment variables in MCP configs are now preserved as-is (e.g., `${TOKEN}` stays as `${TOKEN}`)
+  - Allows MCP servers to perform their own environment variable interpolation if needed
+  - Previously, variables were expanded too early, preventing MCP servers from handling dynamic values
+
 ## [1.0.6]
 
 ### Fixed
