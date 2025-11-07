@@ -1694,7 +1694,7 @@ agent(name, reset_context: true) → AgentConfig
   - `true` (default): Fresh context for each node execution
   - `false`: Preserve conversation history from previous nodes
 
-**Returns:** `AgentConfig` with `.delegates_to(*names)` method
+**Returns:** `AgentConfig` with `.delegates_to(*names)` and `.tools(*names)` methods
 
 **Example:**
 ```ruby
@@ -1706,6 +1706,12 @@ agent(:backend, reset_context: false).delegates_to(:tester)
 
 # Without delegation, preserving context
 agent(:planner, reset_context: false)
+
+# Override tools for this node
+agent(:backend).tools(:Read, :Think)
+
+# Combine delegation and tool override
+agent(:backend).delegates_to(:tester).tools(:Read, :Edit, :Write)
 ```
 
 **When to use `reset_context: false`:**
@@ -1801,16 +1807,16 @@ input do |ctx|
   "Implement:\nPlan: #{plan}\nDesign: #{design}"
 end
 
-# Skip execution (caching)
+# Skip execution (caching) - using return
 input do |ctx|
   cached = check_cache(ctx.content)
-  if cached
-    { skip_execution: true, content: cached }
-  else
-    ctx.content
-  end
+  return ctx.skip_execution(content: cached) if cached
+
+  ctx.content
 end
 ```
+
+**Return statements work safely**: Input blocks are automatically converted to lambdas, allowing you to use `return` for clean early exits without exiting your program.
 
 ---
 
@@ -1879,7 +1885,16 @@ output do |ctx|
   impl = ctx.content
   "Completed:\nPlan: #{plan}\nImpl: #{impl}"
 end
+
+# Early exit with return
+output do |ctx|
+  return ctx.halt_workflow(content: ctx.content) if converged?(ctx.content)
+
+  ctx.content
+end
 ```
+
+**Return statements work safely**: Output blocks are automatically converted to lambdas, allowing you to use `return` for clean early exits without exiting your program.
 
 ---
 

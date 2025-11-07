@@ -393,20 +393,67 @@ module SwarmSDK
       end
     end
 
-    # Restore scratchpad contents (Swarm only)
+    # Restore scratchpad contents
+    #
+    # For Swarm: uses scratchpad_storage (flat format)
+    # For NodeOrchestrator: { shared: bool, data: ... }
+    #   - shared: true  → :enabled mode (shared across nodes)
+    #   - shared: false → :per_node mode (isolated per node)
     #
     # @return [void]
     def restore_scratchpad
-      # Swarm ONLY - NodeOrchestrator doesn't have persistent scratchpad
-      return if @type == :node_orchestrator
-
       scratchpad_data = @snapshot_data[:scratchpad] || @snapshot_data["scratchpad"]
       return unless scratchpad_data&.any?
 
+      if @type == :node_orchestrator
+        restore_node_orchestrator_scratchpad(scratchpad_data)
+      else
+        restore_swarm_scratchpad(scratchpad_data)
+      end
+    end
+
+    # Restore scratchpad for NodeOrchestrator
+    #
+    # @param scratchpad_data [Hash] { shared: bool, data: ... }
+    # @return [void]
+    def restore_node_orchestrator_scratchpad(scratchpad_data)
+      snapshot_shared_mode = scratchpad_data[:shared] || scratchpad_data["shared"]
+      data = scratchpad_data[:data] || scratchpad_data["data"]
+
+      return unless data&.any?
+
+      # Warn if snapshot mode doesn't match current configuration
+      if snapshot_shared_mode != @orchestration.shared_scratchpad?
+        RubyLLM.logger.warn(
+          "SwarmSDK: Scratchpad mode mismatch: snapshot=#{snapshot_shared_mode ? "enabled" : "per_node"}, " \
+            "current=#{@orchestration.shared_scratchpad? ? "enabled" : "per_node"}",
+        )
+        RubyLLM.logger.warn("SwarmSDK: Restoring anyway - data may not behave as expected")
+      end
+
+      if snapshot_shared_mode
+        # Restore shared scratchpad
+        shared_scratchpad = @orchestration.scratchpad_for(@orchestration.start_node)
+        shared_scratchpad&.restore_entries(data)
+      else
+        # Restore per-node scratchpads
+        data.each do |node_name, entries|
+          next unless entries&.any?
+
+          scratchpad = @orchestration.scratchpad_for(node_name.to_sym)
+          scratchpad&.restore_entries(entries)
+        end
+      end
+    end
+
+    # Restore scratchpad for Swarm
+    #
+    # @param scratchpad_data [Hash] Flat scratchpad entries
+    # @return [void]
+    def restore_swarm_scratchpad(scratchpad_data)
       scratchpad = @orchestration.scratchpad_storage
       return unless scratchpad
 
-      # Use new public API: restore_entries handles all the details
       scratchpad.restore_entries(scratchpad_data)
     end
 

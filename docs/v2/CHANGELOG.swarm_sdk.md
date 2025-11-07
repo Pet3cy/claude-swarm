@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Safe Return Statements in Node Transformers**: Input and output transformers now support `return` statements for natural control flow
+  - **Automatic lambda conversion**: Blocks passed to `input {}` and `output {}` are automatically converted to lambdas via `ProcHelpers.to_lambda`
+  - **Safe early exits**: Use `return` for early exits without risking program termination
+  - **Natural control flow**: Write intuitive conditional logic with standard Ruby `return` keyword
+  - **Examples**: `return ctx.skip_execution(content: "cached") if cached?`, `return ctx.halt_workflow(content: "error") if invalid?`
+  - **Implementation**: Converts Proc to UnboundMethod via `define_method`, then wraps in lambda where `return` only exits the method
+  - **Backward compatible**: Existing code without `return` statements continues to work unchanged
+  - **Files**: `lib/swarm_sdk/proc_helpers.rb`, `lib/swarm_sdk/node/builder.rb`
+  - **Tests**: 8 comprehensive tests in `test/swarm_sdk/proc_helpers_test.rb` covering closures, keyword args, block args, and multiple return paths
+
+- **Per-Node Tool Overrides**: Agents can now have different tool sets in different nodes
+  - **Node-specific tools**: Override agent's global tool configuration on a per-node basis
+  - **Fluent syntax**: Chain with delegation: `agent(:backend).delegates_to(:tester).tools(:Read, :Edit, :Write)`
+  - **Use case**: Restrict tools for specific workflow stages (e.g., planning node with thinking tools only, execution node with file tools)
+  - **Example**: `agent(:planner).tools(:Think, :Read)` in planning node, `agent(:planner).tools(:Write, :Edit, :Bash)` in implementation node
+  - **Implementation**: New `tools(*tool_names)` method on `AgentConfig`, stored in node configuration as tool override
+  - **Backward compatible**: Omit `.tools()` to use agent's global tool configuration
+  - **Files**: `lib/swarm_sdk/node/agent_config.rb`, `lib/swarm_sdk/node/builder.rb`, `lib/swarm_sdk/node_orchestrator.rb`
+
 ## [2.2.0] - 2025-11-06
 
 ### Fixed

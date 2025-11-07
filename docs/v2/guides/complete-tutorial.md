@@ -1951,29 +1951,25 @@ end
 
 **Control Flow Methods**:
 
-NodeContext provides three methods for dynamic workflow control:
+NodeContext provides three methods for dynamic workflow control. Input and output blocks are automatically converted to lambdas, which means you can use `return` statements for clean early exits.
 
 **1. goto_node - Jump to any node**:
 ```ruby
 output do |ctx|
-  if needs_revision?(ctx.content)
-    # Jump back to revision node instead of continuing forward
-    ctx.goto_node(:revision, content: ctx.content)
-  else
-    ctx.content  # Continue to next node normally
-  end
+  # Using return for early exit (clean and natural)
+  return ctx.goto_node(:revision, content: ctx.content) if needs_revision?(ctx.content)
+
+  ctx.content  # Continue to next node normally
 end
 ```
 
 **2. halt_workflow - Stop entire workflow**:
 ```ruby
 output do |ctx|
-  if converged?(ctx.content)
-    # Stop workflow early with final result
-    ctx.halt_workflow(content: ctx.content)
-  else
-    ctx.content  # Continue to next node
-  end
+  # Using return for early exit
+  return ctx.halt_workflow(content: ctx.content) if converged?(ctx.content)
+
+  ctx.content  # Continue to next node
 end
 ```
 
@@ -1981,14 +1977,15 @@ end
 ```ruby
 input do |ctx|
   cached = check_cache(ctx.content)
-  if cached
-    # Skip expensive LLM call and use cached result
-    ctx.skip_execution(content: cached)
-  else
-    ctx.content  # Execute node normally
-  end
+
+  # Using return for early exit when cached
+  return ctx.skip_execution(content: cached) if cached
+
+  ctx.content  # Execute node normally
 end
 ```
+
+**Why `return` works safely**: Input and output blocks are automatically converted to lambdas, where `return` only exits the transformer block, not your entire program. This enables natural Ruby control flow patterns.
 
 **Creating loops with goto_node**:
 ```ruby
@@ -1996,12 +1993,10 @@ node :reasoning do
   agent(:thinker, reset_context: false)  # Preserve context across iterations
 
   output do |ctx|
-    # Loop until convergence
-    if ctx.all_results.size > 10
-      ctx.halt_workflow(content: "Max iterations reached")
-    else
-      ctx.goto_node(:reflection, content: ctx.content)
-    end
+    # Using return for early exit when max iterations reached
+    return ctx.halt_workflow(content: "Max iterations reached") if ctx.all_results.size > 10
+
+    ctx.goto_node(:reflection, content: ctx.content)
   end
 end
 
@@ -2021,11 +2016,10 @@ start_node :reasoning
 
 ```ruby
 output do |ctx|
-  if ctx.error
-    ctx.halt_workflow(content: "Error: #{ctx.error.message}")
-  else
-    ctx.goto_node(:next_node, content: ctx.content)
-  end
+  # Using return for early exit on error
+  return ctx.halt_workflow(content: "Error: #{ctx.error.message}") if ctx.error
+
+  ctx.goto_node(:next_node, content: ctx.content)
 end
 ```
 
