@@ -271,7 +271,9 @@ module SwarmSDK
 
             # Trigger user_prompt hook manually since we're bypassing the normal ask flow
             if @hook_executor
-              hook_result = trigger_user_prompt(prompt)
+              # Extract source from options if provided, default to "user"
+              source = options[:source] || "user"
+              hook_result = trigger_user_prompt(prompt, source: source)
 
               # Check if hook halted execution
               if hook_result[:halted]

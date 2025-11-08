@@ -997,6 +997,7 @@ module SwarmSDK
           message_count: context.metadata[:message_count] || 0,
           tools: context.metadata[:tools] || [],
           delegates_to: context.metadata[:delegates_to] || [],
+          source: context.metadata[:source] || "user",
           metadata: context.metadata,
         )
       end

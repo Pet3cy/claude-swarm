@@ -196,7 +196,7 @@ module SwarmSDK
         # Push delegate target onto call stack to track delegation chain
         @call_stack.push(@delegate_target)
         begin
-          response = @delegate_chat.ask(task)
+          response = @delegate_chat.ask(task, source: "delegation")
           response.content
         ensure
           # Always pop from stack, even if delegation fails
@@ -217,7 +217,7 @@ module SwarmSDK
         begin
           # Execute sub-swarm's lead agent
           lead_agent = subswarm.agents[subswarm.lead_agent]
-          response = lead_agent.ask(task)
+          response = lead_agent.ask(task, source: "delegation")
           result = response.content
 
           # Reset if keep_context: false

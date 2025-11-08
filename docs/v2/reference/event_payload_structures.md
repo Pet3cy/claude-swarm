@@ -273,6 +273,7 @@ Emitted when a user message is about to be sent to the LLM.
   message_count: 5,                            # Number of messages in conversation so far
   tools: [:Read, :Edit, :Bash],                # Available tools (excluding delegation tools)
   delegates_to: ["frontend"],                  # Agents this agent can delegate to
+  source: "user",                              # Source of prompt: "user" or "delegation"
   metadata: {                                  # Full context available here
     prompt: "Build authentication",
     message_count: 5,
@@ -280,14 +281,19 @@ Emitted when a user message is about to be sent to the LLM.
     provider: "openai",
     tools: [:Read, :Edit, :Bash],
     delegates_to: ["frontend"],
+    source: "user",
     timestamp: "2025-01-15T10:31:10Z"
   }
 }
 ```
 
 **Field Locations**:
-- Root level: `type`, `timestamp`, `agent`, `model`, `provider`, `message_count`, `tools`, `delegates_to`, `metadata`
-- Nested in `metadata`: Complete copy of all context fields (including prompt)
+- Root level: `type`, `timestamp`, `agent`, `model`, `provider`, `message_count`, `tools`, `delegates_to`, `source`, `metadata`
+- Nested in `metadata`: Complete copy of all context fields (including prompt and source)
+
+**Source Field**:
+- `"user"` - Direct user interaction (default)
+- `"delegation"` - Prompt originated from delegation tool (one agent delegating to another)
 
 **Important**: The `metadata` hash contains the original context from the hook, including the `prompt` field which is NOT promoted to root level for this event type.
 
