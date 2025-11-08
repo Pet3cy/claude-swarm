@@ -80,9 +80,11 @@ module SwarmSDK
         # @param options [Hash] Additional options (may include source: "user" or "delegation")
         # @return [RubyLLM::Message] LLM response
         def ask(prompt, **options)
+          # Extract source for hook tracking (not passed to RubyLLM)
+          source = options.delete(:source) || "user"
+
           # Trigger user_prompt hook before sending to LLM (can halt or modify prompt)
           if @hook_executor
-            source = options[:source] || "user"
             hook_result = trigger_user_prompt(prompt, source: source)
 
             # Check if hook halted execution
