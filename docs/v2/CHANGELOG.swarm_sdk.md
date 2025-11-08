@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **User Prompt Source Tracking**: `user_prompt` events now include source information to distinguish user interactions from delegations
+  - **`source` field**: Indicates origin of prompt - `"user"` (direct user interaction) or `"delegation"` (from delegation tool)
+  - **Event filtering**: Enables filtering user prompts by source in logs and analytics
+  - **Delegation tracking**: Identify which prompts originated from agent delegations vs direct user input
+  - **Hook context**: Source information available in user_prompt hooks via `context.metadata[:source]`
+  - **Implementation**: Source passed through `ask()` method options, extracted in `trigger_user_prompt()`
+  - **Default behavior**: All prompts default to `source: "user"` for backward compatibility
+  - **Files**: `lib/swarm_sdk/agent/chat/hook_integration.rb`, `lib/swarm_sdk/tools/delegate.rb`, `lib/swarm_sdk/swarm.rb`
+  - **Example**: `{ type: "user_prompt", agent: "backend", source: "delegation", ... }`
+
 - **Safe Return Statements in Node Transformers**: Input and output transformers now support `return` statements for natural control flow
   - **Automatic lambda conversion**: Blocks passed to `input {}` and `output {}` are automatically converted to lambdas via `ProcHelpers.to_lambda`
   - **Safe early exits**: Use `return` for early exits without risking program termination

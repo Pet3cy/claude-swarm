@@ -107,7 +107,7 @@ module SwarmSDK
 
       # Mock the agent to make a tool call
       tool_call_made = false
-      lead_agent.define_singleton_method(:ask) do |_prompt|
+      lead_agent.define_singleton_method(:ask) do |_prompt, **_options|
         unless tool_call_made
           tool_call_made = true
           # Simulate calling Read tool
@@ -139,7 +139,7 @@ module SwarmSDK
       backend_agent = swarm.agent(:backend)
 
       # Mock backend agent to avoid HTTP calls (should not be called due to halt)
-      backend_agent.define_singleton_method(:ask) do |_task|
+      backend_agent.define_singleton_method(:ask) do |_task, **_options|
         raise "Backend agent should not be called when delegation is halted!"
       end
 
@@ -167,7 +167,7 @@ module SwarmSDK
 
       # Mock backend agent to avoid HTTP calls (should not be called due to replace)
       backend_agent = swarm.agent(:backend)
-      backend_agent.define_singleton_method(:ask) do |_task|
+      backend_agent.define_singleton_method(:ask) do |_task, **_options|
         raise "Backend agent should not be called when delegation is replaced!"
       end
 
@@ -193,7 +193,7 @@ module SwarmSDK
 
       # Mock the backend agent to return a specific response
       backend_agent = swarm.agent(:backend)
-      backend_agent.define_singleton_method(:ask) do |_task|
+      backend_agent.define_singleton_method(:ask) do |_task, **_options|
         Struct.new(:content).new("Backend response")
       end
 
@@ -221,7 +221,7 @@ module SwarmSDK
 
       # Mock backend agent
       backend_agent = swarm.agent(:backend)
-      backend_agent.define_singleton_method(:ask) { |_| Struct.new(:content).new("Done") }
+      backend_agent.define_singleton_method(:ask) { |_, **_options| Struct.new(:content).new("Done") }
 
       lead_agent = swarm.agent(:lead)
       delegation_tool = lead_agent.tools[:DelegateTaskToBackend]
@@ -252,7 +252,7 @@ module SwarmSDK
 
       # Mock backend agent
       backend_agent = swarm.agent(:backend)
-      backend_agent.define_singleton_method(:ask) do |_|
+      backend_agent.define_singleton_method(:ask) do |_, **_options|
         Struct.new(:content).new("Backend completed task")
       end
 
@@ -317,7 +317,7 @@ module SwarmSDK
 
       # Mock backend agent to return a response
       backend_agent = swarm.agent(:backend)
-      backend_agent.define_singleton_method(:ask) do |_task|
+      backend_agent.define_singleton_method(:ask) do |_task, **_options|
         Struct.new(:content).new("Backend completed task")
       end
 
@@ -325,7 +325,7 @@ module SwarmSDK
       lead_agent = swarm.agent(:lead)
       delegation_called = false
 
-      lead_agent.define_singleton_method(:ask) do |_prompt|
+      lead_agent.define_singleton_method(:ask) do |_prompt, **_options|
         unless delegation_called
           delegation_called = true
           # Call the delegation tool

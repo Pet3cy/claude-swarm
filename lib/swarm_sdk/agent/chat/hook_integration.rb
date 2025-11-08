@@ -77,12 +77,13 @@ module SwarmSDK
         # system reminders are handled.
         #
         # @param prompt [String] User prompt
-        # @param options [Hash] Additional options
+        # @param options [Hash] Additional options (may include source: "user" or "delegation")
         # @return [RubyLLM::Message] LLM response
         def ask(prompt, **options)
           # Trigger user_prompt hook before sending to LLM (can halt or modify prompt)
           if @hook_executor
-            hook_result = trigger_user_prompt(prompt)
+            source = options[:source] || "user"
+            hook_result = trigger_user_prompt(prompt, source: source)
 
             # Check if hook halted execution
             if hook_result[:halted]
@@ -255,8 +256,9 @@ module SwarmSDK
         # Can halt execution or append hook stdout to prompt.
         #
         # @param prompt [String] User's message/prompt
+        # @param source [String] Source of the prompt ("user" or "delegation")
         # @return [Hash] { halted: bool, halt_message: String, modified_prompt: String }
-        def trigger_user_prompt(prompt)
+        def trigger_user_prompt(prompt, source: "user")
           return { halted: false, modified_prompt: prompt } unless @hook_executor
 
           # Filter out delegation tools from tools list
@@ -282,6 +284,7 @@ module SwarmSDK
               provider: model.provider,
               tools: actual_tools,
               delegates_to: delegate_agents,
+              source: source,
               timestamp: Time.now.utc.iso8601,
             },
           )
