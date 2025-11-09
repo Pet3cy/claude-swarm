@@ -117,7 +117,10 @@ jobs:
 
     - name: Run SwarmSDK linter
       run: bundle exec rake swarm_sdk:rubocop
-    
+
+    - name: Check Zeitwerk eager loading
+      run: bundle exec ruby -e "require 'swarm_sdk'; Zeitwerk::Loader.eager_load_all"
+
     - name: Test SwarmSDK gem loads without bundler
       run: |
         gem build swarm_sdk.gemspec
