@@ -2,6 +2,8 @@
 
 [![Gem Version](https://badge.fury.io/rb/claude_swarm.svg?cache_bust1=1.0.1)](https://badge.fury.io/rb/claude_swarm)
 [![CI](https://github.com/parruda/claude-swarm/actions/workflows/ci.yml/badge.svg)](https://github.com/parruda/claude-swarm/actions/workflows/ci.yml)
+[![Mentioned in Awesome Claude Code](https://awesome.re/mentioned-badge-flat.svg)](https://github.com/hesreallyhim/awesome-claude-code)
+
 
 > **Note**: This is the documentation for Claude Swarm v1, which uses a multi-process architecture with Claude Code instances. For new projects, we recommend using [SwarmSDK v2](../v2/README.md) which offers a single-process architecture, better performance, and more features.
 
