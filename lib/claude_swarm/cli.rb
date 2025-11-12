@@ -181,27 +181,9 @@ module ClaudeSwarm
           exit(1)
         end
 
-        # Validate it's used with an o-series model
-        model = options[:model]
-        unless model&.match?(ClaudeSwarm::Configuration::O_SERIES_MODEL_PATTERN)
-          error("reasoning_effort is only supported for o-series models (o1, o1 Preview, o1-mini, o1-pro, o3, o3-mini, o3-pro, o3-deep-research, o4-mini, o4-mini-deep-research, etc.)")
-          error("Current model: #{model}")
-          exit(1)
-        end
-
         # Validate the value
         unless ClaudeSwarm::Configuration::VALID_REASONING_EFFORTS.include?(options[:reasoning_effort])
           error("reasoning_effort must be 'low', 'medium', or 'high'")
-          exit(1)
-        end
-      end
-
-      # Validate temperature is not used with o-series models
-      if options[:temperature] && options[:provider] == "openai"
-        model = options[:model]
-        if model&.match?(ClaudeSwarm::Configuration::O_SERIES_MODEL_PATTERN)
-          error("temperature parameter is not supported for o-series models (#{model})")
-          error("O-series models use deterministic reasoning and don't accept temperature settings")
           exit(1)
         end
       end
