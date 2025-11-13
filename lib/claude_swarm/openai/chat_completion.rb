@@ -67,17 +67,8 @@ module ClaudeSwarm
           messages: messages,
         }
 
-        # Only add temperature for non-o-series models
-        # O-series models don't support temperature parameter
-        if @temperature && !@model.match?(ClaudeSwarm::Configuration::O_SERIES_MODEL_PATTERN)
-          parameters[:temperature] = @temperature
-        end
-
-        # Only add reasoning_effort for o-series models
-        # reasoning_effort is only supported by o-series models: o1, o1 Preview, o1-mini, o1-pro, o3, o3-mini, o3-pro, o3-deep-research, o4-mini, o4-mini-deep-research, etc.
-        if @reasoning_effort && @model.match?(ClaudeSwarm::Configuration::O_SERIES_MODEL_PATTERN)
-          parameters[:reasoning_effort] = @reasoning_effort
-        end
+        parameters[:temperature] = @temperature if @temperature
+        parameters[:reasoning_effort] = @reasoning_effort if @reasoning_effort
 
         # Add tools if available
         parameters[:tools] = @mcp_client.to_openai_tools if @available_tools&.any? && @mcp_client

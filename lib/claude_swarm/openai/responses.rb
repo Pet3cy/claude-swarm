@@ -46,17 +46,8 @@ module ClaudeSwarm
           model: @model,
         }
 
-        # Only add temperature for non-o-series models
-        # O-series models don't support temperature parameter
-        unless @model.match?(ClaudeSwarm::Configuration::O_SERIES_MODEL_PATTERN)
-          parameters[:temperature] = @temperature
-        end
-
-        # Only add reasoning effort for o-series models
-        # reasoning is only supported by o-series models: o1, o1 Preview, o1-mini, o1-pro, o3, o3-mini, o3-pro, o3-deep-research, o4-mini, o4-mini-deep-research, etc.
-        if @reasoning_effort && @model.match?(ClaudeSwarm::Configuration::O_SERIES_MODEL_PATTERN)
-          parameters[:reasoning] = { effort: @reasoning_effort }
-        end
+        parameters[:temperature] = @temperature if @temperature
+        parameters[:reasoning] = { effort: @reasoning_effort } if @reasoning_effort
 
         # On first call, use string input (can include system prompt)
         # On subsequent calls with function results, use array input
