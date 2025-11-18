@@ -1,6 +1,6 @@
 # SwarmSDK, SwarmCLI & SwarmMemory Documentation
 
-**Version 2.1**
+**Version 2.3**
 
 Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - a Ruby framework for orchestrating multiple AI agents as a collaborative team with persistent memory.
 
