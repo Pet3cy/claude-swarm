@@ -337,10 +337,15 @@ A persistent memory system for agents with semantic search capabilities:
 All documentation in this directory follows these principles:
 
 ✅ **100% Accurate** - All information verified against source code
+
 ✅ **Comprehensive** - Every feature documented
+
 ✅ **Progressive** - Simple → Intermediate → Advanced
+
 ✅ **Practical** - Real-world examples throughout
+
 ✅ **Both Formats** - YAML and Ruby DSL for everything
+
 ✅ **User-Focused** - Written for developers using SwarmSDK, not implementers
 
 ---
