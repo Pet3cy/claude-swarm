@@ -1,3 +1,10 @@
+## [1.0.10]
+
+### Changed
+- **Simplified Claude MCP server configuration for non Anthropic models**: Removed environment variable filtering from `claude mcp serve` configuration
+  - Previously filtered out Ruby/Bundler environment variables to prevent contamination
+  - Now uses a clean, minimal configuration that relies on the Claude CLI's default environment handling
+
 ## [1.0.9]
 
 ### Added

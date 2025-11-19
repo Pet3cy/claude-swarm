@@ -2,6 +2,12 @@
 
 module ClaudeSwarm
   class McpGenerator
+    CLAUDE_MCP_SERVER_CONFIG = {
+      "type" => "stdio",
+      "command" => "claude",
+      "args" => ["mcp", "serve"],
+    }.freeze
+
     def initialize(configuration, vibe: false, restore_session_path: nil)
       @config = configuration
       @vibe = vibe
@@ -65,7 +71,7 @@ module ClaudeSwarm
       end
 
       # Add Claude tools MCP server for OpenAI instances
-      mcp_servers["claude_tools"] = build_claude_tools_mcp_config if instance[:provider] == "openai"
+      mcp_servers["claude_tools"] = CLAUDE_MCP_SERVER_CONFIG.dup if instance[:provider] == "openai"
 
       config = {
         "instance_id" => @instance_ids[name],
@@ -94,25 +100,6 @@ module ClaudeSwarm
           config["headers"] = mcp["headers"] if mcp["headers"]
         end
       end
-    end
-
-    def build_claude_tools_mcp_config
-      # Build environment for claude mcp serve by excluding Ruby/Bundler-specific variables
-      # This preserves all system variables while removing Ruby contamination
-      clean_env = ENV.to_h.reject do |key, _|
-        key.start_with?("BUNDLE_") ||
-          key.start_with?("RUBY") ||
-          key.start_with?("GEM_") ||
-          key == "RUBYOPT" ||
-          key == "RUBYLIB"
-      end
-
-      {
-        "type" => "stdio",
-        "command" => "claude",
-        "args" => ["mcp", "serve"],
-        "env" => clean_env,
-      }
     end
 
     def build_instance_mcp_config(name, instance, calling_instance:, calling_instance_id:)
