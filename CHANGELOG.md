@@ -1,10 +1,3 @@
-## [2.1.5]
-
-### Fixed
-- **Fixed Zeitwerk naming convention**: Renamed `lib/swarm_memory/errors.rb` to `lib/swarm_memory/error.rb` to match the `SwarmMemory::Error` constant it defines
-  - Fixes `Zeitwerk::Loader.eager_load_all` failures with "uninitialized constant SwarmMemory::Errors" errors
-  - Properly follows Zeitwerk file naming conventions where `error.rb` defines `Error` class
-
 ## [1.0.10]
 
 ### Changed
