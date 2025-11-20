@@ -21,8 +21,8 @@ rescue LoadError
   warn("Warning: informers gem not found. Semantic search will be unavailable. Run: gem install informers")
 end
 
-# Load errors and version first
-require_relative "swarm_memory/errors"
+# Load error classes and version first (before Zeitwerk)
+require_relative "swarm_memory/error"
 require_relative "swarm_memory/version"
 
 # Setup Zeitwerk loader
@@ -36,6 +36,11 @@ loader.inflector.inflect(
   "dsl" => "DSL",
   "sdk_plugin" => "SDKPlugin",
 )
+
+# Ignore files that are manually loaded above
+loader.ignore("#{__dir__}/swarm_memory/error.rb")
+loader.ignore("#{__dir__}/swarm_memory/version.rb")
+
 loader.setup
 
 # Explicitly load DSL components and extensions to inject into SwarmSDK
