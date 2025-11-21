@@ -5,6 +5,19 @@ require "test_helper"
 module SwarmSDK
   class ContextCompactor
     class TokenCounterTest < Minitest::Test
+      def setup
+        SwarmSDK.reset_config!
+        # Set explicit config values - don't rely on ENV or defaults
+        SwarmSDK.configure do |config|
+          config.chars_per_token_prose = 4.0
+          config.chars_per_token_code = 3.5
+        end
+      end
+
+      def teardown
+        SwarmSDK.reset_config!
+      end
+
       def test_estimate_content_for_prose
         prose = "This is a simple English sentence with normal words."
         tokens = TokenCounter.estimate_content(prose)

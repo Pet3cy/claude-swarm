@@ -1,8 +1,197 @@
-# Migrating to SwarmSDK v2.3.0
+# Migrating SwarmSDK 2.x
 
-This guide covers all breaking changes and migration steps for upgrading from SwarmSDK v2.2.x to v2.3.0.
+This guide covers all breaking changes and migration steps for upgrading between SwarmSDK 2.x versions.
 
-## Overview
+---
+
+## Migrating to v2.4.0
+
+### Overview
+
+SwarmSDK v2.4.0 introduces a centralized configuration system that replaces the previous `SwarmSDK.settings` approach.
+
+### Breaking Changes
+
+#### 1. Configuration API Change
+
+**What Changed:**
+- `SwarmSDK.settings` replaced with `SwarmSDK.config` singleton
+- New `SwarmSDK.configure` block syntax for setting values
+- Lazy ENV loading with thread-safe initialization
+- Auto-proxying of API keys to RubyLLM
+
+**Before (v2.3.x):**
+```ruby
+# Direct property access
+SwarmSDK.settings.openai_api_key = "sk-..."
+SwarmSDK.settings.default_model = "gpt-5"
+SwarmSDK.settings.allow_filesystem_tools = false
+
+# Reading values
+model = SwarmSDK.settings.default_model
+```
+
+**After (v2.4.0):**
+```ruby
+# Block-based configuration
+SwarmSDK.configure do |config|
+  config.openai_api_key = "sk-..."
+  config.default_model = "gpt-5"
+  config.allow_filesystem_tools = false
+end
+
+# Reading values
+model = SwarmSDK.config.default_model
+```
+
+**Migration Steps:**
+
+1. **Replace all `SwarmSDK.settings` with `SwarmSDK.config`:**
+```ruby
+# Before
+timeout = SwarmSDK.settings.agent_request_timeout
+
+# After
+timeout = SwarmSDK.config.agent_request_timeout
+```
+
+2. **Use configure block for setting multiple values:**
+```ruby
+# Before
+SwarmSDK.settings.openai_api_key = ENV["OPENAI_API_KEY"]
+SwarmSDK.settings.default_model = "claude-sonnet-4"
+SwarmSDK.settings.agent_request_timeout = 600
+
+# After
+SwarmSDK.configure do |config|
+  config.openai_api_key = ENV["OPENAI_API_KEY"]
+  config.default_model = "claude-sonnet-4"
+  config.agent_request_timeout = 600
+end
+```
+
+3. **Update test setup/teardown:**
+```ruby
+# Before
+def setup
+  @original = SwarmSDK.settings.default_model
+  SwarmSDK.settings.default_model = "test-model"
+end
+
+def teardown
+  SwarmSDK.settings.default_model = @original
+end
+
+# After
+def setup
+  SwarmSDK.reset_config!
+  SwarmSDK.configure do |config|
+    config.default_model = "test-model"
+  end
+end
+
+def teardown
+  SwarmSDK.reset_config!
+end
+```
+
+#### 2. API Key Auto-Proxying
+
+**What Changed:**
+- API keys set via `SwarmSDK.configure` are automatically proxied to `RubyLLM.config`
+- No need to configure both SwarmSDK and RubyLLM separately
+
+**Before (v2.3.x):**
+```ruby
+# Had to configure both
+SwarmSDK.settings.openai_api_key = "sk-..."
+RubyLLM.config.openai_api_key = "sk-..."
+```
+
+**After (v2.4.0):**
+```ruby
+# Only configure SwarmSDK - auto-proxied to RubyLLM
+SwarmSDK.configure do |config|
+  config.openai_api_key = "sk-..."
+end
+# RubyLLM.config.openai_api_key is now also set
+```
+
+#### 3. Configuration Priority
+
+Values are resolved in this order:
+1. **Explicit value** (set via `SwarmSDK.configure`)
+2. **Environment variable** (e.g., `SWARM_SDK_DEFAULT_MODEL`)
+3. **Default value** (from `SwarmSDK::Defaults` module)
+
+```ruby
+# ENV has SWARM_SDK_DEFAULT_MODEL=gpt-4o
+
+# Without explicit config - uses ENV
+SwarmSDK.config.default_model  # => "gpt-4o"
+
+# With explicit config - overrides ENV
+SwarmSDK.configure do |config|
+  config.default_model = "claude-sonnet-4"
+end
+SwarmSDK.config.default_model  # => "claude-sonnet-4"
+```
+
+### New Features
+
+#### Configuration Reference
+
+See [Configuration Reference](../reference/configuration_reference.md) for all 45+ configuration options including:
+- API keys for all providers
+- Timeouts and limits
+- WebFetch LLM processing
+- Security settings
+
+#### New Helper Methods
+
+```ruby
+# Check if WebFetch LLM processing is enabled
+SwarmSDK.config.webfetch_llm_enabled?
+
+# Reset config for testing
+SwarmSDK.reset_config!
+```
+
+### Testing Your Migration
+
+```ruby
+describe "v2.4.0 Migration" do
+  def setup
+    SwarmSDK.reset_config!
+  end
+
+  def teardown
+    SwarmSDK.reset_config!
+  end
+
+  it "uses new config API" do
+    SwarmSDK.configure do |config|
+      config.default_model = "test-model"
+    end
+
+    assert_equal "test-model", SwarmSDK.config.default_model
+  end
+
+  it "auto-proxies API keys to RubyLLM" do
+    SwarmSDK.configure do |config|
+      config.openai_api_key = "test-key"
+    end
+
+    assert_equal "test-key", RubyLLM.config.openai_api_key
+  end
+end
+```
+
+---
+
+## Migrating to v2.3.0
+
+### Overview
 
 SwarmSDK v2.3.0 introduces significant architectural improvements:
 
@@ -508,12 +697,19 @@ end
 
 ## Deprecation Timeline
 
-- **v2.3.0** (This Release)
-  - Old APIs removed (no deprecation warnings)
-  - Migration required immediately
+- **v2.3.0**
+  - Swarm/Workflow API separation
+  - Delegation tool rebranding
+  - Agent::Chat abstraction layer
+  - Snapshot format v2.1.0
 
-- **v2.4.0** (Future)
-  - No further breaking changes planned
+- **v2.4.0** (Current Release)
+  - `SwarmSDK.settings` → `SwarmSDK.config`
+  - Centralized configuration system
+  - API key auto-proxying to RubyLLM
+
+- **v2.5.0** (Future)
+  - No breaking changes planned
   - Focus on new features
 
 ---
@@ -531,6 +727,13 @@ If you encounter issues during migration:
 
 ## Summary Checklist
 
+### v2.4.0 Migration
+- [ ] Replace `SwarmSDK.settings` with `SwarmSDK.config`
+- [ ] Use `SwarmSDK.configure` block for setting values
+- [ ] Update test setup/teardown to use `SwarmSDK.reset_config!`
+- [ ] Remove duplicate RubyLLM API key configuration (auto-proxied now)
+
+### v2.3.0 Migration
 - [ ] Update delegation tool calls: `DelegateTaskTo*` → `WorkWith*`
 - [ ] Update delegation parameters: `task:` → `message:`
 - [ ] Update Chat API usage: `tools.key?` → `has_tool?`, etc.
@@ -538,4 +741,6 @@ If you encounter issues during migration:
 - [ ] Update YAML: `swarm:` key for swarms, `workflow:` key for workflows
 - [ ] Regenerate snapshots (v1.0.0 → v2.1.0)
 - [ ] Update custom plugins with new lifecycle methods
+
+### Final Step
 - [ ] Test all changes with `bundle exec rake swarm_sdk:test`

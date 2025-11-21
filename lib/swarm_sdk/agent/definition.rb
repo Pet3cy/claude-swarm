@@ -67,14 +67,14 @@ module SwarmSDK
         end
 
         @description = config[:description]
-        @model = config[:model] || Defaults::Agent::MODEL
-        @provider = config[:provider] || Defaults::Agent::PROVIDER
+        @model = config[:model] || SwarmSDK.config.default_model
+        @provider = config[:provider] || SwarmSDK.config.default_provider
         @base_url = config[:base_url]
         @api_version = config[:api_version]
         @context_window = config[:context_window] # Explicit context window override
         @parameters = config[:parameters] || {}
         @headers = Utils.stringify_keys(config[:headers] || {})
-        @timeout = config[:timeout] || Defaults::Timeouts::AGENT_REQUEST_SECONDS
+        @timeout = config[:timeout] || SwarmSDK.config.agent_request_timeout
         @bypass_permissions = config[:bypass_permissions] || false
         @max_concurrent_tools = config[:max_concurrent_tools]
         # Always assume model exists - SwarmSDK validates models separately using models.json

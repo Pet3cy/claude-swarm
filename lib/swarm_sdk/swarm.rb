@@ -67,8 +67,7 @@ module SwarmSDK
     include LoggingCallbacks
     include HookTriggers
 
-    # Backward compatibility aliases - use Defaults module for new code
-    DEFAULT_MCP_LOG_LEVEL = Defaults::Logging::MCP_LOG_LEVEL
+    # NOTE: MCP log level now accessed via SwarmSDK.config.mcp_log_level
 
     # Default tools available to all agents
     DEFAULT_TOOLS = ToolConfigurator::DEFAULT_TOOLS
@@ -98,7 +97,7 @@ module SwarmSDK
     attr_writer :first_message_sent
 
     # Class-level MCP log level configuration
-    @mcp_log_level = DEFAULT_MCP_LOG_LEVEL
+    @mcp_log_level = nil
     @mcp_logging_configured = false
 
     class << self
@@ -111,8 +110,8 @@ module SwarmSDK
       #
       # @param level [Integer] Log level (Logger::DEBUG, Logger::INFO, Logger::WARN, Logger::ERROR, Logger::FATAL)
       # @return [void]
-      def configure_mcp_logging(level = DEFAULT_MCP_LOG_LEVEL)
-        @mcp_log_level = level
+      def configure_mcp_logging(level = nil)
+        @mcp_log_level = level || SwarmSDK.config.mcp_log_level
         apply_mcp_logging_configuration
       end
 
@@ -123,7 +122,7 @@ module SwarmSDK
         return if @mcp_logging_configured
 
         RubyLLM::MCP.configure do |config|
-          config.log_level = @mcp_log_level
+          config.log_level = @mcp_log_level || SwarmSDK.config.mcp_log_level
         end
 
         @mcp_logging_configured = true
@@ -135,17 +134,17 @@ module SwarmSDK
     # @param name [String] Human-readable swarm name
     # @param swarm_id [String, nil] Optional swarm ID (auto-generated if not provided)
     # @param parent_swarm_id [String, nil] Optional parent swarm ID (nil for root swarms)
-    # @param global_concurrency [Integer] Max concurrent LLM calls across entire swarm
-    # @param default_local_concurrency [Integer] Default max concurrent tool calls per agent
+    # @param global_concurrency [Integer, nil] Max concurrent LLM calls across entire swarm (nil uses config default)
+    # @param default_local_concurrency [Integer, nil] Default max concurrent tool calls per agent (nil uses config default)
     # @param scratchpad [Tools::Stores::Scratchpad, nil] Optional scratchpad instance (for testing/internal use)
     # @param scratchpad_mode [Symbol, String] Scratchpad mode (:enabled or :disabled). :per_node not allowed for non-node swarms.
     # @param allow_filesystem_tools [Boolean, nil] Whether to allow filesystem tools (nil uses global setting)
-    def initialize(name:, swarm_id: nil, parent_swarm_id: nil, global_concurrency: Defaults::Concurrency::GLOBAL_LIMIT, default_local_concurrency: Defaults::Concurrency::LOCAL_LIMIT, scratchpad: nil, scratchpad_mode: :enabled, allow_filesystem_tools: nil)
+    def initialize(name:, swarm_id: nil, parent_swarm_id: nil, global_concurrency: nil, default_local_concurrency: nil, scratchpad: nil, scratchpad_mode: :enabled, allow_filesystem_tools: nil)
       @name = name
       @swarm_id = swarm_id || generate_swarm_id(name)
       @parent_swarm_id = parent_swarm_id
-      @global_concurrency = global_concurrency
-      @default_local_concurrency = default_local_concurrency
+      @global_concurrency = global_concurrency || SwarmSDK.config.global_concurrency_limit
+      @default_local_concurrency = default_local_concurrency || SwarmSDK.config.local_concurrency_limit
 
       # Handle scratchpad_mode parameter
       # For Swarm: :enabled or :disabled (not :per_node - that's for nodes)
@@ -153,9 +152,9 @@ module SwarmSDK
 
       # Resolve allow_filesystem_tools with priority:
       # 1. Explicit parameter (if not nil)
-      # 2. Global settings
+      # 2. Global config
       @allow_filesystem_tools = if allow_filesystem_tools.nil?
-        SwarmSDK.settings.allow_filesystem_tools
+        SwarmSDK.config.allow_filesystem_tools
       else
         allow_filesystem_tools
       end

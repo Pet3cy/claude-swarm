@@ -63,8 +63,37 @@ module SwarmSDK
   class StateError < Error; end
 
   class << self
-    # Settings for SwarmSDK (global configuration)
-    attr_accessor :settings
+    # Get the global configuration instance
+    #
+    # @return [Config] The singleton Config instance
+    def config
+      Config.instance
+    end
+
+    # Configure SwarmSDK global settings
+    #
+    # @yield [Config] The configuration instance
+    # @return [Config] The configuration instance
+    #
+    # @example
+    #   SwarmSDK.configure do |config|
+    #     config.openai_api_key = "sk-..."
+    #     config.default_model = "claude-sonnet-4"
+    #   end
+    def configure
+      yield(config) if block_given?
+      config
+    end
+
+    # Reset configuration to defaults
+    #
+    # Clears all configuration including explicit values and cached ENV values.
+    # Use in tests to ensure clean state.
+    #
+    # @return [void]
+    def reset_config!
+      Config.reset!
+    end
 
     # Main entry point for DSL - builds simple multi-agent swarms
     #
@@ -248,21 +277,6 @@ module SwarmSDK
       swarm
     end
 
-    # Configure SwarmSDK global settings
-    def configure
-      self.settings ||= Settings.new
-      yield(settings)
-    end
-
-    # Reset settings to defaults
-    def reset_settings!
-      self.settings = Settings.new
-    end
-
-    # Alias for backward compatibility
-    alias_method :configuration, :settings
-    alias_method :reset_configuration!, :reset_settings!
-
     private
 
     # Check if hooks are configured in the configuration
@@ -437,88 +451,4 @@ module SwarmSDK
       error_hash.compact
     end
   end
-
-  # Settings class for SwarmSDK global settings (not to be confused with Configuration for YAML loading)
-  class Settings
-    # WebFetch tool LLM processing configuration
-    attr_accessor :webfetch_provider, :webfetch_model, :webfetch_base_url, :webfetch_max_tokens
-
-    # Filesystem tools control
-    attr_accessor :allow_filesystem_tools
-
-    def initialize
-      @webfetch_provider = nil
-      @webfetch_model = nil
-      @webfetch_base_url = nil
-      @webfetch_max_tokens = 4096
-      @allow_filesystem_tools = parse_env_bool("SWARM_SDK_ALLOW_FILESYSTEM_TOOLS", default: true)
-    end
-
-    # Check if WebFetch LLM processing is enabled
-    def webfetch_llm_enabled?
-      !@webfetch_provider.nil? && !@webfetch_model.nil?
-    end
-
-    private
-
-    def parse_env_bool(key, default:)
-      return default unless ENV.key?(key)
-
-      value = ENV[key].to_s.downcase
-      return true if ["true", "yes", "1", "on", "enabled"].include?(value)
-      return false if ["false", "no", "0", "off", "disabled"].include?(value)
-
-      default
-    end
-  end
-
-  # Initialize default settings
-  self.settings = Settings.new
-end
-
-# Automatically configure RubyLLM from environment variables
-# This makes SwarmSDK "just work" when users set standard ENV variables
-RubyLLM.configure do |config|
-  # Only set if config not already set (||= handles nil ENV values gracefully)
-
-  # OpenAI
-  config.openai_api_key ||= ENV["OPENAI_API_KEY"]
-  config.openai_api_base ||= ENV["OPENAI_API_BASE"]
-  config.openai_organization_id ||= ENV["OPENAI_ORG_ID"]
-  config.openai_project_id ||= ENV["OPENAI_PROJECT_ID"]
-
-  # Anthropic
-  config.anthropic_api_key ||= ENV["ANTHROPIC_API_KEY"]
-
-  # Google Gemini
-  config.gemini_api_key ||= ENV["GEMINI_API_KEY"]
-
-  # Google Vertex AI (note: vertexai, not vertex_ai)
-  config.vertexai_project_id ||= ENV["GOOGLE_CLOUD_PROJECT"] || ENV["VERTEXAI_PROJECT_ID"]
-  config.vertexai_location ||= ENV["GOOGLE_CLOUD_LOCATION"] || ENV["VERTEXAI_LOCATION"]
-
-  # DeepSeek
-  config.deepseek_api_key ||= ENV["DEEPSEEK_API_KEY"]
-
-  # Mistral
-  config.mistral_api_key ||= ENV["MISTRAL_API_KEY"]
-
-  # Perplexity
-  config.perplexity_api_key ||= ENV["PERPLEXITY_API_KEY"]
-
-  # OpenRouter
-  config.openrouter_api_key ||= ENV["OPENROUTER_API_KEY"]
-
-  # AWS Bedrock
-  config.bedrock_api_key ||= ENV["AWS_ACCESS_KEY_ID"]
-  config.bedrock_secret_key ||= ENV["AWS_SECRET_ACCESS_KEY"]
-  config.bedrock_region ||= ENV["AWS_REGION"]
-  config.bedrock_session_token ||= ENV["AWS_SESSION_TOKEN"]
-
-  # Ollama (local)
-  config.ollama_api_base ||= ENV["OLLAMA_API_BASE"]
-
-  # GPUStack (local)
-  config.gpustack_api_base ||= ENV["GPUSTACK_API_BASE"]
-  config.gpustack_api_key ||= ENV["GPUSTACK_API_KEY"]
 end

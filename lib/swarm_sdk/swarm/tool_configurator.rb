@@ -127,10 +127,10 @@ module SwarmSDK
           forbidden = tool_configs.map { |tc| tc[:name].to_sym }.select { |name| FILESYSTEM_TOOLS.include?(name) }
           unless forbidden.empty?
             raise ConfigurationError,
-              "Filesystem tools are globally disabled (SwarmSDK.settings.allow_filesystem_tools = false) " \
+              "Filesystem tools are globally disabled (SwarmSDK.config.allow_filesystem_tools = false) " \
                 "but agent '#{agent_name}' attempts to use: #{forbidden.join(", ")}.\n\n" \
                 "This is a system-wide security setting that cannot be overridden by swarm configuration.\n" \
-                "To use filesystem tools, set SwarmSDK.settings.allow_filesystem_tools = true before loading the swarm."
+                "To use filesystem tools, set SwarmSDK.config.allow_filesystem_tools = true before loading the swarm."
           end
         end
 

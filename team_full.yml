@@ -133,6 +133,7 @@ swarm:
         - NEVER call private methods or instance variables from outside a class. Never use `send` or `instance_variable_get` or `instance_variable_set`.
         - Write PROFESSIONAL, CLEAN, MAINTAINABLE, TESTABLE code. Do not write SLOP code. This is an open source project and it needs to look great.
         - CRITICAL: DO NOT create methods in the SDK, Memory, or CLI code that are only to be used in tests. Write production testable code.
+        - Log every decision in `decisions/`. The filename should have the date and the decision number.
 
         For maximum efficiency, whenever you need to perform multiple independent operations, invoke all relevant tools simultaneously rather than sequentially.
 

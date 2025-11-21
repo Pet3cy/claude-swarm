@@ -47,8 +47,7 @@ module SwarmSDK
     #   )
     #   # => Result (continue or halt based on exit code)
     class ShellExecutor
-      # Backward compatibility alias - use Defaults module for new code
-      DEFAULT_TIMEOUT = Defaults::Timeouts::HOOK_SHELL_SECONDS
+      # NOTE: Timeout now accessed via SwarmSDK.config.hook_shell_timeout
 
       class << self
         # Execute a shell command hook
@@ -60,7 +59,9 @@ module SwarmSDK
         # @param swarm_name [String, nil] Swarm name for environment variables
         # @param event [Symbol] Event type for context-aware behavior
         # @return [Result] Result based on exit code (continue or halt)
-        def execute(command:, input_json:, timeout: DEFAULT_TIMEOUT, agent_name: nil, swarm_name: nil, event: nil)
+        def execute(command:, input_json:, timeout: nil, agent_name: nil, swarm_name: nil, event: nil)
+          timeout ||= SwarmSDK.config.hook_shell_timeout
+
           # Build environment variables
           env = build_environment(agent_name: agent_name, swarm_name: swarm_name)
 

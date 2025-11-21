@@ -117,7 +117,7 @@ module SwarmSDK
 
             # Trigger automatic compression at 60% ONLY if no custom handler
             compression_triggered = false
-            if threshold == Context::COMPRESSION_THRESHOLD && !has_custom_handler
+            if threshold == SwarmSDK.config.context_compression_threshold && !has_custom_handler
               compressed_count = apply_automatic_compression
               compression_triggered = compressed_count > 0
             end

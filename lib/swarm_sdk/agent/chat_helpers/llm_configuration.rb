@@ -47,7 +47,7 @@ module SwarmSDK
         #
         # @return [RubyLLM::Chat] Chat instance
         def instantiate_chat(model_id:, provider_name:, base_url:, timeout:, assume_model_exists:, chat_options:)
-          if base_url || timeout != Defaults::Timeouts::AGENT_REQUEST_SECONDS
+          if base_url || timeout != SwarmSDK.config.agent_request_timeout
             instantiate_with_custom_context(
               model_id: model_id,
               provider_name: provider_name,
@@ -123,20 +123,49 @@ module SwarmSDK
         end
 
         # Configure provider-specific base URL
+        #
+        # @param config [RubyLLM::Config] RubyLLM configuration context
+        # @param provider [String] Provider name
+        # @param base_url [String] Custom base URL
+        # @raise [ConfigurationError] If API key is required but not configured
+        # @raise [ArgumentError] If provider doesn't support custom base_url
         def configure_provider_base_url(config, provider, base_url)
           case provider.to_s
           when "openai", "deepseek", "perplexity", "mistral", "openrouter"
             config.openai_api_base = base_url
-            config.openai_api_key = ENV["OPENAI_API_KEY"] || "dummy-key-for-local"
+            api_key = SwarmSDK.config.openai_api_key
+
+            # For local endpoints, API key is optional
+            # For cloud endpoints, require API key
+            unless api_key || local_endpoint?(base_url)
+              raise ConfigurationError,
+                "OpenAI API key required for '#{provider}' with base_url '#{base_url}'. " \
+                  "Configure with: SwarmSDK.configure { |c| c.openai_api_key = '...' }"
+            end
+
+            config.openai_api_key = api_key if api_key
             config.openai_use_system_role = true
           when "ollama"
             config.ollama_api_base = base_url
+            # Ollama doesn't need an API key
           when "gpustack"
             config.gpustack_api_base = base_url
-            config.gpustack_api_key = ENV["GPUSTACK_API_KEY"] || "dummy-key"
+            api_key = SwarmSDK.config.gpustack_api_key
+            config.gpustack_api_key = api_key if api_key
           else
             raise ArgumentError, "Provider '#{provider}' doesn't support custom base_url."
           end
+        end
+
+        # Check if a URL points to a local endpoint
+        #
+        # @param url [String] URL to check
+        # @return [Boolean] true if URL is a local endpoint
+        def local_endpoint?(url)
+          uri = URI.parse(url)
+          ["localhost", "127.0.0.1", "0.0.0.0"].include?(uri.host)
+        rescue URI::InvalidURIError
+          false
         end
 
         # Fetch real model info for accurate context tracking
