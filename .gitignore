@@ -21,3 +21,5 @@ build/
 test/coverage/output.txt
 test/coverage/
 memory/
+plans/
+scripts/

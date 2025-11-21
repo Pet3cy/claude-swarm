@@ -166,6 +166,8 @@ jobs:
     
     - name: Test SwarmMemory gem loads without bundler
       run: |
+        gem build swarm_sdk.gemspec
+        gem install ./swarm_sdk-*.gem
         gem build swarm_memory.gemspec
         gem install ./swarm_memory-*.gem
         ruby -e "require 'swarm_memory'"
@@ -209,6 +211,8 @@ jobs:
     
     - name: Test SwarmCLI gem loads without bundler
       run: |
+        gem build swarm_sdk.gemspec
+        gem install ./swarm_sdk-*.gem
         gem build swarm_cli.gemspec
         gem install ./swarm_cli-*.gem
         ruby -e "require 'swarm_cli'"

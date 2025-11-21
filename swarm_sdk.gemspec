@@ -23,11 +23,10 @@ Gem::Specification.new do |spec|
   spec.metadata["source_code_uri"] = "https://github.com/parruda/claude-swarm"
   spec.metadata["changelog_uri"] = "https://github.com/parruda/claude-swarm/blob/main/docs/v2/CHANGELOG.swarm_sdk.md"
 
-  File.basename(__FILE__)
   spec.files = IO.popen(["git", "ls-files", "-z"], chdir: __dir__, err: IO::NULL) do |ls|
     ls.readlines("\x0", chomp: true).select do |f|
       (f == "lib/swarm_sdk.rb") ||
-        f.match?(%r{\Alib/swarm_sdk/})
+        f.match?(%r{\Alib/swarm_sdk/}) || (f == "LICENSE")
     end
   end
   # spec.bindir = "exe"
