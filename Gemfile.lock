@@ -27,19 +27,20 @@ PATH
       tty-spinner
       tty-tree
       zeitwerk
-    swarm_memory (2.1.6)
+    swarm_memory (2.1.7)
       async (~> 2.0)
       informers (~> 1.2.1)
       rice (~> 4.6.0)
-      ruby_llm_swarm (~> 1.9.4)
+      ruby_llm_swarm (~> 1.9.5)
       swarm_sdk (~> 2.4.1)
       zeitwerk (~> 2.6)
-    swarm_sdk (2.4.1)
+    swarm_sdk (2.4.2)
       async (~> 2.0)
       async-http-faraday (~> 0.22)
       faraday-follow_redirects (~> 0.4)
+      openssl (~> 3.3.2)
       ruby_llm-mcp (~> 0.8)
-      ruby_llm_swarm (~> 1.9.4)
+      ruby_llm_swarm (~> 1.9.5)
       zeitwerk (~> 2.6)
 
 GEM
@@ -231,6 +232,7 @@ GEM
       ffi
     onnxruntime (0.10.1-x86_64-linux)
       ffi
+    openssl (3.3.2)
     ostruct (0.6.3)
     parallel (1.27.0)
     parser (3.3.9.0)
@@ -346,7 +348,7 @@ GEM
       ruby_llm (~> 1.9)
       zeitwerk (~> 2)
     ruby_llm-schema (0.2.1)
-    ruby_llm_swarm (1.9.4)
+    ruby_llm_swarm (1.9.5)
       async-http-faraday (~> 0.22)
       base64
       event_stream_parser (~> 1)
@@ -355,6 +357,7 @@ GEM
       faraday-net_http (>= 1)
       faraday-retry (>= 1)
       marcel (~> 1.0)
+      openssl (~> 3.3.2)
       ruby_llm-schema (~> 0.2.1)
       zeitwerk (~> 2)
     rubyzip (3.1.1)

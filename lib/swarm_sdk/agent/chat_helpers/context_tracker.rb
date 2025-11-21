@@ -55,10 +55,14 @@ module SwarmSDK
         #
         # Registers RubyLLM callbacks to collect data and emit log events.
         # Should only be called when LogStream.emitter is set.
+        # This method is idempotent - calling it multiple times has no effect.
         #
         # @return [void]
         def setup_logging
+          return if @logging_setup
+
           register_logging_callbacks
+          @logging_setup = true
         end
 
         # Extract agent name from delegation tool name

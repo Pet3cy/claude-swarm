@@ -5,6 +5,32 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.2]
+
+### Fixed
+
+- **Duplicate event emission bug**: Fixed agent_stop and agent_step events being emitted twice
+  - Root cause: `setup_logging` was being called twice during agent initialization
+  - First call in `agent_initializer.rb` when `LogStream.emitter` was set
+  - Second call in `emit_retroactive_agent_start_events` via `setup_logging_for_all_agents`
+  - Fix: Made `ContextTracker#setup_logging` idempotent with `@logging_setup` guard
+  - Prevents duplicate callback registration on `on_end_message`, `on_tool_result`, and `on_tool_call`
+
+### Added
+
+- **Event deduplication tests**: Comprehensive test suite to prevent regression
+  - `test_agent_stop_event_not_duplicated` - Ensures agent_stop emitted exactly once
+  - `test_agent_step_event_not_duplicated` - Ensures agent_step emitted exactly once per tool response
+  - `test_tool_call_event_not_duplicated` - Ensures tool_call emitted exactly once per invocation
+  - `test_tool_result_event_not_duplicated` - Ensures tool_result emitted exactly once
+  - `test_setup_logging_idempotency` - Verifies idempotent behavior across multiple executions
+  - `test_comprehensive_event_counts_*` - Validates exact event counts for various scenarios
+
+### Dependencies
+
+- Updated `ruby_llm_swarm` to `~> 1.9.5`
+- Added `openssl` (`~> 3.3.2`) dependency
+
 ## [2.4.1]
 - Fix gemspec issues
 
