@@ -198,13 +198,13 @@ SwarmSDK.configure do |config|
 end
 
 # Can also set directly
-SwarmSDK.settings.allow_filesystem_tools = false
+SwarmSDK.config.allow_filesystem_tools = false
 
 # Or via environment variable
 ENV['SWARM_SDK_ALLOW_FILESYSTEM_TOOLS'] = 'false'
 
 # Reset to defaults (disables WebFetch LLM processing, enables filesystem tools)
-SwarmSDK.reset_settings!
+SwarmSDK.reset_config!
 ```
 
 ---

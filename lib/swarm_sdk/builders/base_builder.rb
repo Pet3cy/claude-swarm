@@ -318,7 +318,7 @@ module SwarmSDK
       # @return [void]
       def validate_all_agents_filesystem_tools
         resolved_setting = if @allow_filesystem_tools.nil?
-          SwarmSDK.settings.allow_filesystem_tools
+          SwarmSDK.config.allow_filesystem_tools
         else
           @allow_filesystem_tools
         end
@@ -333,10 +333,10 @@ module SwarmSDK
         return if forbidden.empty?
 
         raise ConfigurationError,
-          "Filesystem tools are globally disabled (SwarmSDK.settings.allow_filesystem_tools = false) " \
+          "Filesystem tools are globally disabled (SwarmSDK.config.allow_filesystem_tools = false) " \
             "but all_agents configuration includes: #{forbidden.join(", ")}.\n\n" \
             "This is a system-wide security setting that cannot be overridden by swarm configuration.\n" \
-            "To use filesystem tools, set SwarmSDK.settings.allow_filesystem_tools = true before loading the swarm."
+            "To use filesystem tools, set SwarmSDK.config.allow_filesystem_tools = true before loading the swarm."
       end
 
       # Validate individual agent filesystem tools
@@ -345,7 +345,7 @@ module SwarmSDK
       # @return [void]
       def validate_agent_filesystem_tools
         resolved_setting = if @allow_filesystem_tools.nil?
-          SwarmSDK.settings.allow_filesystem_tools
+          SwarmSDK.config.allow_filesystem_tools
         else
           @allow_filesystem_tools
         end
@@ -373,10 +373,10 @@ module SwarmSDK
           next if forbidden.empty?
 
           raise ConfigurationError,
-            "Filesystem tools are globally disabled (SwarmSDK.settings.allow_filesystem_tools = false) " \
+            "Filesystem tools are globally disabled (SwarmSDK.config.allow_filesystem_tools = false) " \
               "but agent '#{agent_name}' attempts to use: #{forbidden.join(", ")}.\n\n" \
               "This is a system-wide security setting that cannot be overridden by swarm configuration.\n" \
-              "To use filesystem tools, set SwarmSDK.settings.allow_filesystem_tools = true before loading the swarm."
+              "To use filesystem tools, set SwarmSDK.config.allow_filesystem_tools = true before loading the swarm."
         end
       end
 

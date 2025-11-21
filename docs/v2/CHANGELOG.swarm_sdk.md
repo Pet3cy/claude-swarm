@@ -5,6 +5,32 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0]
+
+### Breaking Changes
+
+- **Centralized Configuration System**: Unified all configuration into `SwarmSDK::Config`
+  - **New API**: `SwarmSDK.config` replaces `SwarmSDK.settings`
+  - **Removed**: `SwarmSDK::Settings` class removed entirely
+  - **Removed**: `SwarmSDK.settings` method removed
+  - **Removed**: `SwarmSDK.reset_settings!` → use `SwarmSDK.reset_config!`
+  - **Removed**: Tool constants (DEFAULT_TIMEOUT_MS, MAX_OUTPUT_LENGTH, etc.)
+  - **API key proxying**: All API keys automatically proxy to `RubyLLM.config`
+  - **Override all defaults**: Every constant in Defaults module can now be overridden at runtime
+  - **Priority**: explicit value → ENV variable → Defaults module constant
+  - **Lazy ENV loading**: Thread-safe with double-check locking
+  - **Migration**:
+    - `SwarmSDK.settings.allow_filesystem_tools` → `SwarmSDK.config.allow_filesystem_tools`
+    - `SwarmSDK.reset_settings!` → `SwarmSDK.reset_config!`
+    - Tool constants → `SwarmSDK.config.*` methods (e.g., `SwarmSDK.config.bash_command_timeout`)
+
+### Fixed
+
+- **Base URL Configuration Bug**: Custom provider contexts now properly use configured API keys
+  - Previously: `configure_provider_base_url` read ENV directly, ignoring `RubyLLM.config`
+  - Now: Uses `SwarmSDK.config.openai_api_key` and other configured values
+  - Better error messages when API keys are missing for non-local endpoints
+
 ## [2.3.0]
 
 ### Breaking Changes

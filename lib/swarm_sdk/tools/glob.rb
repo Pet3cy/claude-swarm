@@ -50,8 +50,7 @@ module SwarmSDK
         desc: "The directory to search in. If not specified, the current working directory will be used. IMPORTANT: Omit this field to use the default directory. DO NOT enter \"undefined\" or \"null\" - simply omit it for the default behavior. Must be a valid directory path if provided.",
         required: false
 
-      # Backward compatibility alias - use Defaults module for new code
-      MAX_RESULTS = Defaults::Limits::GLOB_RESULTS
+      # NOTE: Result limit now accessed via SwarmSDK.config.glob_result_limit
 
       def execute(pattern:, path: nil)
         # Validate inputs
@@ -108,8 +107,9 @@ module SwarmSDK
           matches.sort_by! { |f| -File.mtime(f).to_i }
 
           # Limit results
-          if matches.count > MAX_RESULTS
-            matches = matches.take(MAX_RESULTS)
+          max_results = SwarmSDK.config.glob_result_limit
+          if matches.count > max_results
+            matches = matches.take(max_results)
             truncated = true
           else
             truncated = false
@@ -123,7 +123,7 @@ module SwarmSDK
             output += <<~REMINDER
 
               <system-reminder>
-              Results limited to first #{MAX_RESULTS} matches (sorted by most recently modified).
+              Results limited to first #{max_results} matches (sorted by most recently modified).
               Consider using a more specific pattern to narrow your search.
               </system-reminder>
             REMINDER

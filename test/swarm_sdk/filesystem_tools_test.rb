@@ -4,25 +4,23 @@ require "test_helper"
 
 class FilesystemToolsTest < Minitest::Test
   def setup
-    # Save original settings
-    @original_setting = SwarmSDK.settings.allow_filesystem_tools
+    # Reset config for clean state
+    SwarmSDK.reset_config!
     @original_env = ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"]
   end
 
   def teardown
-    # Restore original settings
-    SwarmSDK.settings.allow_filesystem_tools = @original_setting
+    # Restore original ENV and reset config
     ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = @original_env
-    # Force settings re-initialization to pick up env var changes
-    SwarmSDK.settings = SwarmSDK::Settings.new
+    SwarmSDK.reset_config!
   end
 
   # Configuration resolution tests
   def test_default_allows_filesystem_tools
-    # Reset to fresh settings
-    SwarmSDK.settings = SwarmSDK::Settings.new
+    # Reset to fresh config
+    SwarmSDK.reset_config!
 
-    assert(SwarmSDK.settings.allow_filesystem_tools)
+    assert(SwarmSDK.config.allow_filesystem_tools)
   end
 
   def test_global_configuration_block
@@ -30,53 +28,53 @@ class FilesystemToolsTest < Minitest::Test
       config.allow_filesystem_tools = false
     end
 
-    refute(SwarmSDK.settings.allow_filesystem_tools)
+    refute(SwarmSDK.config.allow_filesystem_tools)
   end
 
   def test_direct_setter
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
-    refute(SwarmSDK.settings.allow_filesystem_tools)
+    refute(SwarmSDK.config.allow_filesystem_tools)
 
-    SwarmSDK.settings.allow_filesystem_tools = true
+    SwarmSDK.config.allow_filesystem_tools = true
 
-    assert(SwarmSDK.settings.allow_filesystem_tools)
+    assert(SwarmSDK.config.allow_filesystem_tools)
   end
 
   def test_environment_variable_true
     ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = "true"
-    SwarmSDK.settings = SwarmSDK::Settings.new
+    SwarmSDK.reset_config!
 
-    assert(SwarmSDK.settings.allow_filesystem_tools)
+    assert(SwarmSDK.config.allow_filesystem_tools)
   end
 
   def test_environment_variable_false
     ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = "false"
-    SwarmSDK.settings = SwarmSDK::Settings.new
+    SwarmSDK.reset_config!
 
-    refute(SwarmSDK.settings.allow_filesystem_tools)
+    refute(SwarmSDK.config.allow_filesystem_tools)
   end
 
   def test_environment_variable_various_truthy_values
     ["yes", "1", "on", "enabled"].each do |value|
       ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = value
-      SwarmSDK.settings = SwarmSDK::Settings.new
+      SwarmSDK.reset_config!
 
-      assert(SwarmSDK.settings.allow_filesystem_tools, "Expected #{value} to be truthy")
+      assert(SwarmSDK.config.allow_filesystem_tools, "Expected #{value} to be truthy")
     end
   end
 
   def test_environment_variable_various_falsy_values
     ["no", "0", "off", "disabled"].each do |value|
       ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = value
-      SwarmSDK.settings = SwarmSDK::Settings.new
+      SwarmSDK.reset_config!
 
-      refute(SwarmSDK.settings.allow_filesystem_tools, "Expected #{value} to be falsy")
+      refute(SwarmSDK.config.allow_filesystem_tools, "Expected #{value} to be falsy")
     end
   end
 
   def test_parameter_overrides_global
-    SwarmSDK.settings.allow_filesystem_tools = true
+    SwarmSDK.config.allow_filesystem_tools = true
 
     error = assert_raises(SwarmSDK::ConfigurationError) do
       SwarmSDK.build(allow_filesystem_tools: false) do
@@ -94,7 +92,7 @@ class FilesystemToolsTest < Minitest::Test
 
   # Validation tests
   def test_blocks_explicit_filesystem_tools
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
     error = assert_raises(SwarmSDK::ConfigurationError) do
       SwarmSDK.build do
@@ -114,7 +112,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_blocks_all_agents_filesystem_tools
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
     error = assert_raises(SwarmSDK::ConfigurationError) do
       SwarmSDK.build do
@@ -135,7 +133,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_blocks_bash
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
     error = assert_raises(SwarmSDK::ConfigurationError) do
       SwarmSDK.build do
@@ -152,7 +150,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_allows_non_filesystem_tools_when_restricted
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
     swarm = SwarmSDK.build do
       name("Test")
@@ -168,7 +166,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_yaml_loading_respects_global_setting
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
     yaml = <<~YAML
       version: 2
@@ -190,7 +188,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_yaml_loading_with_parameter_override
-    SwarmSDK.settings.allow_filesystem_tools = true # Global allows
+    SwarmSDK.config.allow_filesystem_tools = true # Global allows
 
     yaml = <<~YAML
       version: 2
@@ -224,7 +222,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_error_message_provides_solution
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
     error = assert_raises(SwarmSDK::ConfigurationError) do
       SwarmSDK.build do
@@ -238,11 +236,11 @@ class FilesystemToolsTest < Minitest::Test
     end
 
     assert_match(/system-wide security setting/, error.message)
-    assert_match(/SwarmSDK.settings.allow_filesystem_tools = true/, error.message)
+    assert_match(/SwarmSDK.config.allow_filesystem_tools = true/, error.message)
   end
 
   def test_allows_all_filesystem_tools_when_enabled
-    SwarmSDK.settings.allow_filesystem_tools = true
+    SwarmSDK.config.allow_filesystem_tools = true
 
     swarm = SwarmSDK.build do
       name("Test")
@@ -258,7 +256,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_mixed_tools_allowed_and_forbidden
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
     error = assert_raises(SwarmSDK::ConfigurationError) do
       SwarmSDK.build do
@@ -280,7 +278,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_scratchpad_tools_work_when_filesystem_disabled
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
     swarm = SwarmSDK.build do
       name("Test")
@@ -297,7 +295,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_workflow_respects_filesystem_tools_setting
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
     error = assert_raises(SwarmSDK::ConfigurationError) do
       SwarmSDK.workflow do
@@ -321,7 +319,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_load_file_respects_parameter
-    SwarmSDK.settings.allow_filesystem_tools = true
+    SwarmSDK.config.allow_filesystem_tools = true
 
     yaml = <<~YAML
       version: 2
@@ -349,7 +347,7 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_all_agents_and_explicit_tools_both_validated
-    SwarmSDK.settings.allow_filesystem_tools = false
+    SwarmSDK.config.allow_filesystem_tools = false
 
     # Test that all_agents validation catches early
     error = assert_raises(SwarmSDK::ConfigurationError) do

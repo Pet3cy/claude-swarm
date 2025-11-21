@@ -7,11 +7,15 @@ require "yaml"
 module SwarmSDK
   class SwarmTest < Minitest::Test
     def setup
-      # Set fake API key to avoid RubyLLM configuration errors
+      # Reset SwarmSDK config to ensure fresh state
+      SwarmSDK.reset_config!
+
+      # Set fake API key to avoid configuration errors
       @original_api_key = ENV["OPENAI_API_KEY"]
       ENV["OPENAI_API_KEY"] = "test-key-12345"
-      # Also configure RubyLLM directly to avoid caching issues
-      RubyLLM.configure do |config|
+
+      # Configure SwarmSDK (auto-proxies to RubyLLM)
+      SwarmSDK.configure do |config|
         config.openai_api_key = "test-key-12345"
       end
 
@@ -21,10 +25,9 @@ module SwarmSDK
 
     def teardown
       ENV["OPENAI_API_KEY"] = @original_api_key
-      # Reset RubyLLM configuration
-      RubyLLM.configure do |config|
-        config.openai_api_key = @original_api_key
-      end
+
+      # Reset SwarmSDK config
+      SwarmSDK.reset_config!
 
       # Clean up test scratchpad files
       cleanup_test_scratchpads

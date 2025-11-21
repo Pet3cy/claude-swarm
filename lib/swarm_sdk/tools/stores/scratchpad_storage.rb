@@ -21,7 +21,7 @@ module SwarmSDK
           super() # Initialize parent Storage class
           @entries = {}
           @total_size = 0
-          @total_size_limit = total_size_limit || Defaults::Storage::TOTAL_SIZE_BYTES
+          @total_size_limit = total_size_limit || SwarmSDK.config.scratchpad_total_size_limit
           @mutex = Mutex.new
         end
 
@@ -41,8 +41,9 @@ module SwarmSDK
             content_size = content.bytesize
 
             # Check entry size limit
-            if content_size > Defaults::Storage::ENTRY_SIZE_BYTES
-              raise ArgumentError, "Content exceeds maximum size (#{format_bytes(Defaults::Storage::ENTRY_SIZE_BYTES)}). " \
+            entry_size_limit = SwarmSDK.config.scratchpad_entry_size_limit
+            if content_size > entry_size_limit
+              raise ArgumentError, "Content exceeds maximum size (#{format_bytes(entry_size_limit)}). " \
                 "Current: #{format_bytes(content_size)}"
             end
 

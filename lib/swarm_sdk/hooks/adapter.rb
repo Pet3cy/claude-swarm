@@ -167,7 +167,7 @@ module SwarmSDK
         def create_hook_callback(hook_def, event_symbol, agent_name, swarm_name)
           # Support both string and symbol keys (YAML may be symbolized)
           command = hook_def[:command] || hook_def["command"]
-          timeout = hook_def[:timeout] || hook_def["timeout"] || ShellExecutor::DEFAULT_TIMEOUT
+          timeout = hook_def[:timeout] || hook_def["timeout"] || SwarmSDK.config.hook_shell_timeout
 
           lambda do |context|
             input_json = build_input_json(context, event_symbol, agent_name)
@@ -191,7 +191,7 @@ module SwarmSDK
         def create_all_agents_hook_callback(hook_def, event_symbol, swarm_name)
           # Support both string and symbol keys (YAML may be symbolized)
           command = hook_def[:command] || hook_def["command"]
-          timeout = hook_def[:timeout] || hook_def["timeout"] || ShellExecutor::DEFAULT_TIMEOUT
+          timeout = hook_def[:timeout] || hook_def["timeout"] || SwarmSDK.config.hook_shell_timeout
 
           lambda do |context|
             # Agent name comes from context
@@ -217,7 +217,7 @@ module SwarmSDK
         def create_swarm_hook_callback(hook_def, event_symbol, swarm_name)
           # Support both string and symbol keys (YAML may be symbolized)
           command = hook_def[:command] || hook_def["command"]
-          timeout = hook_def[:timeout] || hook_def["timeout"] || ShellExecutor::DEFAULT_TIMEOUT
+          timeout = hook_def[:timeout] || hook_def["timeout"] || SwarmSDK.config.hook_shell_timeout
 
           lambda do |context|
             input_json = build_swarm_input_json(context, event_symbol, swarm_name)

@@ -21,7 +21,7 @@ module SwarmSDK
       def teardown
         WebMock.reset!
         WebMock.allow_net_connect!
-        SwarmSDK.reset_configuration!
+        SwarmSDK.reset_config!
       end
 
       def test_web_fetch_tool_validates_url_required
@@ -196,7 +196,7 @@ module SwarmSDK
 
       def test_web_fetch_without_llm_processing
         # Reset configuration to disable LLM processing
-        SwarmSDK.reset_configuration!
+        SwarmSDK.reset_config!
         tool = WebFetch.new
 
         stub_request(:get, "https://example.com")
@@ -212,7 +212,7 @@ module SwarmSDK
 
       def test_web_fetch_without_llm_processing_ignores_prompt
         # Reset configuration to disable LLM processing
-        SwarmSDK.reset_configuration!
+        SwarmSDK.reset_config!
         tool = WebFetch.new
 
         # Prompt parameter is always present but ignored when LLM is disabled

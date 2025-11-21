@@ -5,22 +5,26 @@ require "test_helper"
 module SwarmSDK
   class AgentChatTest < Minitest::Test
     def setup
+      # Reset SwarmSDK config to ensure fresh state
+      SwarmSDK.reset_config!
+
       @global_semaphore = Async::Semaphore.new(50)
-      # Set fake API key to avoid RubyLLM configuration errors
+
+      # Set fake API key to avoid configuration errors
       @original_api_key = ENV["OPENAI_API_KEY"]
       ENV["OPENAI_API_KEY"] = "test-key-12345"
-      # Also configure RubyLLM directly to avoid caching issues
-      RubyLLM.configure do |config|
+
+      # Configure SwarmSDK (auto-proxies to RubyLLM)
+      SwarmSDK.configure do |config|
         config.openai_api_key = "test-key-12345"
       end
     end
 
     def teardown
       ENV["OPENAI_API_KEY"] = @original_api_key
-      # Reset RubyLLM configuration
-      RubyLLM.configure do |config|
-        config.openai_api_key = @original_api_key
-      end
+
+      # Reset SwarmSDK config
+      SwarmSDK.reset_config!
     end
 
     def test_initialization_with_defaults

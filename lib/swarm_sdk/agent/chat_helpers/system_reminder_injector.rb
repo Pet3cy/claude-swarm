@@ -22,9 +22,6 @@ module SwarmSDK
           <system-reminder>The TodoWrite tool hasn't been used recently. If you're working on tasks that would benefit from tracking progress, consider using the TodoWrite tool to track progress. Also consider cleaning up the todo list if has become stale and no longer matches what you are working on. Only use it if it's relevant to the current work. This is just a gentle reminder - ignore if not applicable.</system-reminder>
         REMINDER
 
-        # Backward compatibility alias - use Defaults module for new code
-        TODOWRITE_REMINDER_INTERVAL = Defaults::Context::TODOWRITE_REMINDER_INTERVAL
-
         class << self
           # Check if this is the first user message in the conversation
           #
@@ -106,15 +103,16 @@ module SwarmSDK
             end
 
             # Check if enough messages have passed since last TodoWrite
+            reminder_interval = SwarmSDK.config.todowrite_reminder_interval
             if last_todo_index.nil? && last_todowrite_index.nil?
               # Never used TodoWrite - check if we've exceeded interval
-              chat.message_count >= TODOWRITE_REMINDER_INTERVAL
+              chat.message_count >= reminder_interval
             elsif last_todo_index
               # Recently used - don't remind
               false
             elsif last_todowrite_index
               # Used before - check if interval has passed
-              chat.message_count - last_todowrite_index >= TODOWRITE_REMINDER_INTERVAL
+              chat.message_count - last_todowrite_index >= reminder_interval
             else
               false
             end

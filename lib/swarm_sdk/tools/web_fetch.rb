@@ -11,7 +11,6 @@ module SwarmSDK
         super()
         @cache = {}
         @cache_ttl = 900 # 15 minutes in seconds
-        @llm_enabled = SwarmSDK.settings.webfetch_llm_enabled?
       end
 
       def name
@@ -51,17 +50,18 @@ module SwarmSDK
         desc: "The prompt to run on the fetched content. Required when SwarmSDK is configured with webfetch_provider and webfetch_model. Optional otherwise (ignored if LLM processing not configured).",
         required: false
 
-      # Backward compatibility aliases - use Defaults module for new code
-      MAX_CONTENT_LENGTH = Defaults::Limits::WEB_FETCH_CHARACTERS
+      # NOTE: Content length and timeout now accessed via SwarmSDK.config
       USER_AGENT = "SwarmSDK WebFetch Tool (https://github.com/parruda/claude-swarm)"
-      TIMEOUT = Defaults::Timeouts::WEB_FETCH_SECONDS
 
       def execute(url:, prompt: nil)
         # Validate inputs
         return validation_error("url is required") if url.nil? || url.empty?
 
+        # Check if LLM processing is enabled (lazy check)
+        llm_enabled = SwarmSDK.config.webfetch_llm_enabled?
+
         # Validate prompt when LLM processing is enabled
-        if @llm_enabled && (prompt.nil? || prompt.empty?)
+        if llm_enabled && (prompt.nil? || prompt.empty?)
           return validation_error("prompt is required when LLM processing is configured")
         end
 
@@ -70,7 +70,7 @@ module SwarmSDK
         return validation_error("Invalid URL format: #{url}") unless normalized_url
 
         # Check cache first (cache key includes prompt if LLM is enabled)
-        cache_key = @llm_enabled ? "#{normalized_url}:#{prompt}" : normalized_url
+        cache_key = llm_enabled ? "#{normalized_url}:#{prompt}" : normalized_url
         cached = get_from_cache(cache_key)
         return cached if cached
 
@@ -87,13 +87,14 @@ module SwarmSDK
         markdown_content = html_to_markdown(fetch_result[:body])
 
         # Truncate if too long
-        if markdown_content.length > MAX_CONTENT_LENGTH
-          markdown_content = markdown_content[0...MAX_CONTENT_LENGTH]
+        max_content = SwarmSDK.config.web_fetch_character_limit
+        if markdown_content.length > max_content
+          markdown_content = markdown_content[0...max_content]
           markdown_content += "\n\n[Content truncated due to length]"
         end
 
         # Process with AI model if LLM is enabled, otherwise return markdown
-        result = if @llm_enabled
+        result = if llm_enabled
           process_with_llm(markdown_content, prompt, normalized_url)
         else
           markdown_content
@@ -143,12 +144,13 @@ module SwarmSDK
         require "faraday"
         require "faraday/follow_redirects"
 
+        timeout = SwarmSDK.config.web_fetch_timeout
         response = Faraday.new(url: url) do |conn|
           conn.request(:url_encoded)
           conn.response(:follow_redirects, limit: 5)
           conn.adapter(Faraday.default_adapter)
-          conn.options.timeout = TIMEOUT
-          conn.options.open_timeout = TIMEOUT
+          conn.options.timeout = timeout
+          conn.options.open_timeout = timeout
         end.get do |req|
           req.headers["User-Agent"] = USER_AGENT
           req.headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
@@ -167,7 +169,7 @@ module SwarmSDK
           redirect_url: redirect_url,
         }
       rescue Faraday::TimeoutError
-        error("Request timed out after #{TIMEOUT} seconds")
+        error("Request timed out after #{SwarmSDK.config.web_fetch_timeout} seconds")
       rescue Faraday::ConnectionFailed => e
         error("Connection failed: #{e.message}")
       rescue StandardError => e
@@ -194,17 +196,17 @@ module SwarmSDK
           Please respond to the user's request based on the content above.
         PROMPT
 
-        # Get settings
-        config = SwarmSDK.settings
+        # Get config
+        sdk_config = SwarmSDK.config
 
         # Build chat with configured provider and model
         chat_params = {
-          model: config.webfetch_model,
-          provider: config.webfetch_provider.to_sym,
+          model: sdk_config.webfetch_model,
+          provider: sdk_config.webfetch_provider.to_sym,
         }
-        chat_params[:base_url] = config.webfetch_base_url if config.webfetch_base_url
+        chat_params[:base_url] = sdk_config.webfetch_base_url if sdk_config.webfetch_base_url
 
-        chat = RubyLLM.chat(**chat_params).with_params(max_tokens: config.webfetch_max_tokens)
+        chat = RubyLLM.chat(**chat_params).with_params(max_tokens: sdk_config.webfetch_max_tokens)
 
         response = chat.ask(full_prompt)
 

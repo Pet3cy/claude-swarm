@@ -85,10 +85,7 @@ module SwarmSDK
         desc: "Optional timeout in milliseconds (max 600000)",
         required: false
 
-      # Backward compatibility aliases - use Defaults module for new code
-      DEFAULT_TIMEOUT_MS = Defaults::Timeouts::BASH_COMMAND_MS
-      MAX_TIMEOUT_MS = Defaults::Timeouts::BASH_COMMAND_MAX_MS
-      MAX_OUTPUT_LENGTH = Defaults::Limits::OUTPUT_CHARACTERS
+      # NOTE: Timeout and output limits now accessed via SwarmSDK.config
 
       # Commands that are ALWAYS blocked for safety reasons
       # These cannot be overridden by permissions configuration
@@ -107,8 +104,8 @@ module SwarmSDK
         end
 
         # Validate and set timeout
-        timeout_ms = timeout || DEFAULT_TIMEOUT_MS
-        timeout_ms = [timeout_ms, MAX_TIMEOUT_MS].min
+        timeout_ms = timeout || SwarmSDK.config.bash_command_timeout
+        timeout_ms = [timeout_ms, SwarmSDK.config.bash_command_max_timeout].min
         timeout_seconds = timeout_ms / 1000.0
 
         # Execute command with timeout
@@ -149,9 +146,10 @@ module SwarmSDK
         output = format_command_output(command, description, stdout, stderr, exit_status)
 
         # Truncate if too long
-        if output.length > MAX_OUTPUT_LENGTH
-          truncated = output[0...MAX_OUTPUT_LENGTH]
-          truncated += "\n\n<system-reminder>Output truncated at #{MAX_OUTPUT_LENGTH} characters. The full output was #{output.length} characters.</system-reminder>"
+        max_output = SwarmSDK.config.output_character_limit
+        if output.length > max_output
+          truncated = output[0...max_output]
+          truncated += "\n\n<system-reminder>Output truncated at #{max_output} characters. The full output was #{output.length} characters.</system-reminder>"
           output = truncated
         end
 

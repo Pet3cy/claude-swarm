@@ -90,8 +90,7 @@ module SwarmSDK
     #   echo "$CONTENT"
     #   exit 0
     class TransformerExecutor
-      # Backward compatibility alias - use Defaults module for new code
-      DEFAULT_TIMEOUT = Defaults::Timeouts::TRANSFORMER_COMMAND_SECONDS
+      # NOTE: Timeout now accessed via SwarmSDK.config.transformer_command_timeout
 
       # Result object for transformer execution
       TransformerResult = Struct.new(:success, :content, :skip_execution, :halt, :error_message, keyword_init: true) do
@@ -114,7 +113,9 @@ module SwarmSDK
         # @param fallback_content [String] Content to use if skip (exit 1)
         # @param timeout [Integer] Timeout in seconds (default: 60)
         # @return [TransformerResult] Result with transformed content or skip/halt flags
-        def execute(command:, context:, event:, node_name:, fallback_content:, timeout: DEFAULT_TIMEOUT)
+        def execute(command:, context:, event:, node_name:, fallback_content:, timeout: nil)
+          timeout ||= SwarmSDK.config.transformer_command_timeout
+
           # Build JSON input for transformer
           input_json = build_transformer_input(context, event, node_name)
 

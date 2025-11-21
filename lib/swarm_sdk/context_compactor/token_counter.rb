@@ -17,10 +17,6 @@ module SwarmSDK
     #   total_tokens = TokenCounter.estimate_messages(messages)
     #
     class TokenCounter
-      # Backward compatibility aliases - use Defaults module for new code
-      CHARS_PER_TOKEN_PROSE = Defaults::TokenEstimation::CHARS_PER_TOKEN_PROSE
-      CHARS_PER_TOKEN_CODE = Defaults::TokenEstimation::CHARS_PER_TOKEN_CODE
-
       class << self
         # Estimate tokens for a single message
         #
@@ -78,9 +74,9 @@ module SwarmSDK
 
           # Choose characters per token based on content type
           chars_per_token = if code_ratio > 0.1
-            CHARS_PER_TOKEN_CODE # Code
+            SwarmSDK.config.chars_per_token_code # Code
           else
-            CHARS_PER_TOKEN_PROSE # Prose
+            SwarmSDK.config.chars_per_token_prose # Prose
           end
 
           (text.length / chars_per_token).ceil

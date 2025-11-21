@@ -214,7 +214,8 @@ module SwarmSDK
       #
       # @example
       #   input_command("scripts/validate.sh", timeout: 30)
-      def input_command(command, timeout: TransformerExecutor::DEFAULT_TIMEOUT)
+      def input_command(command, timeout: nil)
+        timeout ||= SwarmSDK.config.transformer_command_timeout
         @input_transformer_command = { command: command, timeout: timeout }
       end
 
@@ -288,7 +289,8 @@ module SwarmSDK
       #
       # @example
       #   output_command("scripts/format.sh", timeout: 30)
-      def output_command(command, timeout: TransformerExecutor::DEFAULT_TIMEOUT)
+      def output_command(command, timeout: nil)
+        timeout ||= SwarmSDK.config.transformer_command_timeout
         @output_transformer_command = { command: command, timeout: timeout }
       end
 

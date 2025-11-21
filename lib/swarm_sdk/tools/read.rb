@@ -10,9 +10,7 @@ module SwarmSDK
     class Read < RubyLLM::Tool
       include PathResolver
 
-      # Backward compatibility aliases - use Defaults module for new code
-      MAX_LINE_LENGTH = Defaults::Limits::LINE_CHARACTERS
-      DEFAULT_LIMIT = Defaults::Limits::READ_LINES
+      # NOTE: Line length and limit now accessed via SwarmSDK.config
 
       # List of available document converters
       CONVERTERS = [
@@ -153,18 +151,20 @@ module SwarmSDK
         lines = lines.drop(start_line)
 
         # Apply limit if specified, otherwise use default
-        effective_limit = limit || DEFAULT_LIMIT
+        default_limit = SwarmSDK.config.read_line_limit
+        effective_limit = limit || default_limit
         lines = lines.take(effective_limit)
-        truncated = limit.nil? && total_lines > DEFAULT_LIMIT
+        truncated = limit.nil? && total_lines > default_limit
 
         # Format with line numbers (cat -n style)
+        max_line_length = SwarmSDK.config.line_character_limit
         output_lines = lines.each_with_index.map do |line, idx|
           line_number = start_line + idx + 1
           display_line = line.chomp
 
           # Truncate long lines
-          if display_line.length > MAX_LINE_LENGTH
-            display_line = display_line[0...MAX_LINE_LENGTH]
+          if display_line.length > max_line_length
+            display_line = display_line[0...max_line_length]
             display_line += "... (line truncated)"
           end
 
@@ -203,7 +203,7 @@ module SwarmSDK
 
         if truncated
           reminders << ""
-          reminders << "Note: This file has #{total_lines} lines but only the first #{DEFAULT_LIMIT} lines are shown. Use the offset and limit parameters to read additional sections if needed."
+          reminders << "Note: This file has #{total_lines} lines but only the first #{SwarmSDK.config.read_line_limit} lines are shown. Use the offset and limit parameters to read additional sections if needed."
         end
 
         reminders << "</system-reminder>"

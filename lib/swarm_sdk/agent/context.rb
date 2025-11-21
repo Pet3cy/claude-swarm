@@ -30,8 +30,7 @@ module SwarmSDK
       # 60% triggers automatic compression, 80%/90% are informational warnings
       CONTEXT_WARNING_THRESHOLDS = [60, 80, 90].freeze
 
-      # Backward compatibility alias - use Defaults module for new code
-      COMPRESSION_THRESHOLD = Defaults::Context::COMPRESSION_THRESHOLD_PERCENT
+      # NOTE: Compression threshold now accessed via SwarmSDK.config.context_compression_threshold
 
       attr_reader :name, :delegation_tools, :metadata, :warning_thresholds_hit, :swarm_id, :parent_swarm_id
 
