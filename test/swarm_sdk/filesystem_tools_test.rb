@@ -4,14 +4,10 @@ require "test_helper"
 
 class FilesystemToolsTest < Minitest::Test
   def setup
-    # Reset config for clean state
     SwarmSDK.reset_config!
-    @original_env = ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"]
   end
 
   def teardown
-    # Restore original ENV and reset config
-    ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = @original_env
     SwarmSDK.reset_config!
   end
 
@@ -32,46 +28,23 @@ class FilesystemToolsTest < Minitest::Test
   end
 
   def test_direct_setter
-    SwarmSDK.config.allow_filesystem_tools = false
+    SwarmSDK.configure do |config|
+      config.allow_filesystem_tools = false
+    end
 
     refute(SwarmSDK.config.allow_filesystem_tools)
 
-    SwarmSDK.config.allow_filesystem_tools = true
+    SwarmSDK.configure do |config|
+      config.allow_filesystem_tools = true
+    end
 
     assert(SwarmSDK.config.allow_filesystem_tools)
   end
 
-  def test_environment_variable_true
-    ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = "true"
-    SwarmSDK.reset_config!
-
-    assert(SwarmSDK.config.allow_filesystem_tools)
-  end
-
-  def test_environment_variable_false
-    ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = "false"
-    SwarmSDK.reset_config!
-
-    refute(SwarmSDK.config.allow_filesystem_tools)
-  end
-
-  def test_environment_variable_various_truthy_values
-    ["yes", "1", "on", "enabled"].each do |value|
-      ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = value
-      SwarmSDK.reset_config!
-
-      assert(SwarmSDK.config.allow_filesystem_tools, "Expected #{value} to be truthy")
-    end
-  end
-
-  def test_environment_variable_various_falsy_values
-    ["no", "0", "off", "disabled"].each do |value|
-      ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = value
-      SwarmSDK.reset_config!
-
-      refute(SwarmSDK.config.allow_filesystem_tools, "Expected #{value} to be falsy")
-    end
-  end
+  # NOTE: ENV variable tests are in config_test.rb
+  # test_env_boolean_parsing_for_filesystem_tools
+  # test_env_boolean_parsing_various_true_values
+  # test_env_boolean_parsing_various_false_values
 
   def test_parameter_overrides_global
     SwarmSDK.config.allow_filesystem_tools = true

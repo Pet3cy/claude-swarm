@@ -11,9 +11,19 @@ module SwarmSDK
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
         "SWARM_SDK_DEFAULT_MODEL",
+        "SWARM_SDK_DEFAULT_PROVIDER",
         "SWARM_SDK_AGENT_REQUEST_TIMEOUT",
         "SWARM_SDK_ALLOW_FILESYSTEM_TOOLS",
         "SWARM_SDK_WEBFETCH_PROVIDER",
+        "SWARM_SDK_WEBFETCH_MODEL",
+        "SWARM_SDK_WEBFETCH_MAX_TOKENS",
+        "SWARM_SDK_BASH_COMMAND_TIMEOUT",
+        "SWARM_SDK_READ_LINE_LIMIT",
+        "SWARM_SDK_GLOBAL_CONCURRENCY_LIMIT",
+        "SWARM_SDK_CHARS_PER_TOKEN_PROSE",
+        "SWARM_SDK_CHARS_PER_TOKEN_CODE",
+        "SWARM_SDK_MCP_LOG_LEVEL",
+        "SWARM_SDK_CONTEXT_COMPRESSION_THRESHOLD",
       ].each do |key|
         @original_env[key] = ENV[key]
         ENV.delete(key)
@@ -252,6 +262,68 @@ module SwarmSDK
 
         refute(SwarmSDK.config.allow_filesystem_tools, "Expected '#{value}' to be false")
       end
+    end
+
+    # ========== Comprehensive ENV Mapping Tests ==========
+
+    def test_env_string_mapping_for_webfetch_provider
+      ENV["SWARM_SDK_WEBFETCH_PROVIDER"] = "anthropic"
+
+      assert_equal("anthropic", SwarmSDK.config.webfetch_provider)
+    end
+
+    def test_env_string_mapping_for_webfetch_model
+      ENV["SWARM_SDK_WEBFETCH_MODEL"] = "claude-3-haiku"
+
+      assert_equal("claude-3-haiku", SwarmSDK.config.webfetch_model)
+    end
+
+    def test_env_string_mapping_for_default_provider
+      ENV["SWARM_SDK_DEFAULT_PROVIDER"] = "openai"
+
+      assert_equal("openai", SwarmSDK.config.default_provider)
+    end
+
+    def test_env_integer_mapping_for_bash_timeout
+      ENV["SWARM_SDK_BASH_COMMAND_TIMEOUT"] = "180000"
+
+      assert_equal(180_000, SwarmSDK.config.bash_command_timeout)
+    end
+
+    def test_env_integer_mapping_for_read_line_limit
+      ENV["SWARM_SDK_READ_LINE_LIMIT"] = "5000"
+
+      assert_equal(5000, SwarmSDK.config.read_line_limit)
+    end
+
+    def test_env_integer_mapping_for_global_concurrency
+      ENV["SWARM_SDK_GLOBAL_CONCURRENCY_LIMIT"] = "100"
+
+      assert_equal(100, SwarmSDK.config.global_concurrency_limit)
+    end
+
+    def test_env_integer_mapping_for_webfetch_max_tokens
+      ENV["SWARM_SDK_WEBFETCH_MAX_TOKENS"] = "8192"
+
+      assert_equal(8192, SwarmSDK.config.webfetch_max_tokens)
+    end
+
+    def test_env_float_mapping_for_chars_per_token_code
+      ENV["SWARM_SDK_CHARS_PER_TOKEN_CODE"] = "3.0"
+
+      assert_in_delta(3.0, SwarmSDK.config.chars_per_token_code)
+    end
+
+    def test_env_mapping_for_mcp_log_level
+      ENV["SWARM_SDK_MCP_LOG_LEVEL"] = "1"
+
+      assert_equal(1, SwarmSDK.config.mcp_log_level)
+    end
+
+    def test_env_mapping_for_context_compression_threshold
+      ENV["SWARM_SDK_CONTEXT_COMPRESSION_THRESHOLD"] = "70"
+
+      assert_equal(70, SwarmSDK.config.context_compression_threshold)
     end
 
     # ========== Lazy Loading Tests ==========

@@ -6,29 +6,15 @@ module SwarmSDK
   class ContextCompactor
     class TokenCounterTest < Minitest::Test
       def setup
-        # Save and clear ENV variables that affect token estimation
-        @original_prose = ENV["SWARM_SDK_CHARS_PER_TOKEN_PROSE"]
-        @original_code = ENV["SWARM_SDK_CHARS_PER_TOKEN_CODE"]
-        ENV.delete("SWARM_SDK_CHARS_PER_TOKEN_PROSE")
-        ENV.delete("SWARM_SDK_CHARS_PER_TOKEN_CODE")
-
         SwarmSDK.reset_config!
+        # Set explicit config values - don't rely on ENV or defaults
+        SwarmSDK.configure do |config|
+          config.chars_per_token_prose = 4.0
+          config.chars_per_token_code = 3.5
+        end
       end
 
       def teardown
-        # Restore original ENV values
-        if @original_prose
-          ENV["SWARM_SDK_CHARS_PER_TOKEN_PROSE"] = @original_prose
-        else
-          ENV.delete("SWARM_SDK_CHARS_PER_TOKEN_PROSE")
-        end
-
-        if @original_code
-          ENV["SWARM_SDK_CHARS_PER_TOKEN_CODE"] = @original_code
-        else
-          ENV.delete("SWARM_SDK_CHARS_PER_TOKEN_CODE")
-        end
-
         SwarmSDK.reset_config!
       end
 

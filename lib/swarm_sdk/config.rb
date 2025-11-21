@@ -289,7 +289,7 @@ module SwarmSDK
         else
           true # Default to true if unrecognized
         end
-      when /_timeout$/, /_limit$/, /_interval$/, :mcp_log_level, :webfetch_max_tokens
+      when /_timeout$/, /_limit$/, /_interval$/, /_threshold$/, :mcp_log_level, :webfetch_max_tokens
         value.to_i
       when /^chars_per_token/
         value.to_f
