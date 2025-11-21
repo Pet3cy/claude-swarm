@@ -161,6 +161,8 @@ SwarmSDK.configure {|config| ... } → void
 - `webfetch_max_tokens` (Integer): Maximum tokens for WebFetch LLM responses (default: 4096)
 - `allow_filesystem_tools` (Boolean): Enable/disable filesystem tools globally (default: true)
 
+**See [Configuration Reference](configuration_reference.md) for the complete list of 45+ configuration options including API keys, timeouts, limits, and more.**
+
 **Description:**
 Global configuration that applies to all swarms.
 

@@ -1,6 +1,6 @@
 # SwarmSDK, SwarmCLI & SwarmMemory Documentation
 
-**Version 2.3**
+**Version 2.4**
 
 Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - a Ruby framework for orchestrating multiple AI agents as a collaborative team with persistent memory.
 
@@ -62,6 +62,10 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
 ### Ruby DSL API
 - **[Ruby DSL Reference](reference/ruby-dsl.md)**
   Complete programmatic API: `SwarmSDK.build`, `SwarmSDK.load`, agent DSL, permissions DSL, node DSL, hooks
+
+### Configuration
+- **[Configuration Reference](reference/configuration_reference.md)** ⭐ NEW
+  Complete reference for all 45+ configuration options: API keys, timeouts, limits, WebFetch settings, security
 
 ### YAML Configuration
 - **[YAML Configuration Reference](reference/yaml.md)**
@@ -205,6 +209,9 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
 **Build a custom storage adapter**
 → [Memory Adapter Guide](guides/memory-adapters.md)
 
+**Configure SwarmSDK settings** ⭐ NEW
+→ [Configuration Reference](reference/configuration_reference.md)
+
 **Secure swarms for production** ⭐ NEW
 → [Filesystem Tools Control](reference/ruby-dsl.md#swarmsdk.configure) | [Security Considerations](guides/complete-tutorial.md#security-considerations)
 
@@ -237,6 +244,7 @@ docs/v2/
 ├── reference/                          # Complete API references
 │   ├── architecture-flow.md            # System architecture diagram ⭐ NEW
 │   ├── execution-flow.md               # Runtime execution flow ⭐ NEW
+│   ├── configuration_reference.md      # All configuration options ⭐ NEW
 │   ├── event_payload_structures.md     # Log event payloads
 │   ├── swarm_memory_technical_details.md  # SwarmMemory deep dive
 │   ├── cli.md                          # CLI command reference
@@ -328,6 +336,7 @@ A persistent memory system for agents with semantic search capabilities:
 | **Memory Adapters** | [Adapter Guide](guides/memory-adapters.md) | [Technical Details](reference/swarm_memory_technical_details.md) |
 | **Plugins** | [Plugin Guide](guides/plugins.md) | - |
 | **Rails** | [Rails Guide](guides/rails-integration.md) | - |
+| **Configuration** | - | [Configuration Ref](reference/configuration_reference.md) |
 | **Testing** | [Tutorial Part 8](guides/complete-tutorial.md#testing-strategies) | - |
 
 ---

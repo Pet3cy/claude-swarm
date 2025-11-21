@@ -297,7 +297,7 @@ old[:metadata] = old.delete(:swarm)
   - **Documentation**: Complete guide in `docs/v2/guides/snapshots.md` with examples and comparisons
 
 - **System-Wide Filesystem Tools Control**: Global security setting to disable filesystem tools across all agents
-  - **`SwarmSDK.settings.allow_filesystem_tools`** - Global setting to enable/disable filesystem tools (default: true)
+  - **`SwarmSDK.config.allow_filesystem_tools`** - Global setting to enable/disable filesystem tools (default: true)
   - **Environment variable**: `SWARM_SDK_ALLOW_FILESYSTEM_TOOLS` - Set via environment for production deployments
   - **Parameter override**: `allow_filesystem_tools:` parameter in `SwarmSDK.build`, `load`, and `load_file`
   - **Filesystem tools**: Read, Write, Edit, MultiEdit, Grep, Glob, Bash
