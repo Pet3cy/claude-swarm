@@ -59,7 +59,7 @@ SwarmSDK.agent :backend do
   description "Backend developer"
   system_prompt "You build APIs and databases"
   tools :Read, :Edit, :Bash
-  delegates_to :database
+  # Note: Don't set delegates_to here - it's swarm-specific!
 end
 
 # agents/database.rb
@@ -77,13 +77,15 @@ end
 require_relative "agents/backend"
 require_relative "agents/database"
 
-# Reference by name (no block = lookup from registry)
+# Reference by name and configure delegation (swarm-specific)
 swarm = SwarmSDK.build do
   name "Dev Team"
   lead :backend
 
-  agent :backend     # Pulls from registry
-  agent :database    # Pulls from registry
+  agent :backend do
+    delegates_to :database  # Delegation is swarm-specific
+  end
+  agent :database    # Pulls from registry as-is
 end
 ```
 
@@ -95,8 +97,9 @@ swarm = SwarmSDK.build do
 
   # Registry config applied first, then override block
   agent :backend do
-    tools :CustomTool  # Adds to registry tools
-    timeout 300        # Overrides registry timeout
+    delegates_to :database, :cache  # Set delegation for this swarm
+    tools :CustomTool               # Adds to registry tools
+    timeout 300                     # Overrides registry timeout
   end
 end
 ```

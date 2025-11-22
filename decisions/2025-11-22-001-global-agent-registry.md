@@ -72,6 +72,12 @@ end
    - Single-threaded execution means no race conditions
    - Documented limitation for multi-threaded environments
 
+6. **Delegation is Swarm-Specific (Best Practice)**
+   - Don't set `delegates_to` in registry agent definitions
+   - Delegation targets depend on which agents exist in each swarm
+   - Set `delegates_to` as an override when referencing the agent in a swarm
+   - This makes agents truly reusable across different swarm compositions
+
 ## Implementation
 
 ### New Files

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Workflow node auto-resolution**: Agents referenced in nodes automatically resolve from registry
     - Checks workflow-level definitions first, then falls back to global registry
     - Includes delegation targets (`delegates_to`) in auto-resolution
+  - **Best practice**: Don't set `delegates_to` in registry—delegation is swarm-specific. Set it as an override in each swarm.
   - **Use case**: Define agents once in separate files, compose into multiple swarms without duplication
   - **Example**:
     ```ruby
