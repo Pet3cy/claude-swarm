@@ -691,5 +691,405 @@ module SwarmSDK
       assert_includes(tool_names, :Read)
       assert_includes(tool_names, :Glob)
     end
+
+    # =========================================================================
+    # Additional Edge Cases
+    # =========================================================================
+
+    def test_system_prompt_override_from_registry
+      SwarmSDK.agent(:promptable) do
+        model("gpt-4")
+        description("Promptable agent")
+        system_prompt("Base system prompt from registry")
+      end
+
+      swarm = SwarmSDK.build do
+        name("Prompt Override Test")
+        lead(:promptable)
+
+        agent(:promptable) do
+          system_prompt("Extended system prompt") # Override
+        end
+      end
+
+      definition = swarm.agent_definition(:promptable)
+
+      # System prompt should contain the override (SDK may add prefix)
+      assert_includes(definition.system_prompt, "Extended system prompt")
+      # Should NOT contain the base prompt
+      refute_includes(definition.system_prompt, "Base system prompt from registry")
+    end
+
+    def test_system_prompt_preserved_when_not_overridden
+      SwarmSDK.agent(:keeper) do
+        model("gpt-4")
+        description("Prompt keeper")
+        system_prompt("Original prompt that should be kept")
+      end
+
+      swarm = SwarmSDK.build do
+        name("Prompt Keep Test")
+        lead(:keeper)
+
+        agent(:keeper) do
+          tools(:Read) # Add tools but don't touch system_prompt
+        end
+      end
+
+      definition = swarm.agent_definition(:keeper)
+
+      # Original system prompt should be preserved (SDK may add prefix)
+      assert_includes(definition.system_prompt, "Original prompt that should be kept")
+    end
+
+    def test_swarm_lead_purely_from_registry
+      # Register lead agent - don't define at swarm level
+      SwarmSDK.agent(:registry_lead) do
+        model("claude-sonnet-4")
+        description("Lead from registry")
+        system_prompt("I am the lead")
+      end
+
+      SwarmSDK.agent(:registry_helper) do
+        model("gpt-3")
+        description("Helper from registry")
+      end
+
+      # Build swarm using only registry agents
+      swarm = SwarmSDK.build do
+        name("Registry Only Team")
+        lead(:registry_lead)
+
+        agent(:registry_lead)
+        agent(:registry_helper)
+      end
+
+      # Verify lead is set correctly
+      assert_equal(:registry_lead, swarm.lead_agent)
+      assert_includes(swarm.agent_names, :registry_lead)
+      assert_includes(swarm.agent_names, :registry_helper)
+    end
+
+    def test_filesystem_tools_validation_for_registry_agents
+      SwarmSDK.agent(:filesystem_agent) do
+        model("gpt-4")
+        description("Uses filesystem")
+        tools(:Read, :Write, :Edit)
+      end
+
+      # When filesystem tools are disabled, should raise
+      SwarmSDK.configure { |c| c.allow_filesystem_tools = false }
+
+      error = assert_raises(ConfigurationError) do
+        SwarmSDK.build do
+          name("Filesystem Test")
+          lead(:filesystem_agent)
+          agent(:filesystem_agent)
+        end
+      end
+
+      assert_match(/Filesystem tools are globally disabled/, error.message)
+    ensure
+      SwarmSDK.configure { |c| c.allow_filesystem_tools = true }
+    end
+
+    def test_workflow_all_agents_applies_to_auto_resolved_registry_agents
+      SwarmSDK.agent(:workflow_member) do
+        description("Workflow member")
+        tools(:Read)
+      end
+
+      workflow = SwarmSDK.workflow do
+        name("All Agents Workflow")
+        start_node(:work)
+
+        all_agents do
+          model("claude-sonnet-4")
+          tools(:Glob)
+        end
+
+        # Don't define agent at workflow level - auto-resolve from registry
+        node(:work) do
+          agent(:workflow_member)
+        end
+      end
+
+      definition = workflow.agent_definitions[:workflow_member]
+
+      # Model from all_agents (registry didn't set model)
+      assert_equal("claude-sonnet-4", definition.model)
+
+      # Tools should include both registry and all_agents
+      tool_names = definition.tools.map { |t| t[:name] }
+
+      assert_includes(tool_names, :Read)
+      assert_includes(tool_names, :Glob)
+    end
+
+    def test_empty_block_override_preserves_registry_config
+      SwarmSDK.agent(:complete_agent) do
+        model("gpt-5")
+        description("Complete agent")
+        system_prompt("Complete prompt content")
+        tools(:Read, :Write)
+      end
+
+      swarm = SwarmSDK.build do
+        name("Empty Override Test")
+        lead(:complete_agent)
+
+        # Empty block - should preserve all registry config
+        agent(:complete_agent) do
+          # intentionally empty
+        end
+      end
+
+      definition = swarm.agent_definition(:complete_agent)
+
+      # All config should be preserved
+      assert_equal("gpt-5", definition.model)
+      assert_equal("Complete agent", definition.description)
+      # System prompt preserved (SDK may add prefix)
+      assert_includes(definition.system_prompt, "Complete prompt content")
+
+      tool_names = definition.tools.map { |t| t[:name] }
+
+      assert_includes(tool_names, :Read)
+      assert_includes(tool_names, :Write)
+    end
+
+    def test_provider_and_base_url_in_registry
+      SwarmSDK.agent(:custom_provider_agent) do
+        model("custom-model")
+        provider(:openai)
+        base_url("https://custom.api.example.com")
+        description("Custom provider agent")
+      end
+
+      swarm = SwarmSDK.build do
+        name("Custom Provider Test")
+        lead(:custom_provider_agent)
+        agent(:custom_provider_agent)
+      end
+
+      definition = swarm.agent_definition(:custom_provider_agent)
+
+      assert_equal("custom-model", definition.model)
+      assert_equal(:openai, definition.provider)
+      assert_equal("https://custom.api.example.com", definition.base_url)
+    end
+
+    def test_registry_agent_with_predefined_delegates_to
+      SwarmSDK.agent(:delegating_agent) do
+        model("gpt-4")
+        description("Agent that delegates")
+        delegates_to(:helper_one, :helper_two)
+      end
+
+      SwarmSDK.agent(:helper_one) do
+        model("gpt-3")
+        description("Helper one")
+      end
+
+      SwarmSDK.agent(:helper_two) do
+        model("gpt-3")
+        description("Helper two")
+      end
+
+      swarm = SwarmSDK.build do
+        name("Predefined Delegation Test")
+        lead(:delegating_agent)
+
+        agent(:delegating_agent)
+        agent(:helper_one)
+        agent(:helper_two)
+      end
+
+      definition = swarm.agent_definition(:delegating_agent)
+
+      assert_includes(definition.delegates_to, :helper_one)
+      assert_includes(definition.delegates_to, :helper_two)
+    end
+
+    def test_registry_delegates_to_can_be_extended
+      SwarmSDK.agent(:extendable_delegator) do
+        model("gpt-4")
+        description("Extendable delegator")
+        delegates_to(:base_helper)
+      end
+
+      SwarmSDK.agent(:base_helper) do
+        description("Base helper")
+      end
+
+      SwarmSDK.agent(:extra_helper) do
+        description("Extra helper")
+      end
+
+      swarm = SwarmSDK.build do
+        name("Extended Delegation Test")
+        lead(:extendable_delegator)
+
+        agent(:extendable_delegator) do
+          delegates_to(:extra_helper) # Adds to existing
+        end
+        agent(:base_helper)
+        agent(:extra_helper)
+      end
+
+      definition = swarm.agent_definition(:extendable_delegator)
+
+      # Should have both base and extended delegates
+      assert_includes(definition.delegates_to, :base_helper)
+      assert_includes(definition.delegates_to, :extra_helper)
+    end
+
+    def test_coding_agent_flag_in_registry
+      SwarmSDK.agent(:coding_enabled) do
+        model("gpt-4")
+        description("Coding enabled agent")
+        coding_agent(true)
+      end
+
+      SwarmSDK.agent(:coding_disabled) do
+        model("gpt-4")
+        description("Coding disabled agent")
+        coding_agent(false)
+      end
+
+      swarm = SwarmSDK.build do
+        name("Coding Agent Test")
+        lead(:coding_enabled)
+
+        agent(:coding_enabled)
+        agent(:coding_disabled)
+      end
+
+      enabled_def = swarm.agent_definition(:coding_enabled)
+      disabled_def = swarm.agent_definition(:coding_disabled)
+
+      assert(enabled_def.coding_agent)
+      refute(disabled_def.coding_agent)
+    end
+
+    def test_timeout_and_context_window_in_registry
+      SwarmSDK.agent(:tuned_agent) do
+        model("gpt-4")
+        description("Tuned agent")
+        timeout(120)
+        context_window(32_000)
+      end
+
+      swarm = SwarmSDK.build do
+        name("Tuned Agent Test")
+        lead(:tuned_agent)
+        agent(:tuned_agent)
+      end
+
+      definition = swarm.agent_definition(:tuned_agent)
+
+      assert_equal(120, definition.timeout)
+      assert_equal(32_000, definition.context_window)
+    end
+
+    def test_parameters_and_headers_in_registry
+      SwarmSDK.agent(:parameterized_agent) do
+        model("gpt-4")
+        description("Parameterized agent")
+        parameters(temperature: 0.7, max_tokens: 4000)
+        headers("X-Custom-Header" => "custom-value")
+      end
+
+      swarm = SwarmSDK.build do
+        name("Parameters Test")
+        lead(:parameterized_agent)
+        agent(:parameterized_agent)
+      end
+
+      definition = swarm.agent_definition(:parameterized_agent)
+
+      assert_in_delta(0.7, definition.parameters[:temperature])
+      assert_equal(4000, definition.parameters[:max_tokens])
+      assert_equal("custom-value", definition.headers["X-Custom-Header"])
+    end
+
+    def test_directory_setting_in_registry
+      test_dir = Dir.pwd
+
+      SwarmSDK.agent(:directory_agent) do
+        model("gpt-4")
+        description("Directory agent")
+        directory(test_dir)
+      end
+
+      swarm = SwarmSDK.build do
+        name("Directory Test")
+        lead(:directory_agent)
+        agent(:directory_agent)
+      end
+
+      definition = swarm.agent_definition(:directory_agent)
+
+      assert_equal(test_dir, definition.directory)
+    end
+
+    def test_workflow_agent_less_node_with_registry_agents
+      # Agent-less nodes shouldn't break even when registry agents exist
+      SwarmSDK.agent(:some_agent) do
+        model("gpt-4")
+        description("Some agent")
+      end
+
+      workflow = SwarmSDK.workflow do
+        name("Agent-less Node Test")
+        start_node(:compute)
+
+        agent(:some_agent)
+
+        # Agent-less node with just transformer
+        node(:compute) do
+          input { |ctx| "transformed: #{ctx.content}" }
+        end
+
+        node(:process) do
+          agent(:some_agent)
+          depends_on(:compute)
+        end
+      end
+
+      # Should build successfully
+      assert_includes(workflow.agent_definitions.keys, :some_agent)
+      assert_predicate(workflow.nodes[:compute], :agent_less?)
+    end
+
+    def test_same_agent_in_multiple_workflow_nodes_from_registry
+      SwarmSDK.agent(:reusable_agent) do
+        model("claude-sonnet-4")
+        description("Reusable across nodes")
+      end
+
+      workflow = SwarmSDK.workflow do
+        name("Reuse Agent Workflow")
+        start_node(:first)
+
+        node(:first) do
+          agent(:reusable_agent)
+        end
+
+        node(:second) do
+          agent(:reusable_agent)
+          depends_on(:first)
+        end
+
+        node(:third) do
+          agent(:reusable_agent)
+          depends_on(:second)
+        end
+      end
+
+      # Should only have one definition even though used in 3 nodes
+      assert_equal(1, workflow.agent_definitions.size)
+      assert_includes(workflow.agent_definitions.keys, :reusable_agent)
+    end
   end
 end
