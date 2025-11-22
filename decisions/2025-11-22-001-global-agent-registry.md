@@ -103,6 +103,7 @@ end
 
 3. **Thread-Safe Implementation**
    - Rejected: Unnecessary complexity for fiber-based model
+   - The definitions should be eager loaded in the app that is using the SDK
    - Documented limitation acceptable
 
 ## Enhancement: Workflow Node Registry Fallback
