@@ -123,7 +123,7 @@ module ClaudeSwarm
       # Add optional arguments
       # Handle prompt_file by reading the file contents
       if instance[:prompt_file]
-        prompt_file_path = File.join(@config.root_directory, instance[:prompt_file])
+        prompt_file_path = File.join(@config.base_dir, instance[:prompt_file])
         if File.exist?(prompt_file_path)
           prompt_content = File.read(prompt_file_path)
           args.push("--prompt", prompt_content)
