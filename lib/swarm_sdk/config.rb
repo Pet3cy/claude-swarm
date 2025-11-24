@@ -91,6 +91,7 @@ module SwarmSDK
       webfetch_base_url: ["SWARM_SDK_WEBFETCH_BASE_URL", nil],
       webfetch_max_tokens: ["SWARM_SDK_WEBFETCH_MAX_TOKENS", 4096],
       allow_filesystem_tools: ["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS", true],
+      env_interpolation: ["SWARM_SDK_ENV_INTERPOLATION", true],
     }.freeze
 
     class << self
@@ -279,7 +280,7 @@ module SwarmSDK
     # @return [Integer, Float, Boolean, String] The parsed value
     def parse_env_value(value, key)
       case key
-      when :allow_filesystem_tools
+      when :allow_filesystem_tools, :env_interpolation
         # Convert string to boolean
         case value.to_s.downcase
         when "true", "yes", "1", "on", "enabled"

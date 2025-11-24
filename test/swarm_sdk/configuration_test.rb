@@ -540,6 +540,79 @@ module SwarmSDK
       end
     end
 
+    def test_env_interpolation_disabled_per_load
+      config = valid_config
+      config["swarm"]["agents"]["lead"]["model"] = "${SOME_VAR}"
+
+      with_config_file(config) do |path|
+        # Should NOT raise an error when interpolation is disabled
+        configuration = Configuration.load_file(path, env_interpolation: false)
+        lead_agent = configuration.agents[:lead]
+
+        # The variable pattern should remain unchanged
+        assert_equal("${SOME_VAR}", lead_agent[:model])
+      end
+    end
+
+    def test_env_interpolation_disabled_via_global_config
+      SwarmSDK.configure do |c|
+        c.env_interpolation = false
+      end
+
+      config = valid_config
+      config["swarm"]["agents"]["lead"]["model"] = "${SOME_VAR}"
+
+      with_config_file(config) do |path|
+        # Should NOT raise an error when global interpolation is disabled
+        configuration = Configuration.load_file(path)
+        lead_agent = configuration.agents[:lead]
+
+        # The variable pattern should remain unchanged
+        assert_equal("${SOME_VAR}", lead_agent[:model])
+      end
+    ensure
+      SwarmSDK.reset_config!
+    end
+
+    def test_env_interpolation_per_load_overrides_global_config
+      SwarmSDK.configure do |c|
+        c.env_interpolation = false
+      end
+
+      ENV["TEST_MODEL_OVERRIDE"] = "overridden-model"
+
+      config = valid_config
+      config["swarm"]["agents"]["lead"]["model"] = "${TEST_MODEL_OVERRIDE}"
+
+      with_config_file(config) do |path|
+        # Per-load setting should override global
+        configuration = Configuration.load_file(path, env_interpolation: true)
+        lead_agent = configuration.agents[:lead]
+
+        # Variable should be interpolated despite global setting
+        assert_equal("overridden-model", lead_agent[:model])
+      end
+    ensure
+      ENV.delete("TEST_MODEL_OVERRIDE")
+      SwarmSDK.reset_config!
+    end
+
+    def test_env_interpolation_disabled_via_configuration_new
+      config = valid_config
+      config["swarm"]["agents"]["lead"]["model"] = "${UNSET_VAR}"
+
+      with_config_file(config) do |path|
+        yaml_content = File.read(path)
+        # Using Configuration.new with env_interpolation: false
+        configuration = Configuration.new(yaml_content, base_dir: File.dirname(path), env_interpolation: false)
+        configuration.load_and_validate
+        lead_agent = configuration.agents[:lead]
+
+        # The variable pattern should remain unchanged
+        assert_equal("${UNSET_VAR}", lead_agent[:model])
+      end
+    end
+
     def test_agent_with_null_config_uses_defaults
       config = valid_config
       config["swarm"]["agents"]["backend"] = nil

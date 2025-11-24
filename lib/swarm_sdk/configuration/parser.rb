@@ -30,9 +30,18 @@ module SwarmSDK
         :nodes,
         :external_swarms
 
-      def initialize(yaml_content, base_dir:)
+      # Initialize parser with YAML content and options
+      #
+      # @param yaml_content [String] YAML configuration content
+      # @param base_dir [String, Pathname] Base directory for resolving paths
+      # @param env_interpolation [Boolean, nil] Whether to interpolate environment variables.
+      #   When nil, uses the global SwarmSDK.config.env_interpolation setting.
+      #   When true, interpolates ${VAR} and ${VAR:=default} patterns.
+      #   When false, skips interpolation entirely.
+      def initialize(yaml_content, base_dir:, env_interpolation: nil)
         @yaml_content = yaml_content
         @base_dir = Pathname.new(base_dir).expand_path
+        @env_interpolation = env_interpolation
         @config_type = nil
         @swarm_id = nil
         @swarm_name = nil
@@ -55,7 +64,7 @@ module SwarmSDK
         end
 
         @config = Utils.symbolize_keys(@config)
-        interpolate_env_vars!(@config)
+        interpolate_env_vars!(@config) if env_interpolation_enabled?
 
         validate_version
         detect_and_validate_type
@@ -85,6 +94,17 @@ module SwarmSDK
       attr_reader :base_dir
 
       private
+
+      # Check if environment variable interpolation is enabled
+      #
+      # Uses the local setting if explicitly set, otherwise falls back to global config.
+      #
+      # @return [Boolean] true if interpolation should be performed
+      def env_interpolation_enabled?
+        return @env_interpolation unless @env_interpolation.nil?
+
+        SwarmSDK.config.env_interpolation
+      end
 
       def validate_version
         version = @config[:version]

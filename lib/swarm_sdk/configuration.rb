@@ -38,9 +38,13 @@ module SwarmSDK
       # Load configuration from YAML file
       #
       # @param path [String, Pathname] Path to YAML configuration file
+      # @param env_interpolation [Boolean, nil] Whether to interpolate environment variables.
+      #   When nil, uses the global SwarmSDK.config.env_interpolation setting.
+      #   When true, interpolates ${VAR} and ${VAR:=default} patterns.
+      #   When false, skips interpolation entirely.
       # @return [Configuration] Validated configuration instance
       # @raise [ConfigurationError] If file not found or invalid
-      def load_file(path)
+      def load_file(path, env_interpolation: nil)
         path = Pathname.new(path).expand_path
 
         unless path.exist?
@@ -50,7 +54,7 @@ module SwarmSDK
         yaml_content = File.read(path)
         base_dir = path.dirname
 
-        new(yaml_content, base_dir: base_dir).tap(&:load_and_validate)
+        new(yaml_content, base_dir: base_dir, env_interpolation: env_interpolation).tap(&:load_and_validate)
       rescue Errno::ENOENT
         raise ConfigurationError, "Configuration file not found: #{path}"
       end
@@ -60,12 +64,17 @@ module SwarmSDK
     #
     # @param yaml_content [String] YAML configuration content
     # @param base_dir [String, Pathname] Base directory for resolving agent file paths (default: Dir.pwd)
-    def initialize(yaml_content, base_dir: Dir.pwd)
+    # @param env_interpolation [Boolean, nil] Whether to interpolate environment variables.
+    #   When nil, uses the global SwarmSDK.config.env_interpolation setting.
+    #   When true, interpolates ${VAR} and ${VAR:=default} patterns.
+    #   When false, skips interpolation entirely.
+    def initialize(yaml_content, base_dir: Dir.pwd, env_interpolation: nil)
       raise ArgumentError, "yaml_content cannot be nil" if yaml_content.nil?
       raise ArgumentError, "base_dir cannot be nil" if base_dir.nil?
 
       @yaml_content = yaml_content
       @base_dir = Pathname.new(base_dir).expand_path
+      @env_interpolation = env_interpolation
       @parser = nil
       @translator = nil
     end
@@ -77,7 +86,7 @@ module SwarmSDK
     #
     # @return [self]
     def load_and_validate
-      @parser = Parser.new(@yaml_content, base_dir: @base_dir)
+      @parser = Parser.new(@yaml_content, base_dir: @base_dir, env_interpolation: @env_interpolation)
       @parser.parse
 
       # Sync parsed data to instance variables for backward compatibility

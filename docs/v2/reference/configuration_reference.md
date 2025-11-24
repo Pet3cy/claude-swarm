@@ -155,10 +155,58 @@ Security-related configuration options.
 | Environment Variable | Config Key | Description | Default |
 |---------------------|------------|-------------|---------|
 | `SWARM_SDK_ALLOW_FILESYSTEM_TOOLS` | `allow_filesystem_tools` | Global toggle to enable/disable filesystem tools (Read, Write, Edit, Glob, Grep) | `true` |
+| `SWARM_SDK_ENV_INTERPOLATION` | `env_interpolation` | Global toggle to enable/disable environment variable interpolation in YAML configs | `true` |
 
 **Boolean Environment Variable Values:**
 - True: `true`, `yes`, `1`, `on`, `enabled`
 - False: `false`, `no`, `0`, `off`, `disabled`
+
+---
+
+## YAML Environment Variable Interpolation
+
+YAML configurations support environment variable interpolation using the `${VAR}` and `${VAR:=default}` syntax. This feature can be controlled globally or per-load.
+
+### Interpolation Syntax
+
+```yaml
+# Required variable (raises error if not set)
+model: ${OPENAI_MODEL}
+
+# Variable with default value
+model: ${OPENAI_MODEL:=gpt-4}
+
+# Empty default
+api_key: ${OPTIONAL_KEY:=}
+```
+
+### Disabling Interpolation
+
+**Per-load** (highest priority):
+```ruby
+# Disable for a specific load
+swarm = SwarmSDK.load(yaml_content, env_interpolation: false)
+swarm = SwarmSDK.load_file("config.yml", env_interpolation: false)
+```
+
+**Globally** (via configuration):
+```ruby
+SwarmSDK.configure do |config|
+  config.env_interpolation = false
+end
+```
+
+**Globally** (via environment variable):
+```bash
+export SWARM_SDK_ENV_INTERPOLATION=false
+```
+
+### Priority Order
+
+1. Per-load parameter (`env_interpolation:`) - highest priority
+2. Global config (`SwarmSDK.config.env_interpolation`)
+3. Environment variable (`SWARM_SDK_ENV_INTERPOLATION`)
+4. Default (`true`) - lowest priority
 
 ---
 

@@ -14,6 +14,7 @@ module SwarmSDK
         "SWARM_SDK_DEFAULT_PROVIDER",
         "SWARM_SDK_AGENT_REQUEST_TIMEOUT",
         "SWARM_SDK_ALLOW_FILESYSTEM_TOOLS",
+        "SWARM_SDK_ENV_INTERPOLATION",
         "SWARM_SDK_WEBFETCH_PROVIDER",
         "SWARM_SDK_WEBFETCH_MODEL",
         "SWARM_SDK_WEBFETCH_MAX_TOKENS",
@@ -244,6 +245,24 @@ module SwarmSDK
       ENV["SWARM_SDK_ALLOW_FILESYSTEM_TOOLS"] = "false"
 
       refute(SwarmSDK.config.allow_filesystem_tools)
+    end
+
+    def test_env_interpolation_default
+      assert(SwarmSDK.config.env_interpolation)
+    end
+
+    def test_env_interpolation_can_be_disabled
+      SwarmSDK.configure do |config|
+        config.env_interpolation = false
+      end
+
+      refute(SwarmSDK.config.env_interpolation)
+    end
+
+    def test_env_boolean_parsing_for_env_interpolation
+      ENV["SWARM_SDK_ENV_INTERPOLATION"] = "false"
+
+      refute(SwarmSDK.config.env_interpolation)
     end
 
     def test_env_boolean_parsing_various_true_values

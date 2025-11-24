@@ -275,6 +275,11 @@ module SwarmSDK
     #
     # @param yaml_content [String] YAML configuration content
     # @param base_dir [String, Pathname] Base directory for resolving agent file paths (default: Dir.pwd)
+    # @param allow_filesystem_tools [Boolean, nil] Whether to allow filesystem tools (nil uses global setting)
+    # @param env_interpolation [Boolean, nil] Whether to interpolate environment variables.
+    #   When nil, uses the global SwarmSDK.config.env_interpolation setting.
+    #   When true, interpolates ${VAR} and ${VAR:=default} patterns.
+    #   When false, skips interpolation entirely.
     # @return [Swarm, Workflow] Configured swarm or workflow instance
     # @raise [ConfigurationError] If YAML is invalid or configuration is incorrect
     #
@@ -297,8 +302,11 @@ module SwarmSDK
     # @example Load with default base_dir (Dir.pwd)
     #   yaml = File.read("config.yml")
     #   swarm = SwarmSDK.load(yaml)  # base_dir defaults to Dir.pwd
-    def load(yaml_content, base_dir: Dir.pwd, allow_filesystem_tools: nil)
-      config = Configuration.new(yaml_content, base_dir: base_dir)
+    #
+    # @example Load without environment variable interpolation
+    #   swarm = SwarmSDK.load(yaml, env_interpolation: false)
+    def load(yaml_content, base_dir: Dir.pwd, allow_filesystem_tools: nil, env_interpolation: nil)
+      config = Configuration.new(yaml_content, base_dir: base_dir, env_interpolation: env_interpolation)
       config.load_and_validate
       swarm = config.to_swarm(allow_filesystem_tools: allow_filesystem_tools)
 
@@ -320,6 +328,11 @@ module SwarmSDK
     # loading swarms from configuration files.
     #
     # @param path [String, Pathname] Path to YAML configuration file
+    # @param allow_filesystem_tools [Boolean, nil] Whether to allow filesystem tools (nil uses global setting)
+    # @param env_interpolation [Boolean, nil] Whether to interpolate environment variables.
+    #   When nil, uses the global SwarmSDK.config.env_interpolation setting.
+    #   When true, interpolates ${VAR} and ${VAR:=default} patterns.
+    #   When false, skips interpolation entirely.
     # @return [Swarm, Workflow] Configured swarm or workflow instance
     # @raise [ConfigurationError] If file not found or configuration invalid
     #
@@ -329,8 +342,11 @@ module SwarmSDK
     #
     # @example With absolute path
     #   swarm = SwarmSDK.load_file("/absolute/path/config.yml")
-    def load_file(path, allow_filesystem_tools: nil)
-      config = Configuration.load_file(path)
+    #
+    # @example Load without environment variable interpolation
+    #   swarm = SwarmSDK.load_file("config.yml", env_interpolation: false)
+    def load_file(path, allow_filesystem_tools: nil, env_interpolation: nil)
+      config = Configuration.load_file(path, env_interpolation: env_interpolation)
       swarm = config.to_swarm(allow_filesystem_tools: allow_filesystem_tools)
 
       # Apply hooks if any are configured (YAML-only feature)

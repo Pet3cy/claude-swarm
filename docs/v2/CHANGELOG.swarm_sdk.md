@@ -5,6 +5,32 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.4]
+
+### Added
+
+- **Environment Variable Interpolation Control**: New `env_interpolation` setting to disable YAML variable interpolation
+  - **Global config**: `SwarmSDK.configure { |c| c.env_interpolation = false }`
+  - **Environment variable**: `SWARM_SDK_ENV_INTERPOLATION=false`
+  - **Per-load override**: `SwarmSDK.load(yaml, env_interpolation: false)` or `SwarmSDK.load_file(path, env_interpolation: false)`
+  - **Priority order**: per-load parameter > global config > environment variable > default (true)
+  - **Use cases**:
+    - Testing YAML files without setting environment variables
+    - Loading configs where `${...}` syntax should be preserved literally
+    - Security: preventing accidental environment variable exposure
+  - **Example**:
+    ```ruby
+    # Disable globally
+    SwarmSDK.configure do |config|
+      config.env_interpolation = false
+    end
+
+    # Disable for specific load
+    swarm = SwarmSDK.load_file("config.yml", env_interpolation: false)
+    ```
+  - **Files**: `lib/swarm_sdk/config.rb`, `lib/swarm_sdk/configuration.rb`, `lib/swarm_sdk/configuration/parser.rb`, `lib/swarm_sdk.rb`
+  - **Tests**: Comprehensive tests in `config_test.rb` and `configuration_test.rb`
+
 ## [2.4.3]
 
 ### Added
