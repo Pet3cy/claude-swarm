@@ -296,7 +296,7 @@ module SwarmSDK
         message = Struct.new(:input_tokens, :output_tokens, :model_id).new(1_000_000, 500_000, "claude-sonnet-4-5-20250929")
 
         model_info = SwarmSDK::Models.find("claude-sonnet-4-5-20250929")
-        pricing = model_info["pricing"] || model_info[:pricing]
+        pricing = model_info.pricing
         text_pricing = pricing["text_tokens"] || pricing[:text_tokens]
         standard_pricing = text_pricing["standard"] || text_pricing[:standard]
         input_price = standard_pricing["input_per_million"] || standard_pricing[:input_per_million]
@@ -317,12 +317,12 @@ module SwarmSDK
         message = Struct.new(:input_tokens, :output_tokens, :model_id).new(1_000_000, 500_000, "test-model")
 
         # Mock model with missing text_tokens pricing
-        mock_model_info = {
+        mock_model_info = SwarmSDK::Models::ModelInfo.new({
           "id" => "test-model",
           "pricing" => {
             # Missing text_tokens key
           },
-        }
+        })
 
         SwarmSDK::Models.stub(:find, ->(_) { mock_model_info }) do
           result = @chat.calculate_cost(message)
@@ -337,14 +337,14 @@ module SwarmSDK
         message = Struct.new(:input_tokens, :output_tokens, :model_id).new(1_000_000, 500_000, "test-model")
 
         # Mock model with missing standard pricing
-        mock_model_info = {
+        mock_model_info = SwarmSDK::Models::ModelInfo.new({
           "id" => "test-model",
           "pricing" => {
             "text_tokens" => {
               # Missing standard key
             },
           },
-        }
+        })
 
         SwarmSDK::Models.stub(:find, ->(_) { mock_model_info }) do
           result = @chat.calculate_cost(message)
@@ -359,7 +359,7 @@ module SwarmSDK
         message = Struct.new(:input_tokens, :output_tokens, :model_id).new(1_000_000, 500_000, "test-model")
 
         # Mock model with missing input_per_million
-        mock_model_info = {
+        mock_model_info = SwarmSDK::Models::ModelInfo.new({
           "id" => "test-model",
           "pricing" => {
             "text_tokens" => {
@@ -369,7 +369,7 @@ module SwarmSDK
               },
             },
           },
-        }
+        })
 
         SwarmSDK::Models.stub(:find, ->(_) { mock_model_info }) do
           result = @chat.calculate_cost(message)
@@ -384,7 +384,7 @@ module SwarmSDK
         message = Struct.new(:input_tokens, :output_tokens, :model_id).new(1_000_000, 500_000, "test-model")
 
         # Mock model with missing output_per_million
-        mock_model_info = {
+        mock_model_info = SwarmSDK::Models::ModelInfo.new({
           "id" => "test-model",
           "pricing" => {
             "text_tokens" => {
@@ -394,7 +394,7 @@ module SwarmSDK
               },
             },
           },
-        }
+        })
 
         SwarmSDK::Models.stub(:find, ->(_) { mock_model_info }) do
           result = @chat.calculate_cost(message)
@@ -409,7 +409,7 @@ module SwarmSDK
         message = Struct.new(:input_tokens, :output_tokens, :model_id).new(1_000_000, 500_000, "test-model")
 
         # Mock model with symbol keys
-        mock_model_info = {
+        mock_model_info = SwarmSDK::Models::ModelInfo.new({
           id: "test-model",
           pricing: {
             text_tokens: {
@@ -419,7 +419,7 @@ module SwarmSDK
               },
             },
           },
-        }
+        })
 
         SwarmSDK::Models.stub(:find, ->(_) { mock_model_info }) do
           result = @chat.calculate_cost(message)

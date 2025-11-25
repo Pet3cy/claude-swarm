@@ -72,13 +72,35 @@ Emitted when swarm execution completes (success or error).
   duration: 277.5,                             # Seconds (Float)
   total_cost: 0.00234,                         # USD (Float)
   total_tokens: 12450,                         # Integer
-  agents_involved: [:lead, :backend, :frontend] # Array of agent names
+  agents_involved: [:lead, :backend, :frontend], # Array of agent names
+  per_agent_usage: {                           # Per-agent usage breakdown (Hash)
+    lead: {
+      input_tokens: 5200,
+      output_tokens: 1800,
+      total_tokens: 7000,
+      input_cost: 0.00156,
+      output_cost: 0.00054,
+      total_cost: 0.0021,
+      context_limit: 200000,
+      context_usage_percentage: 3.5
+    },
+    backend: {
+      input_tokens: 3250,
+      output_tokens: 1200,
+      total_tokens: 4450,
+      input_cost: 0.00015,
+      output_cost: 0.00009,
+      total_cost: 0.00024,
+      context_limit: 128000,
+      context_usage_percentage: 3.48
+    }
+  }
 }
 ```
 
 **Field Locations**:
-- Root level: All fields including `swarm_id` and `parent_swarm_id`
-- No nested metadata for this event
+- Root level: All fields including `swarm_id`, `parent_swarm_id`, and `per_agent_usage`
+- Nested in `per_agent_usage`: Per-agent hash with token counts, costs, context metrics
 
 ---
 
@@ -677,7 +699,7 @@ Emitted after receiving HTTP response from LLM API provider (only when logging i
 | Event | Root Fields | Nested Fields |
 |-------|-------------|---------------|
 | `swarm_start` | swarm_name, lead_agent, prompt | None |
-| `swarm_stop` | swarm_name, lead_agent, last_agent, content, success, duration, total_cost, total_tokens, agents_involved | None |
+| `swarm_stop` | swarm_name, lead_agent, last_agent, content, success, duration, total_cost, total_tokens, agents_involved, per_agent_usage | per_agent_usage.{agent}.* |
 | `agent_start` | swarm_name, model, provider, directory, system_prompt, tools, delegates_to | plugin_storages.* |
 | `agent_stop` | model, content, tool_calls, finish_reason, tool_executions | usage.*, metadata.* |
 | `agent_step` | model, content, tool_calls, finish_reason, tool_executions | usage.*, tool_calls[].*, metadata.* |

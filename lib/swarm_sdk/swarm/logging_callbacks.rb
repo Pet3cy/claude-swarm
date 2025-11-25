@@ -208,6 +208,7 @@ module SwarmSDK
           total_cost: context.metadata[:total_cost],
           total_tokens: context.metadata[:total_tokens],
           agents_involved: context.metadata[:agents_involved],
+          per_agent_usage: context.metadata[:per_agent_usage],
           timestamp: context.metadata[:timestamp],
         )
       end

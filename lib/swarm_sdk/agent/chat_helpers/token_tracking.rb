@@ -84,6 +84,35 @@ module SwarmSDK
           limit - cumulative_total_tokens
         end
 
+        # Calculate cumulative input cost based on tokens and model pricing
+        #
+        # @return [Float] Total input cost in dollars
+        def cumulative_input_cost
+          pricing = model_pricing
+          return 0.0 unless pricing
+
+          input_price = pricing["input_per_million"] || pricing[:input_per_million] || 0.0
+          (cumulative_input_tokens / 1_000_000.0) * input_price
+        end
+
+        # Calculate cumulative output cost based on tokens and model pricing
+        #
+        # @return [Float] Total output cost in dollars
+        def cumulative_output_cost
+          pricing = model_pricing
+          return 0.0 unless pricing
+
+          output_price = pricing["output_per_million"] || pricing[:output_per_million] || 0.0
+          (cumulative_output_tokens / 1_000_000.0) * output_price
+        end
+
+        # Calculate cumulative total cost (input + output)
+        #
+        # @return [Float] Total cost in dollars
+        def cumulative_total_cost
+          cumulative_input_cost + cumulative_output_cost
+        end
+
         # Compact the conversation history to reduce token usage
         #
         # @param options [Hash] Compression options
@@ -91,6 +120,25 @@ module SwarmSDK
         def compact_context(**options)
           compactor = ContextCompactor.new(self, options)
           compactor.compact
+        end
+
+        private
+
+        # Get pricing info for the current model
+        #
+        # Extracts standard text token pricing from model info.
+        #
+        # @return [Hash, nil] Pricing hash with input_per_million and output_per_million
+        def model_pricing
+          return unless @real_model_info&.pricing
+
+          pricing = @real_model_info.pricing
+          text_pricing = pricing["text_tokens"] || pricing[:text_tokens]
+          return unless text_pricing
+
+          text_pricing["standard"] || text_pricing[:standard]
+        rescue StandardError
+          nil
         end
       end
     end

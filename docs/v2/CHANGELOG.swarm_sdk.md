@@ -5,6 +5,64 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.5]
+
+### Fixed
+
+- **Context Window Tracking Bug**: Fixed model lookup using wrong source for context window data
+  - **Issue**: Changes to `models.json` had no effect on context window tracking - SDK always returned 0%
+  - **Root cause**: `fetch_real_model_info` was using `RubyLLM.models.find()` instead of `SwarmSDK::Models.find()`
+  - **Fix**: Changed model lookup to use `SwarmSDK::Models.find()` first, falling back to `RubyLLM.models.find()`
+  - **Impact**: Context window percentage now correctly calculated from SwarmSDK's models.json
+  - **Files**: `lib/swarm_sdk/agent/chat_helpers/llm_configuration.rb`
+
+### Added
+
+- **Per-Agent Context Breakdown**: Real-time and historical context usage metrics per agent
+  - **`Swarm#context_breakdown`**: Returns live context metrics for all agents including:
+    - Token counts: `input_tokens`, `output_tokens`, `total_tokens`, `cached_tokens`, `cache_creation_tokens`, `effective_input_tokens`
+    - Context limits: `context_limit`, `usage_percentage`, `tokens_remaining`
+    - Cost metrics: `input_cost`, `output_cost`, `total_cost`
+  - **`Result#per_agent_usage`**: Extracts per-agent usage from execution logs (for historical analysis)
+  - **`swarm_stop` event enhancement**: Now includes `per_agent_usage` field with complete breakdown
+  - **Use cases**: Monitor token consumption, track costs per agent, identify context-heavy agents
+  - **Example**:
+    ```ruby
+    breakdown = swarm.context_breakdown
+    breakdown[:backend]
+    # => {
+    #   input_tokens: 15000,
+    #   output_tokens: 5000,
+    #   total_tokens: 20000,
+    #   cached_tokens: 2000,
+    #   context_limit: 200000,
+    #   usage_percentage: 10.0,
+    #   tokens_remaining: 180000,
+    #   input_cost: 0.045,
+    #   output_cost: 0.075,
+    #   total_cost: 0.12
+    # }
+    ```
+  - **Files**: `lib/swarm_sdk/swarm.rb`, `lib/swarm_sdk/result.rb`, `lib/swarm_sdk/swarm/hook_triggers.rb`, `lib/swarm_sdk/swarm/logging_callbacks.rb`
+
+- **Cumulative Cost Tracking in TokenTracking**: New methods for calculating conversation costs
+  - **`cumulative_input_cost`**: Calculate total input cost based on tokens and model pricing
+  - **`cumulative_output_cost`**: Calculate total output cost based on tokens and model pricing
+  - **`cumulative_total_cost`**: Sum of input and output costs
+  - **Pricing source**: Uses `@real_model_info.pricing` from SwarmSDK's models.json
+  - **Files**: `lib/swarm_sdk/agent/chat_helpers/token_tracking.rb`
+
+- **ModelInfo Class**: Wrapper class for model data with method access
+  - **`SwarmSDK::Models::ModelInfo`**: Replaces raw Hash returns from `Models.find()`
+  - **Attributes**: `id`, `name`, `provider`, `family`, `context_window`, `max_output_tokens`, `knowledge_cutoff`, `modalities`, `capabilities`, `pricing`, `metadata`
+  - **Files**: `lib/swarm_sdk/models.rb`
+
+### Tests
+
+- **28 new tests** covering:
+  - `TokenTracking` cost methods (24 tests): context_limit, cumulative costs, pricing edge cases
+  - `Swarm#context_breakdown` (5 tests): structure, metrics, delegation instances, lazy initialization
+
 ## [2.4.4]
 
 ### Added

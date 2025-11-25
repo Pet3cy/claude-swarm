@@ -109,6 +109,58 @@ module SwarmSDK
       @logs.map { |entry| entry[:agent] }.compact.uniq.map(&:to_sym)
     end
 
+    # Get per-agent usage breakdown from logs
+    #
+    # Aggregates context usage, tokens, and cost for each agent from their
+    # final agent_stop or agent_step events. Each agent's entry includes:
+    # - input_tokens, output_tokens, total_tokens
+    # - context_limit, usage_percentage, tokens_remaining
+    # - input_cost, output_cost, total_cost
+    #
+    # @return [Hash{Symbol => Hash}] Per-agent usage breakdown
+    #
+    # @example
+    #   result.per_agent_usage[:backend]
+    #   # => {
+    #   #   input_tokens: 15000,
+    #   #   output_tokens: 5000,
+    #   #   total_tokens: 20000,
+    #   #   context_limit: 200000,
+    #   #   usage_percentage: "10.0%",
+    #   #   tokens_remaining: 180000,
+    #   #   input_cost: 0.045,
+    #   #   output_cost: 0.075,
+    #   #   total_cost: 0.12
+    #   # }
+    def per_agent_usage
+      # Find the last usage entry for each agent
+      agent_entries = {}
+
+      @logs.each do |entry|
+        next unless entry[:usage] && entry[:agent]
+        next unless entry[:type] == "agent_step" || entry[:type] == "agent_stop"
+
+        agent_name = entry[:agent].to_sym
+        agent_entries[agent_name] = entry[:usage]
+      end
+
+      # Build breakdown from final usage entries
+      agent_entries.transform_values do |usage|
+        {
+          input_tokens: usage[:cumulative_input_tokens] || 0,
+          output_tokens: usage[:cumulative_output_tokens] || 0,
+          total_tokens: usage[:cumulative_total_tokens] || 0,
+          cached_tokens: usage[:cumulative_cached_tokens] || 0,
+          context_limit: usage[:context_limit],
+          usage_percentage: usage[:tokens_used_percentage],
+          tokens_remaining: usage[:tokens_remaining],
+          input_cost: usage[:input_cost] || 0.0,
+          output_cost: usage[:output_cost] || 0.0,
+          total_cost: usage[:total_cost] || 0.0,
+        }
+      end
+    end
+
     # Count total LLM requests made
     # Each LLM API call produces either agent_step (tool calls) or agent_stop (final answer)
     def llm_requests

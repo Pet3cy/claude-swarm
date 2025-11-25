@@ -1000,6 +1000,139 @@ module SwarmSDK
       refute_predicate(swarm, :scratchpad_enabled?)
     end
 
+    # ========================================
+    # context_breakdown tests
+    # ========================================
+
+    def test_context_breakdown_returns_hash_with_agent_names
+      swarm = Swarm.new(name: "Test Swarm", scratchpad: @test_scratchpad)
+
+      swarm.add_agent(create_agent(
+        name: :agent1,
+        description: "Agent 1",
+        model: "gpt-5",
+        system_prompt: "Test",
+        directory: ".",
+      ))
+
+      swarm.add_agent(create_agent(
+        name: :agent2,
+        description: "Agent 2",
+        model: "gpt-5",
+        system_prompt: "Test",
+        directory: ".",
+      ))
+
+      swarm.lead = :agent1
+
+      breakdown = swarm.context_breakdown
+
+      assert_instance_of(Hash, breakdown)
+      assert_includes(breakdown.keys, :agent1)
+      assert_includes(breakdown.keys, :agent2)
+    end
+
+    def test_context_breakdown_includes_token_metrics
+      swarm = Swarm.new(name: "Test Swarm", scratchpad: @test_scratchpad)
+
+      swarm.add_agent(create_agent(
+        name: :lead,
+        description: "Lead",
+        model: "gpt-5",
+        system_prompt: "Test",
+        directory: ".",
+      ))
+
+      swarm.lead = :lead
+
+      breakdown = swarm.context_breakdown
+
+      # Verify structure includes expected keys
+      agent_info = breakdown[:lead]
+
+      assert(agent_info.key?(:input_tokens))
+      assert(agent_info.key?(:output_tokens))
+      assert(agent_info.key?(:total_tokens))
+      assert(agent_info.key?(:cached_tokens))
+      assert(agent_info.key?(:context_limit))
+      assert(agent_info.key?(:usage_percentage))
+      assert(agent_info.key?(:tokens_remaining))
+    end
+
+    def test_context_breakdown_includes_cost_metrics
+      swarm = Swarm.new(name: "Test Swarm", scratchpad: @test_scratchpad)
+
+      swarm.add_agent(create_agent(
+        name: :lead,
+        description: "Lead",
+        model: "gpt-5",
+        system_prompt: "Test",
+        directory: ".",
+      ))
+
+      swarm.lead = :lead
+
+      breakdown = swarm.context_breakdown
+
+      agent_info = breakdown[:lead]
+
+      assert(agent_info.key?(:input_cost))
+      assert(agent_info.key?(:output_cost))
+      assert(agent_info.key?(:total_cost))
+    end
+
+    def test_context_breakdown_includes_delegation_instances
+      swarm = Swarm.new(name: "Test Swarm", scratchpad: @test_scratchpad)
+
+      swarm.add_agent(create_agent(
+        name: :lead,
+        description: "Lead",
+        model: "gpt-5",
+        system_prompt: "Test",
+        delegates_to: [:backend],
+        directory: ".",
+      ))
+
+      swarm.add_agent(create_agent(
+        name: :backend,
+        description: "Backend developer",
+        model: "gpt-5",
+        system_prompt: "Test",
+        directory: ".",
+      ))
+
+      swarm.lead = :lead
+
+      # Initialize agents
+      swarm.agent(swarm.agent_names.first)
+
+      breakdown = swarm.context_breakdown
+
+      # Should include delegation instance
+      assert(breakdown.keys.any? { |k| k.to_s.include?("backend") })
+    end
+
+    def test_context_breakdown_initializes_agents_lazily
+      swarm = Swarm.new(name: "Test Swarm", scratchpad: @test_scratchpad)
+
+      swarm.add_agent(create_agent(
+        name: :lead,
+        description: "Lead",
+        model: "gpt-5",
+        system_prompt: "Test",
+        directory: ".",
+      ))
+
+      swarm.lead = :lead
+
+      # Call context_breakdown without explicitly initializing agents
+      breakdown = swarm.context_breakdown
+
+      # Should still return data (agents initialized lazily)
+      assert_instance_of(Hash, breakdown)
+      assert_includes(breakdown.keys, :lead)
+    end
+
     private
 
     def valid_yaml_config

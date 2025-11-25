@@ -417,5 +417,181 @@ module SwarmSDK
       assert_equal(5, result.llm_requests) # 2 agent_step + 3 agent_stop
       assert_equal(2, result.tool_calls_count)
     end
+
+    def test_per_agent_usage_with_no_logs
+      result = Result.new(agent: "test", logs: [])
+
+      assert_empty(result.per_agent_usage)
+    end
+
+    def test_per_agent_usage_with_single_agent
+      logs = [
+        {
+          type: "agent_stop",
+          agent: "backend",
+          usage: {
+            cumulative_input_tokens: 1000,
+            cumulative_output_tokens: 500,
+            cumulative_total_tokens: 1500,
+            cumulative_cached_tokens: 200,
+            context_limit: 200_000,
+            tokens_used_percentage: "0.75%",
+            tokens_remaining: 198_500,
+            input_cost: 0.003,
+            output_cost: 0.0075,
+            total_cost: 0.0105,
+          },
+        },
+      ]
+      result = Result.new(agent: "test", logs: logs)
+
+      usage = result.per_agent_usage
+
+      assert_equal(1, usage.size)
+      assert(usage.key?(:backend))
+
+      backend = usage[:backend]
+
+      assert_equal(1000, backend[:input_tokens])
+      assert_equal(500, backend[:output_tokens])
+      assert_equal(1500, backend[:total_tokens])
+      assert_equal(200, backend[:cached_tokens])
+      assert_equal(200_000, backend[:context_limit])
+      assert_equal("0.75%", backend[:usage_percentage])
+      assert_equal(198_500, backend[:tokens_remaining])
+      assert_in_delta(0.003, backend[:input_cost])
+      assert_in_delta(0.0075, backend[:output_cost])
+      assert_in_delta(0.0105, backend[:total_cost])
+    end
+
+    def test_per_agent_usage_with_multiple_agents
+      logs = [
+        {
+          type: "agent_step",
+          agent: "lead",
+          usage: {
+            cumulative_input_tokens: 500,
+            cumulative_output_tokens: 200,
+            cumulative_total_tokens: 700,
+            context_limit: 200_000,
+            tokens_used_percentage: "0.35%",
+            tokens_remaining: 199_300,
+            input_cost: 0.001,
+            output_cost: 0.003,
+            total_cost: 0.004,
+          },
+        },
+        {
+          type: "agent_stop",
+          agent: "lead",
+          usage: {
+            cumulative_input_tokens: 800,
+            cumulative_output_tokens: 400,
+            cumulative_total_tokens: 1200,
+            context_limit: 200_000,
+            tokens_used_percentage: "0.6%",
+            tokens_remaining: 198_800,
+            input_cost: 0.002,
+            output_cost: 0.006,
+            total_cost: 0.008,
+          },
+        },
+        {
+          type: "agent_stop",
+          agent: "backend",
+          usage: {
+            cumulative_input_tokens: 2000,
+            cumulative_output_tokens: 1000,
+            cumulative_total_tokens: 3000,
+            context_limit: 100_000,
+            tokens_used_percentage: "3.0%",
+            tokens_remaining: 97_000,
+            input_cost: 0.006,
+            output_cost: 0.015,
+            total_cost: 0.021,
+          },
+        },
+      ]
+      result = Result.new(agent: "test", logs: logs)
+
+      usage = result.per_agent_usage
+
+      assert_equal(2, usage.size)
+      assert(usage.key?(:lead))
+      assert(usage.key?(:backend))
+
+      # Should use the LAST entry for each agent
+      lead = usage[:lead]
+
+      assert_equal(800, lead[:input_tokens])
+      assert_equal(400, lead[:output_tokens])
+      assert_equal(1200, lead[:total_tokens])
+      assert_equal(200_000, lead[:context_limit])
+      assert_equal("0.6%", lead[:usage_percentage])
+
+      backend = usage[:backend]
+
+      assert_equal(2000, backend[:input_tokens])
+      assert_equal(1000, backend[:output_tokens])
+      assert_equal(3000, backend[:total_tokens])
+      assert_equal(100_000, backend[:context_limit])
+      assert_equal("3.0%", backend[:usage_percentage])
+    end
+
+    def test_per_agent_usage_ignores_non_llm_events
+      logs = [
+        { type: "user_prompt", agent: "lead" },
+        { type: "tool_call", agent: "backend", usage: { total_cost: 0.01 } },
+        { type: "tool_result", agent: "backend" },
+        {
+          type: "agent_stop",
+          agent: "lead",
+          usage: {
+            cumulative_input_tokens: 500,
+            cumulative_output_tokens: 250,
+            cumulative_total_tokens: 750,
+            context_limit: 200_000,
+            tokens_used_percentage: "0.375%",
+            tokens_remaining: 199_250,
+            input_cost: 0.0015,
+            output_cost: 0.00375,
+            total_cost: 0.00525,
+          },
+        },
+      ]
+      result = Result.new(agent: "test", logs: logs)
+
+      usage = result.per_agent_usage
+
+      # Only lead should be included (agent_stop), not backend (tool_call)
+      assert_equal(1, usage.size)
+      assert(usage.key?(:lead))
+      refute(usage.key?(:backend))
+    end
+
+    def test_per_agent_usage_handles_missing_fields
+      logs = [
+        {
+          type: "agent_stop",
+          agent: "backend",
+          usage: {
+            # Only partial data
+            cumulative_input_tokens: 1000,
+            cumulative_output_tokens: 500,
+            # Missing: cumulative_total_tokens, context_limit, etc.
+          },
+        },
+      ]
+      result = Result.new(agent: "test", logs: logs)
+
+      usage = result.per_agent_usage[:backend]
+
+      assert_equal(1000, usage[:input_tokens])
+      assert_equal(500, usage[:output_tokens])
+      assert_equal(0, usage[:total_tokens]) # Default to 0
+      assert_nil(usage[:context_limit]) # nil when not provided
+      assert_nil(usage[:usage_percentage]) # nil when not provided
+      assert_in_delta(0.0, usage[:input_cost]) # Default to 0.0
+    end
   end
 end

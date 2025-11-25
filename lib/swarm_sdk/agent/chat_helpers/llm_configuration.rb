@@ -170,11 +170,16 @@ module SwarmSDK
 
         # Fetch real model info for accurate context tracking
         #
+        # Uses SwarmSDK::Models for model lookup (reads from models.json).
+        # Falls back to RubyLLM.models if not found in SwarmSDK.
+        #
         # @param model_id [String] Model ID to lookup
         def fetch_real_model_info(model_id)
           @model_lookup_error = nil
           @real_model_info = begin
-            RubyLLM.models.find(model_id)
+            # Try SwarmSDK::Models first (reads from local models.json)
+            # Returns ModelInfo object with method access (context_window, etc.)
+            SwarmSDK::Models.find(model_id) || RubyLLM.models.find(model_id)
           rescue StandardError => e
             suggestions = suggest_similar_models(model_id)
             @model_lookup_error = {

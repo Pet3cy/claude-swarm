@@ -9,9 +9,9 @@ module SwarmSDK
       model = SwarmSDK::Models.find("claude-sonnet-4-5-20250929")
 
       assert(model, "Model should exist in SwarmSDK registry")
-      assert(model["pricing"], "Model should have pricing structure")
+      assert(model.pricing, "Model should have pricing structure")
 
-      pricing = model["pricing"]["text_tokens"]["standard"]
+      pricing = model.pricing["text_tokens"]["standard"]
 
       assert_in_delta(3.0, pricing["input_per_million"])
       assert_in_delta(15.0, pricing["output_per_million"])
@@ -21,9 +21,9 @@ module SwarmSDK
       model = SwarmSDK::Models.find("gpt-5")
 
       assert(model, "GPT-5 should exist in registry")
-      assert(model["pricing"], "GPT-5 should have pricing")
+      assert(model.pricing, "GPT-5 should have pricing")
 
-      pricing = model["pricing"]["text_tokens"]["standard"]
+      pricing = model.pricing["text_tokens"]["standard"]
 
       assert_in_delta(1.25, pricing["input_per_million"])
       assert_in_delta(10.0, pricing["output_per_million"])
@@ -73,7 +73,7 @@ module SwarmSDK
     def test_pricing_calculation_example
       # Demonstrate how cost calculation works with SwarmSDK models
       model = SwarmSDK::Models.find("claude-sonnet-4-5-20250929")
-      pricing = model["pricing"]["text_tokens"]["standard"]
+      pricing = model.pricing["text_tokens"]["standard"]
 
       # Example: 1000 input tokens, 500 output tokens
       input_tokens = 1000

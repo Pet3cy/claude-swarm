@@ -18,16 +18,57 @@ module SwarmSDK
     MODELS_JSON_PATH = File.expand_path("models.json", __dir__)
     ALIASES_JSON_PATH = File.expand_path("model_aliases.json", __dir__)
 
+    # Model information wrapper providing method access to model data
+    #
+    # Wraps the raw Hash from models.json to provide RubyLLM::Model::Info-like
+    # interface for compatibility with code expecting method access.
+    #
+    # @example
+    #   model = SwarmSDK::Models.find("claude-sonnet-4-5-20250929")
+    #   model.context_window  #=> 200000
+    #   model.id              #=> "claude-sonnet-4-5-20250929"
+    class ModelInfo
+      attr_reader :id,
+        :name,
+        :provider,
+        :family,
+        :context_window,
+        :max_output_tokens,
+        :knowledge_cutoff,
+        :modalities,
+        :capabilities,
+        :pricing,
+        :metadata
+
+      # Create a ModelInfo from a Hash
+      #
+      # @param data [Hash] Model data from models.json
+      def initialize(data)
+        @id = data["id"] || data[:id]
+        @name = data["name"] || data[:name]
+        @provider = data["provider"] || data[:provider]
+        @family = data["family"] || data[:family]
+        @context_window = data["context_window"] || data[:context_window]
+        @max_output_tokens = data["max_output_tokens"] || data[:max_output_tokens]
+        @knowledge_cutoff = data["knowledge_cutoff"] || data[:knowledge_cutoff]
+        @modalities = data["modalities"] || data[:modalities]
+        @capabilities = data["capabilities"] || data[:capabilities]
+        @pricing = data["pricing"] || data[:pricing]
+        @metadata = data["metadata"] || data[:metadata]
+      end
+    end
+
     class << self
       # Find a model by ID or alias
       #
       # @param model_id [String] Model ID or alias to find
-      # @return [Hash, nil] Model data or nil if not found
+      # @return [ModelInfo, nil] Model info or nil if not found
       def find(model_id)
         # Check if it's an alias first
         resolved_id = resolve_alias(model_id)
 
-        all.find { |m| m["id"] == resolved_id || m[:id] == resolved_id }
+        model_hash = all.find { |m| m["id"] == resolved_id || m[:id] == resolved_id }
+        model_hash ? ModelInfo.new(model_hash) : nil
       end
 
       # Resolve a model alias to full model ID

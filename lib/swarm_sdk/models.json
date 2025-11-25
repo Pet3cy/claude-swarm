@@ -5,7 +5,7 @@
       "provider": "anthropic",
       "family": "claude-haiku-4-5",
       "created_at": null,
-      "context_window": null,
+      "context_window": 200000,
       "max_output_tokens": 64000,
       "knowledge_cutoff": null,
       "modalities": {
@@ -36,7 +36,7 @@
       "provider": "anthropic",
       "family": "claude-haiku-4-5",
       "created_at": null,
-      "context_window": null,
+      "context_window": 200000,
       "max_output_tokens": 64000,
       "knowledge_cutoff": null,
       "modalities": {

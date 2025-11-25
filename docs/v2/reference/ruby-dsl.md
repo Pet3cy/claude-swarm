@@ -2359,6 +2359,124 @@ result.to_json → String
 ```
 Convert to JSON string.
 
+**per_agent_usage**
+```ruby
+result.per_agent_usage → Hash<Symbol, Hash>
+```
+Returns per-agent usage breakdown extracted from execution logs.
+
+Each agent entry contains:
+- `input_tokens` - Input tokens for this agent
+- `output_tokens` - Output tokens for this agent
+- `total_tokens` - Total tokens (input + output)
+- `cached_tokens` - Cached tokens used
+- `context_limit` - Context window limit
+- `usage_percentage` - Percentage of context window used
+- `tokens_remaining` - Tokens remaining in context window
+- `input_cost` - Input cost in dollars
+- `output_cost` - Output cost in dollars
+- `total_cost` - Total cost in dollars
+
+**Example:**
+```ruby
+result = swarm.execute("Build authentication")
+usage = result.per_agent_usage
+
+usage[:backend]
+# => {
+#   input_tokens: 15000,
+#   output_tokens: 5000,
+#   total_tokens: 20000,
+#   cached_tokens: 2000,
+#   context_limit: 200000,
+#   usage_percentage: 10.0,
+#   tokens_remaining: 180000,
+#   input_cost: 0.045,
+#   output_cost: 0.075,
+#   total_cost: 0.12
+# }
+```
+
+---
+
+## Swarm Methods
+
+### context_breakdown
+
+Get real-time context usage breakdown for all agents.
+
+**Signature:**
+```ruby
+swarm.context_breakdown → Hash<Symbol, Hash>
+```
+
+**Returns:**
+Hash with agent names as keys and context usage info as values.
+
+**Description:**
+Returns live context metrics for all agents in the swarm, including both primary agents and delegation instances. Useful for monitoring token consumption and costs during execution.
+
+Each agent entry contains:
+- `input_tokens` - Cumulative input tokens
+- `output_tokens` - Cumulative output tokens
+- `total_tokens` - Total tokens (input + output)
+- `cached_tokens` - Cached tokens used
+- `cache_creation_tokens` - Tokens written to cache
+- `effective_input_tokens` - Actual input tokens charged (input - cached)
+- `context_limit` - Context window limit for the model
+- `usage_percentage` - Percentage of context window used
+- `tokens_remaining` - Tokens remaining in context window
+- `input_cost` - Cumulative input cost in dollars
+- `output_cost` - Cumulative output cost in dollars
+- `total_cost` - Cumulative total cost in dollars
+
+**Example:**
+```ruby
+swarm = SwarmSDK.build do
+  name "Dev Team"
+  lead :backend
+
+  agent :backend do
+    model "claude-sonnet-4"
+    delegates_to :tester
+  end
+
+  agent :tester do
+    model "gpt-4o-mini"
+  end
+end
+
+# During or after execution
+breakdown = swarm.context_breakdown
+
+# Primary agent
+breakdown[:backend]
+# => {
+#   input_tokens: 15000,
+#   output_tokens: 5000,
+#   total_tokens: 20000,
+#   cached_tokens: 2000,
+#   cache_creation_tokens: 1000,
+#   effective_input_tokens: 13000,
+#   context_limit: 200000,
+#   usage_percentage: 10.0,
+#   tokens_remaining: 180000,
+#   input_cost: 0.045,
+#   output_cost: 0.075,
+#   total_cost: 0.12
+# }
+
+# Delegation instance
+breakdown[:"tester@backend"]
+# => { ... same structure ... }
+```
+
+**Use Cases:**
+- Monitor token consumption during long-running tasks
+- Track costs per agent in real-time
+- Identify context-heavy agents approaching limits
+- Debug context window issues
+
 ---
 
 ## Context Management

@@ -366,6 +366,47 @@ module SwarmSDK
       @agent_definitions.keys
     end
 
+    # Get context usage breakdown for all agents
+    #
+    # Returns per-agent context statistics including tokens used, context limit,
+    # usage percentage, and cost. Useful for monitoring context window consumption
+    # across the swarm.
+    #
+    # @return [Hash{Symbol => Hash}] Per-agent context breakdown
+    #
+    # @example
+    #   breakdown = swarm.context_breakdown
+    #   breakdown[:backend]
+    #   # => {
+    #   #   input_tokens: 15000,
+    #   #   output_tokens: 5000,
+    #   #   total_tokens: 20000,
+    #   #   cached_tokens: 2000,
+    #   #   context_limit: 200000,
+    #   #   usage_percentage: 10.0,
+    #   #   tokens_remaining: 180000,
+    #   #   input_cost: 0.045,
+    #   #   output_cost: 0.075,
+    #   #   total_cost: 0.12
+    #   # }
+    def context_breakdown
+      initialize_agents unless @agents_initialized
+
+      breakdown = {}
+
+      # Include primary agents
+      @agents.each do |name, chat|
+        breakdown[name] = build_agent_context_info(chat)
+      end
+
+      # Include delegation instances
+      @delegation_instances.each do |instance_name, chat|
+        breakdown[instance_name.to_sym] = build_agent_context_info(chat)
+      end
+
+      breakdown
+    end
+
     # Implement Snapshotable interface
     def primary_agents
       @agents
@@ -544,6 +585,29 @@ module SwarmSDK
       else
         prompt
       end
+    end
+
+    # Build context info hash for an agent chat instance
+    #
+    # @param chat [Agent::Chat] Agent chat instance with TokenTracking
+    # @return [Hash] Context usage information
+    def build_agent_context_info(chat)
+      return {} unless chat.respond_to?(:cumulative_input_tokens)
+
+      {
+        input_tokens: chat.cumulative_input_tokens,
+        output_tokens: chat.cumulative_output_tokens,
+        total_tokens: chat.cumulative_total_tokens,
+        cached_tokens: chat.cumulative_cached_tokens,
+        cache_creation_tokens: chat.cumulative_cache_creation_tokens,
+        effective_input_tokens: chat.effective_input_tokens,
+        context_limit: chat.context_limit,
+        usage_percentage: chat.context_usage_percentage,
+        tokens_remaining: chat.tokens_remaining,
+        input_cost: chat.cumulative_input_cost,
+        output_cost: chat.cumulative_output_cost,
+        total_cost: chat.cumulative_total_cost,
+      }
     end
 
     # Validate that observer agent exists

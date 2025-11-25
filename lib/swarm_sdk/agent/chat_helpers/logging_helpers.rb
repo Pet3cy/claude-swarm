@@ -74,8 +74,8 @@ module SwarmSDK
           model_info = SwarmSDK::Models.find(message.model_id)
           return zero_cost unless model_info
 
-          # Extract pricing from SwarmSDK's models.json structure
-          pricing = model_info["pricing"] || model_info[:pricing]
+          # Extract pricing from SwarmSDK's ModelInfo (method access for top-level, Hash for nested)
+          pricing = model_info.pricing
           return zero_cost unless pricing
 
           text_pricing = pricing["text_tokens"] || pricing[:text_tokens]

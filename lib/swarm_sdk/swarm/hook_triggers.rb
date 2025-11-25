@@ -77,6 +77,7 @@ module SwarmSDK
             total_cost: result.total_cost,
             total_tokens: result.total_tokens,
             agents_involved: result.agents_involved,
+            per_agent_usage: result.per_agent_usage,
             result: result,
             timestamp: Time.now.utc.iso8601,
           },
