@@ -337,6 +337,213 @@ SwarmSDK.reset_config!
 
 ---
 
+### Custom Tool Registration
+
+Simple API for registering custom tools without creating full plugins.
+
+#### SwarmSDK.register_tool
+
+Register a custom RubyLLM::Tool for use in swarms.
+
+**Signatures:**
+```ruby
+SwarmSDK.register_tool(tool_class) → Symbol
+SwarmSDK.register_tool(name, tool_class) → Symbol
+```
+
+**Parameters:**
+- `tool_class` (Class): RubyLLM::Tool subclass to register
+- `name` (Symbol, optional): Explicit tool name (if not provided, name is inferred)
+
+**Returns:**
+- `Symbol`: The registered tool name
+
+**Description:**
+Registers a custom tool globally so it can be used in any swarm. Tools are registered by name and can be referenced in agent configurations.
+
+**Tool Lookup Order:**
+1. Plugin tools (from PluginRegistry)
+2. Custom tools (from CustomToolRegistry)
+3. Built-in tools (from Tools::Registry)
+
+**Name Inference:**
+If no name is provided, the tool name is inferred from the class name by:
+1. Taking the last component (e.g., `MyApp::Tools::WeatherTool` → `WeatherTool`)
+2. Removing the `Tool` suffix if present (e.g., `WeatherTool` → `Weather`)
+
+**Context Support:**
+Tools can declare `creation_requirements` to receive agent context:
+- `:agent_name` - Agent identifier (Symbol)
+- `:directory` - Agent's working directory (String)
+
+**Validation:**
+- Tool class must inherit from `RubyLLM::Tool`
+- Cannot override built-in tools (Read, Write, Edit, etc.)
+- Cannot override plugin tools (MemoryWrite, etc.)
+- Cannot register the same name twice
+
+**When to Use:**
+- Simple, stateless tools
+- No persistent storage needed
+- No lifecycle hooks required
+- Quick setup without plugin infrastructure
+
+**When to Use Plugins Instead:**
+- Need per-agent storage
+- Need lifecycle hooks (on_agent_initialized, on_user_message, etc.)
+- Want to contribute to system prompts
+- Building suite of related tools
+
+**Example - Simple Tool:**
+```ruby
+class WeatherTool < RubyLLM::Tool
+  description "Get weather for a city"
+  param :city, type: "string", required: true
+
+  def execute(city:)
+    # Call weather API
+    "Weather in #{city}: Sunny, 72°F"
+  end
+end
+
+# Register with inferred name (:Weather)
+SwarmSDK.register_tool(WeatherTool)
+
+# Use in swarm
+SwarmSDK.build do
+  agent :assistant do
+    model "claude-sonnet-4"
+    tools :Weather, :Read  # Mix custom and built-in tools
+  end
+end
+```
+
+**Example - Context-Aware Tool:**
+```ruby
+class AgentLogTool < RubyLLM::Tool
+  # Declare required context
+  def self.creation_requirements
+    [:agent_name, :directory]
+  end
+
+  description "Log a message for this agent"
+  param :message, type: "string", required: true
+
+  def initialize(agent_name:, directory:)
+    super()
+    @agent_name = agent_name
+    @log_file = File.join(directory, ".agent.log")
+  end
+
+  def execute(message:)
+    File.append(@log_file, "[#{@agent_name}] #{message}\n")
+    "Logged message to #{@log_file}"
+  end
+end
+
+SwarmSDK.register_tool(:AgentLog, AgentLogTool)
+```
+
+**Example - Explicit Name:**
+```ruby
+# Register with custom name
+SwarmSDK.register_tool(:GetWeather, WeatherTool)
+
+SwarmSDK.build do
+  agent :assistant do
+    tools :GetWeather  # Use the custom name
+  end
+end
+```
+
+#### SwarmSDK.custom_tool_registered?
+
+Check if a custom tool is registered.
+
+**Signature:**
+```ruby
+SwarmSDK.custom_tool_registered?(name) → Boolean
+```
+
+**Parameters:**
+- `name` (Symbol | String): Tool name to check
+
+**Returns:**
+- `true` if tool is registered, `false` otherwise
+
+**Example:**
+```ruby
+SwarmSDK.register_tool(WeatherTool)
+SwarmSDK.custom_tool_registered?(:Weather)  # => true
+SwarmSDK.custom_tool_registered?("Weather") # => true
+SwarmSDK.custom_tool_registered?(:Unknown)  # => false
+```
+
+#### SwarmSDK.custom_tools
+
+List all registered custom tool names.
+
+**Signature:**
+```ruby
+SwarmSDK.custom_tools → Array<Symbol>
+```
+
+**Returns:**
+- Array of registered tool names (as symbols)
+
+**Example:**
+```ruby
+SwarmSDK.register_tool(WeatherTool)
+SwarmSDK.register_tool(:Stock, StockPriceTool)
+
+SwarmSDK.custom_tools  # => [:Weather, :Stock]
+```
+
+#### SwarmSDK.unregister_tool
+
+Remove a registered custom tool.
+
+**Signature:**
+```ruby
+SwarmSDK.unregister_tool(name) → Class | nil
+```
+
+**Parameters:**
+- `name` (Symbol | String): Tool name to unregister
+
+**Returns:**
+- The unregistered tool class, or `nil` if not found
+
+**Example:**
+```ruby
+removed = SwarmSDK.unregister_tool(:Weather)
+removed  # => WeatherTool
+```
+
+#### SwarmSDK.clear_custom_tools!
+
+Clear all registered custom tools.
+
+**Signature:**
+```ruby
+SwarmSDK.clear_custom_tools! → void
+```
+
+**Description:**
+Removes all custom tool registrations. Primarily useful for testing to ensure clean state between test runs.
+
+**Example:**
+```ruby
+SwarmSDK.register_tool(WeatherTool)
+SwarmSDK.register_tool(StockPriceTool)
+
+SwarmSDK.clear_custom_tools!
+
+SwarmSDK.custom_tools  # => []
+```
+
+---
+
 ### SwarmSDK.build
 
 Build a swarm using the DSL.

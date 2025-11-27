@@ -193,6 +193,47 @@ end
 # MyAdapter.new(namespace: "researcher", table_name: "memory_entries")
 ```
 
+### YAML Configuration
+
+Custom adapters also work seamlessly with YAML configuration. All YAML keys (except `directory`, `adapter`, `mode`) are automatically passed to the adapter constructor:
+
+```yaml
+# swarm.yml
+agents:
+  researcher:
+    memory:
+      adapter: multi_bank_postgres
+      agent_id: researcher
+      discovery_threshold: 0.5
+      discovery_threshold_short: 0.3
+      semantic_weight: 0.6
+      default_bank: working
+      banks:
+        working: { max_size: 10485760 }
+        long_term: { max_size: 52428800 }
+```
+
+This configuration creates an adapter with:
+```ruby
+MultiBankPostgresAdapter.new(
+  agent_id: "researcher",
+  discovery_threshold: 0.5,
+  discovery_threshold_short: 0.3,
+  semantic_weight: 0.6,
+  default_bank: "working",
+  banks: {
+    "working" => { "max_size" => 10485760 },
+    "long_term" => { "max_size" => 52428800 }
+  }
+)
+```
+
+**Benefits:**
+- ✅ No code changes needed for configuration
+- ✅ Per-agent customization via YAML
+- ✅ All options passed directly to adapter
+- ✅ Each adapter validates its own requirements
+
 ---
 
 ## Example: ActiveRecord Adapter (PostgreSQL/Rails)

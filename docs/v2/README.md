@@ -1,7 +1,5 @@
 # SwarmSDK, SwarmCLI & SwarmMemory Documentation
 
-**Version 2.4**
-
 Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - a Ruby framework for orchestrating multiple AI agents as a collaborative team with persistent memory.
 
 ---
@@ -94,7 +92,7 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
   Persistent agent knowledge storage with semantic search:
   - Installation and setup
   - 4 memory categories (concept, fact, skill, experience)
-  - 9 memory tools (MemoryWrite, LoadSkill, etc.)
+  - 8 memory tools (7 memory tools + LoadSkill for dynamic tool swapping)
   - Automatic skill discovery (hybrid semantic + keyword)
   - Relationship discovery and knowledge graphs
   - Performance and troubleshooting
@@ -203,6 +201,9 @@ Welcome to the official documentation for SwarmSDK, SwarmCLI, and SwarmMemory - 
 **Build composable/reusable swarm teams** ⭐ NEW
 → [Composable Swarms Guide](guides/composable-swarms.md)
 
+**Add custom tools to agents**
+→ [Ruby DSL Reference - Custom Tools](reference/ruby-dsl.md#custom-tool-registration)
+
 **Build a SwarmSDK plugin**
 → [Plugin System Guide](guides/plugins.md)
 
@@ -305,8 +306,8 @@ A command-line interface for running SwarmSDK swarms with two modes:
 A persistent memory system for agents with semantic search capabilities:
 - **Storage**: Hierarchical knowledge organization (concept, fact, skill, experience)
 - **Semantic Search**: FAISS-based vector similarity with local ONNX embeddings
-- **Memory Tools**: 9 tools for writing, reading, editing, and searching knowledge
-- **LoadSkill**: Dynamic tool swapping based on semantic skill discovery
+- **Memory Tools**: 7 tools for writing, reading, editing, and searching knowledge
+- **LoadSkill**: Dynamic tool swapping based on semantic skill discovery (8 tools total)
 - **Plugin Architecture**: Integrates seamlessly via SwarmSDK plugin system
 
 ### Configuration Formats

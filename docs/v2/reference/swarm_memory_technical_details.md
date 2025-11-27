@@ -1222,7 +1222,7 @@ class SDKPlugin < SwarmSDK::Plugin
     # Return memory prompt based on mode
   end
 
-  def storage_enabled?(agent_definition)
+  def memory_configured?(agent_definition)
     agent_definition.memory_enabled?
   end
 end
