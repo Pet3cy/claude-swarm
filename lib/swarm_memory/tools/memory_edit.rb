@@ -162,11 +162,12 @@ module SwarmMemory
         # Get existing entry metadata
         entry = @storage.read_entry(file_path: file_path)
 
-        # Write updated content back (preserving the title)
+        # Write updated content back (preserving the title and metadata)
         @storage.write(
           file_path: file_path,
           content: new_content,
           title: entry.title,
+          metadata: entry.metadata,
         )
 
         # Build success message

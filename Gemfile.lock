@@ -27,7 +27,7 @@ PATH
       tty-spinner
       tty-tree
       zeitwerk
-    swarm_memory (2.2.0)
+    swarm_memory (2.2.1)
       async (~> 2.0)
       informers (~> 1.2.1)
       rice (~> 4.6.0)
