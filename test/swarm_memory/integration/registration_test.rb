@@ -20,7 +20,6 @@ class RegistrationTest < Minitest::Test
     assert_includes(tools, :MemoryWrite)
     assert_includes(tools, :MemoryRead)
     assert_includes(tools, :MemoryEdit)
-    assert_includes(tools, :MemoryMultiEdit)
     assert_includes(tools, :MemoryDelete)
     assert_includes(tools, :MemoryGlob)
     assert_includes(tools, :MemoryGrep)

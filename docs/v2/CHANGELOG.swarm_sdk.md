@@ -5,6 +5,65 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0]
+
+### Added
+
+- **Custom Tool Registration**: Simple API for registering custom tools without creating full plugins
+  - **`SwarmSDK.register_tool(ToolClass)`**: Register with inferred name (e.g., `WeatherTool` → `:Weather`)
+  - **`SwarmSDK.register_tool(:Name, ToolClass)`**: Register with explicit name
+  - **`SwarmSDK.custom_tool_registered?(:Name)`**: Check if tool is registered
+  - **`SwarmSDK.custom_tools`**: List all registered custom tool names
+  - **`SwarmSDK.unregister_tool(:Name)`**: Remove a registered tool
+  - **`SwarmSDK.clear_custom_tools!`**: Clear all registered tools (useful for testing)
+  - **Tool lookup order**: Plugin tools → Custom tools → Built-in tools
+  - **Context support**: Tools can declare `creation_requirements` for agent context (`:agent_name`, `:directory`)
+  - **Name consistency**: `NamedToolWrapper` ensures registered name is used for tool lookup
+  - **Validation**: Prevents overriding built-in tools or plugin tools
+  - **Use case**: Simple, stateless tools that don't need plugin lifecycle hooks or storage
+  - **Example**:
+    ```ruby
+    class WeatherTool < RubyLLM::Tool
+      description "Get weather for a city"
+      param :city, type: "string", required: true
+
+      def execute(city:)
+        "Weather in #{city}: Sunny"
+      end
+    end
+
+    SwarmSDK.register_tool(WeatherTool)
+
+    SwarmSDK.build do
+      name "Assistant"
+      lead :helper
+
+      agent :helper do
+        model "claude-sonnet-4"
+        description "Weather assistant"
+        system_prompt "You help with weather"
+        tools :Weather  # Use the registered tool
+      end
+    end
+    ```
+  - **Files**: `lib/swarm_sdk/custom_tool_registry.rb`, `lib/swarm_sdk.rb`, `lib/swarm_sdk/swarm/tool_configurator.rb`
+  - **Tests**: 32 comprehensive tests (unit + integration)
+
+### Changed
+
+- **BREAKING: Plugin API method renamed**: `storage_enabled?` → `memory_configured?` in Plugin base class
+  - **Rationale**: "memory" is the user-facing concept, "storage" is internal implementation detail
+  - **Better semantics**: "Is memory configured?" vs "Is storage enabled?"
+  - **No backward compatibility**: `storage_enabled?` method removed entirely (breaking change)
+  - **Impact**: Custom plugins implementing `storage_enabled?` must rename to `memory_configured?`
+  - **Migration**: Update plugin classes to implement `memory_configured?` instead of `storage_enabled?`
+  - **Files**: `lib/swarm_sdk/plugin.rb:142-148`
+  - **Updated callers**:
+    - `lib/swarm_sdk/swarm/agent_initializer.rb:572`
+    - `lib/swarm_sdk/agent/system_prompt_builder.rb:151`
+    - `lib/swarm_sdk/swarm/tool_configurator.rb:270`
+  - **Tests**: All plugin-related tests updated
+
 ## [2.4.6]
 - Use a fork of ruby_llm-mcp that requires ruby_llm_swarm instead of ruby_llm
 

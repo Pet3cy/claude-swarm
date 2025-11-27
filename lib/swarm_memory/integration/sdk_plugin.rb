@@ -52,7 +52,6 @@ module SwarmMemory
           :MemoryGrep,
           :MemoryWrite,
           :MemoryEdit,
-          :MemoryMultiEdit,
           :MemoryDelete,
           :MemoryDefrag,
         ]
@@ -78,7 +77,6 @@ module SwarmMemory
             :MemoryGrep,
             :MemoryWrite,
             :MemoryEdit,
-            :MemoryMultiEdit,
             :MemoryDelete,
             :MemoryDefrag,
           ]

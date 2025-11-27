@@ -123,8 +123,6 @@ module SwarmMemory
         Tools::MemoryRead.new(storage: storage, agent_name: agent_name)
       when :MemoryEdit
         Tools::MemoryEdit.new(storage: storage, agent_name: agent_name)
-      when :MemoryMultiEdit
-        Tools::MemoryMultiEdit.new(storage: storage, agent_name: agent_name)
       when :MemoryDelete
         Tools::MemoryDelete.new(storage: storage)
       when :MemoryGlob
@@ -158,7 +156,6 @@ module SwarmMemory
         Tools::MemoryWrite.new(storage: storage, agent_name: agent_name),
         Tools::MemoryRead.new(storage: storage, agent_name: agent_name),
         Tools::MemoryEdit.new(storage: storage, agent_name: agent_name),
-        Tools::MemoryMultiEdit.new(storage: storage, agent_name: agent_name),
         Tools::MemoryDelete.new(storage: storage),
         Tools::MemoryGlob.new(storage: storage),
         Tools::MemoryGrep.new(storage: storage),

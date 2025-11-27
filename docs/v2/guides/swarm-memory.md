@@ -190,17 +190,6 @@ MemoryEdit(
 )
 ```
 
-**MemoryMultiEdit** - Multiple edits in one operation
-```ruby
-MemoryMultiEdit(
-  file_path: "concept/ruby/classes.md",
-  edits_json: '[
-    {"old_string": "foo", "new_string": "bar"},
-    {"old_string": "baz", "new_string": "qux"}
-  ]'
-)
-```
-
 **MemoryDelete** - Remove entries
 ```ruby
 MemoryDelete(file_path: "concept/old-api/deprecated.md")

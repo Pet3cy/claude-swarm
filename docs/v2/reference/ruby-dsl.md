@@ -1108,7 +1108,7 @@ tools(*tool_names, include_default: true) → void
 - `ScratchpadWrite`, `ScratchpadRead`, `ScratchpadList`
 
 **Memory tools** (added if agent has `memory` configured):
-- `MemoryWrite`, `MemoryRead`, `MemoryEdit`, `MemoryMultiEdit`, `MemoryGlob`, `MemoryGrep`, `MemoryDelete`
+- `MemoryWrite`, `MemoryRead`, `MemoryEdit`, `MemoryGlob`, `MemoryGrep`, `MemoryDelete`
 
 **Additional tools:**
 - `Write`, `Edit`, `MultiEdit`, `Bash`
@@ -1257,7 +1257,7 @@ memory(&block) → void
 - `directory(string)` - Directory where memory.json will be stored (required)
 
 **Description:**
-Enables persistent memory for the agent. When configured, the agent automatically gets all 7 memory tools (MemoryWrite, MemoryRead, MemoryEdit, MemoryMultiEdit, MemoryGlob, MemoryGrep, MemoryDelete) and a memory system prompt is appended to help the agent use memory effectively.
+Enables persistent memory for the agent. When configured, the agent automatically gets all 6 memory tools (MemoryWrite, MemoryRead, MemoryEdit, MemoryGlob, MemoryGrep, MemoryDelete) and a memory system prompt is appended to help the agent use memory effectively.
 
 Memory is per-agent (isolated) and persistent (survives across sessions).
 

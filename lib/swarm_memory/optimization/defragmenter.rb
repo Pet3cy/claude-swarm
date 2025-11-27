@@ -191,7 +191,7 @@ module SwarmMemory
             "  Semantic similarity: N/A (no embeddings)"
           end
           report << ""
-          report << "  **Suggestion:** Review both entries and consider merging with MemoryMultiEdit"
+          report << "  **Suggestion:** Review both entries and consider merging with MemoryEdit"
           report << ""
         end
 

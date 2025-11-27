@@ -64,7 +64,7 @@ class SwarmSDKIntegrationTest < Minitest::Test
     # Test batch creation
     tools = SwarmMemory.tools_for(storage: storage, agent_name: :test)
 
-    assert_equal(8, tools.size)
+    assert_equal(7, tools.size)
     assert_includes(tools.map(&:name), "MemoryWrite")
     assert_includes(tools.map(&:name), "MemoryRead")
     assert_includes(tools.map(&:name), "MemoryDefrag")

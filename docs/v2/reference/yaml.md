@@ -649,7 +649,7 @@ agents:
 - `ScratchpadWrite`, `ScratchpadRead`, `ScratchpadList`
 
 **Memory tools** (added if agent has `memory` configured):
-- `MemoryWrite`, `MemoryRead`, `MemoryEdit`, `MemoryMultiEdit`, `MemoryGlob`, `MemoryGrep`, `MemoryDelete`
+- `MemoryWrite`, `MemoryRead`, `MemoryEdit`, `MemoryGlob`, `MemoryGrep`, `MemoryDelete`
 
 **Additional tools:**
 - `Write`, `Edit`, `MultiEdit`, `Bash`
@@ -761,7 +761,7 @@ Plugin storage (like SwarmMemory) is always shared by base agent name:
 **Default:** `null` (memory disabled)
 **Description:** Configure persistent memory storage for this agent.
 
-When configured, the agent automatically gets all 7 memory tools (MemoryWrite, MemoryRead, MemoryEdit, MemoryMultiEdit, MemoryGlob, MemoryGrep, MemoryDelete) and a memory system prompt is appended.
+When configured, the agent automatically gets all 6 memory tools (MemoryWrite, MemoryRead, MemoryEdit, MemoryGlob, MemoryGrep, MemoryDelete) and a memory system prompt is appended.
 
 Memory is per-agent (isolated) and persistent (survives across sessions).
 

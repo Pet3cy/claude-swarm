@@ -148,7 +148,6 @@ module SwarmMemory
           "MemoryWrite",
           "MemoryRead",
           "MemoryEdit",
-          "MemoryMultiEdit",
           "MemoryDelete",
           "MemoryGlob",
           "MemoryGrep",

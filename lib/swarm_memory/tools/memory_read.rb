@@ -35,7 +35,7 @@ module SwarmMemory
         - MemoryRead(file_path: "skill/debugging/api-errors.md") - Read a skill before loading it
 
         **Important:**
-        - Always read entries before editing them with MemoryEdit or MemoryMultiEdit
+        - Always read entries before editing them with MemoryEdit
         - Line numbers in output are for reference only - don't include them when editing
         - Each read is tracked to enforce read-before-edit patterns
       DESC
