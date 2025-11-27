@@ -91,7 +91,6 @@ class LoadSkillToolTest < Minitest::Test
       "MemoryWrite",
       "MemoryRead",
       "MemoryEdit",
-      "MemoryMultiEdit",
       "MemoryDelete",
       "MemoryGlob",
       "MemoryGrep",

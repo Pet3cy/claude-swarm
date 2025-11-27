@@ -569,7 +569,7 @@ module SwarmSDK
         PluginRegistry.all.each do |plugin|
           @swarm.agent_definitions.each do |agent_name, agent_definition|
             # Check if this plugin needs storage for this agent
-            next unless plugin.storage_enabled?(agent_definition)
+            next unless plugin.memory_configured?(agent_definition)
 
             # Get plugin config for this agent
             config = get_plugin_config(agent_definition, plugin.name)

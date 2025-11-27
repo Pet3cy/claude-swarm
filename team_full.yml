@@ -92,7 +92,7 @@ swarm:
         **SwarmMemory (lib/swarm_memory/):**
         - Design hierarchical persistent memory system for SwarmSDK agents
         - Implement semantic search using Informers embeddings
-        - Create memory tools: MemoryWrite, MemoryRead, MemoryEdit, MemoryMultiEdit, MemoryDelete, MemoryGlob, MemoryGrep, MemoryDefrag
+        - Create memory tools: MemoryWrite, MemoryRead, MemoryEdit, MemoryDelete, MemoryGlob, MemoryGrep, MemoryDefrag
         - Manage storage, indexing, and retrieval of agent memories
         - Integrate with SwarmSDK through tool registration
         - Support frontmatter-based metadata extraction

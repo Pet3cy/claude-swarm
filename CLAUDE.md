@@ -146,7 +146,6 @@ swarm = SwarmSDK.load_file("swarm.yml")
 - **MemoryWrite** - Create/update memory entries with semantic indexing
 - **MemoryRead** - Retrieve memory entries with optional semantic search
 - **MemoryEdit** - Edit specific memory entries
-- **MemoryMultiEdit** - Batch edit multiple entries
 - **MemoryDelete** - Remove memory entries
 - **MemoryGrep** - Search memory content with regex
 - **MemoryGlob** - Find memory entries by pattern

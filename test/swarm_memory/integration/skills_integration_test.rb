@@ -54,7 +54,6 @@ class SkillsIntegrationTest < Minitest::Test
     assert_includes(tool_names, "MemoryWrite")
     assert_includes(tool_names, "MemoryRead")
     assert_includes(tool_names, "MemoryEdit")
-    assert_includes(tool_names, "MemoryMultiEdit")
     assert_includes(tool_names, "MemoryGlob")
     assert_includes(tool_names, "MemoryGrep")
     assert_includes(tool_names, "MemoryDelete")
@@ -127,7 +126,6 @@ class SkillsIntegrationTest < Minitest::Test
       "MemoryWrite",
       "MemoryRead",
       "MemoryEdit",
-      "MemoryMultiEdit",
       "MemoryDelete",
       "MemoryGlob",
       "MemoryGrep",

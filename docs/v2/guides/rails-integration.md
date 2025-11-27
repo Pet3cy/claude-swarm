@@ -45,6 +45,12 @@ Install dependencies:
 bundle install
 ```
 
+### Set the active support isolation level to :Fiber
+Edit `config/application.rb` and add:
+```
+config.active_support.isolation_level = :fiber
+```
+
 ### Create Initializer
 
 Create `config/initializers/swarm_sdk.rb`:

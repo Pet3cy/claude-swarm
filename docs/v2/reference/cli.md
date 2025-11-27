@@ -401,7 +401,6 @@ Starts an MCP server that exposes SwarmSDK tools (Read, Write, Edit, Bash, Grep,
 - `MemoryWrite`: Write to per-agent memory (persistent)
 - `MemoryRead`: Read from memory (with line numbers)
 - `MemoryEdit`: Edit memory entries
-- `MemoryMultiEdit`: Apply multiple edits to memory
 - `MemoryGlob`: Search memory by glob pattern
 - `MemoryGrep`: Search memory content by regex
 - `MemoryDelete`: Delete memory entries

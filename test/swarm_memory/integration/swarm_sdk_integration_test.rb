@@ -32,10 +32,10 @@ class SwarmSDKIntegrationTest < Minitest::Test
     swarm.lead = :test_agent
 
     # Agent should have memory tools available
-    # Use plugin's storage_enabled? method (memory_enabled? is no longer in SDK)
+    # Use plugin's memory_configured? method
     plugin = SwarmMemory::Integration::SDKPlugin.new
 
-    assert(plugin.storage_enabled?(agent_def))
+    assert(plugin.memory_configured?(agent_def))
   end
 
   def test_memory_tools_created_correctly
@@ -64,7 +64,7 @@ class SwarmSDKIntegrationTest < Minitest::Test
     # Test batch creation
     tools = SwarmMemory.tools_for(storage: storage, agent_name: :test)
 
-    assert_equal(8, tools.size)
+    assert_equal(7, tools.size)
     assert_includes(tools.map(&:name), "MemoryWrite")
     assert_includes(tools.map(&:name), "MemoryRead")
     assert_includes(tools.map(&:name), "MemoryDefrag")

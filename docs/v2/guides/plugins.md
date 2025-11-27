@@ -21,6 +21,53 @@ The **plugin system** allows gems to extend SwarmSDK without creating tight coup
 - 🛠️ **Tool Provider** - Plugins create and manage their own tools
 - 📦 **Storage Provider** - Plugins handle their own data persistence
 
+### Plugins vs Custom Tools
+
+SwarmSDK offers two ways to add custom functionality:
+
+| Feature | Custom Tools (`SwarmSDK.register_tool`) | Plugins |
+|---------|----------------------------------------|---------|
+| **Use Case** | Simple, stateless tools | Complex features with storage & hooks |
+| **Setup** | One line: `register_tool(ToolClass)` | Full plugin class with lifecycle |
+| **Storage** | ❌ No persistent storage | ✅ Per-agent storage |
+| **Lifecycle Hooks** | ❌ No hooks | ✅ on_agent_initialized, on_user_message, etc. |
+| **System Prompts** | ❌ No prompt injection | ✅ Can contribute to system prompts |
+| **Examples** | Weather API, Calculator | SwarmMemory (persistent knowledge) |
+
+**Choose Custom Tools when:**
+- Tool is simple and stateless
+- No need for persistent storage
+- No lifecycle hooks required
+- Want quickest setup
+
+**Choose Plugins when:**
+- Need per-agent storage
+- Need lifecycle hooks
+- Want to contribute to system prompts
+- Building a suite of related tools
+
+**Custom Tool Example:**
+```ruby
+class WeatherTool < RubyLLM::Tool
+  description "Get weather for a city"
+  param :city, type: "string", required: true
+
+  def execute(city:)
+    "Weather in #{city}: Sunny"
+  end
+end
+
+SwarmSDK.register_tool(WeatherTool)
+
+SwarmSDK.build do
+  agent :helper do
+    tools :Weather  # Use the registered tool
+  end
+end
+```
+
+See the Ruby DSL reference for complete custom tool documentation.
+
 ---
 
 ## Architecture
@@ -85,8 +132,8 @@ module MyPlugin
         end
       end
 
-      # Check if storage should be created for an agent
-      def storage_enabled?(agent_definition)
+      # Check if memory should be configured for an agent
+      def memory_configured?(agent_definition)
         agent_definition.respond_to?(:my_plugin) && agent_definition.my_plugin
       end
 
@@ -216,8 +263,8 @@ def create_storage(agent_name:, config:)
   MyStorage.new(...)
 end
 
-# Check if storage should be created
-def storage_enabled?(agent_definition)
+# Check if memory should be configured
+def memory_configured?(agent_definition)
   agent_definition.respond_to?(:my_plugin)
 end
 
@@ -750,7 +797,7 @@ class StoragePlugin < SwarmSDK::Plugin
     :database
   end
 
-  def storage_enabled?(agent_definition)
+  def memory_configured?(agent_definition)
     agent_definition.respond_to?(:database)
   end
 

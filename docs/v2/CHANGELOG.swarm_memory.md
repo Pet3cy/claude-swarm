@@ -5,6 +5,80 @@ All notable changes to SwarmMemory will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0]
+
+### Added
+
+- **Per-Adapter Threshold Configuration**: Semantic search thresholds can now be configured per-adapter in YAML
+  - **Fallback chain**: `adapter_config → ENV var → hardcoded_default` (config wins over ENV)
+  - **Supported threshold keys**:
+    - `discovery_threshold` (default: 0.35) - Main similarity threshold for normal queries
+    - `discovery_threshold_short` (default: 0.25) - Threshold for queries with <10 words
+    - `adaptive_word_cutoff` (default: 10) - Word count to switch between thresholds
+    - `semantic_weight` (default: 0.5) - Hybrid search semantic weight
+    - `keyword_weight` (default: 0.5) - Hybrid search keyword weight
+  - **Use cases**: Per-agent threshold tuning, adapter-specific optimization (pgvector vs FAISS), multi-tenant customization
+  - **Backward compatible**: ENV vars still work as deployment-level override
+  - **Zero config required**: Sensible defaults work out of the box
+  - **Example**:
+    ```yaml
+    memory:
+      adapter: multi_bank_postgres
+      agent_id: researcher
+      discovery_threshold: 0.5
+      discovery_threshold_short: 0.3
+      semantic_weight: 0.6
+    ```
+  - **Files**: `lib/swarm_memory/integration/sdk_plugin.rb`
+  - **Tests**: 4 new tests validating threshold extraction and fallback behavior
+
+- **Custom Adapter Support**: SwarmMemory now fully supports custom storage adapters
+  - **Custom adapter options pass-through**: All YAML config keys (except `directory`, `adapter`, `mode`) are now passed to adapter constructor
+  - **Example configuration**:
+    ```yaml
+    memory:
+      adapter: multi_bank_postgres
+      agent_id: business_consultant
+      default_bank: working
+      banks:
+        working: { max_size: 10485760 }
+        long_term: { max_size: 52428800 }
+      bank_access:
+        archive: read_only
+    ```
+  - **Enables**: PostgreSQL, MySQL, Redis, S3, and any custom storage backend
+  - **Files**: `lib/swarm_memory/integration/sdk_plugin.rb:290-310`
+  - **Tests**: 2 new tests for custom adapter option pass-through
+
+### Changed
+
+- **BREAKING: `storage_enabled?` renamed to `memory_configured?`** in SDKPlugin
+  - **Improved logic**: Filesystem adapter requires `directory`, custom adapters can use any configuration keys
+  - **Better validation**: Custom adapters are recognized as valid even without `directory` key
+  - **Adapter validation**: Each adapter validates its own requirements during initialization
+  - **No backward compatibility**: `storage_enabled?` method removed entirely (breaking change)
+  - **Migration**: Update any code calling `plugin.storage_enabled?()` to use `plugin.memory_configured?()`
+  - **Files**: `lib/swarm_memory/integration/sdk_plugin.rb:202-235`
+  - **Tests**: 3 new tests for custom adapter recognition
+
+### Removed
+
+- **MemoryMultiEdit tool**: Removed in favor of simpler MemoryEdit tool
+  - **Rationale**: Memory entries are small (typically < 100 lines), making batch edits unnecessary
+  - **Alternative**: Use multiple `MemoryEdit` calls for sequential edits
+  - **Simplification**: Reduces API complexity and LLM error surface (JSON parameter was error-prone)
+  - **Files removed**: `lib/swarm_memory/tools/memory_multi_edit.rb`
+  - **Tool count**: Memory tools reduced from 8 to 7 (MemoryWrite, MemoryRead, MemoryEdit, MemoryDelete, MemoryGlob, MemoryGrep, MemoryDefrag)
+
+### Benefits
+
+- ✅ **Eliminates need for monkey patches** when building custom adapters
+- ✅ **Makes SwarmMemory fully extensible** for any storage backend
+- ✅ **Per-agent threshold tuning** for optimal semantic search accuracy
+- ✅ **Multi-tenant customization** with per-adapter configuration
+- ✅ **Clearer semantics** (memory vs storage terminology)
+- ✅ **Better error messages** (adapters validate themselves)
+
 ## [2.1.7]
 
 ### Dependencies

@@ -855,28 +855,7 @@ end
 
 ---
 
-### 4. MemoryMultiEdit
-
-**File:** `lib/swarm_memory/tools/memory_multi_edit.rb`
-
-Apply multiple edits sequentially to one entry.
-
-**Input (JSON array):**
-```json
-[
-  {"old_string": "status: pending", "new_string": "status: resolved"},
-  {"old_string": "confidence: medium", "new_string": "confidence: high"}
-]
-```
-
-**Behavior:**
-- Edits applied **sequentially** (each sees previous results)
-- **All-or-nothing** - if any edit fails, NO changes saved
-- Shows which edits succeeded before failure
-
----
-
-### 5. MemoryGlob
+### 4. MemoryGlob
 
 **File:** `lib/swarm_memory/tools/memory_glob.rb`
 
@@ -915,7 +894,7 @@ MAX_RESULTS = 500  # Truncates with system reminder if exceeded
 
 ---
 
-### 6. MemoryGrep
+### 5. MemoryGrep
 
 **File:** `lib/swarm_memory/tools/memory_grep.rb`
 
@@ -949,7 +928,7 @@ path: "skill/debug.md"     # Just that file
 
 ---
 
-### 7. MemoryDelete
+### 6. MemoryDelete
 
 **File:** `lib/swarm_memory/tools/memory_delete.rb`
 
@@ -964,7 +943,7 @@ MemoryDelete(file_path: "experience/temp-experiment.md")
 
 ---
 
-### 8. MemoryDefrag
+### 7. MemoryDefrag
 
 **File:** `lib/swarm_memory/tools/memory_defrag.rb`
 
@@ -1035,7 +1014,7 @@ MemoryDefrag(action: "full", dry_run: true)  # Preview all
 
 ---
 
-### 9. LoadSkill
+### 8. LoadSkill
 
 **File:** `lib/swarm_memory/tools/load_skill.rb`
 
@@ -1079,7 +1058,7 @@ sequenceDiagram
 **Immutable Tools:**
 ```ruby
 # These tools NEVER removed during skill loading:
-- MemoryWrite, MemoryRead, MemoryEdit, MemoryMultiEdit
+- MemoryWrite, MemoryRead, MemoryEdit
 - MemoryDelete, MemoryGlob, MemoryGrep, MemoryDefrag
 - LoadSkill (self)
 ```
@@ -1243,7 +1222,7 @@ class SDKPlugin < SwarmSDK::Plugin
     # Return memory prompt based on mode
   end
 
-  def storage_enabled?(agent_definition)
+  def memory_configured?(agent_definition)
     agent_definition.memory_enabled?
   end
 end
@@ -2025,7 +2004,6 @@ lib/swarm_memory/
 │   ├── memory_write.rb
 │   ├── memory_read.rb
 │   ├── memory_edit.rb
-│   ├── memory_multi_edit.rb
 │   ├── memory_delete.rb
 │   ├── memory_glob.rb
 │   ├── memory_grep.rb

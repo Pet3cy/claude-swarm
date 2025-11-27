@@ -139,11 +139,11 @@ module SwarmSDK
       []
     end
 
-    # Agent storage enabled for this agent? (optional)
+    # Check if memory is configured for this agent (optional)
     #
     # @param agent_definition [Agent::Definition] Agent definition
     # @return [Boolean] True if storage should be created
-    def storage_enabled?(agent_definition)
+    def memory_configured?(agent_definition)
       false
     end
 

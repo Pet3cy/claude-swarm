@@ -113,7 +113,7 @@ Auto-registration: SwarmMemory::Integration::SDKPlugin
 SwarmSDK::PluginRegistry.register(plugin)
     ↓
 Plugin provides:
-  - 8 memory tools (MemoryWrite, MemoryRead, etc.)
+  - 7 memory tools (MemoryWrite, MemoryRead, MemoryEdit, MemoryDelete, MemoryGlob, MemoryGrep, MemoryDefrag)
   - Memory storage (FilesystemAdapter + Embeddings)
   - System prompt contributions
   - Automatic skill discovery on user messages
@@ -187,17 +187,6 @@ MemoryEdit(
   file_path: "concept/ruby/classes.md",
   old_string: "Classes are blueprints",
   new_string: "Classes are templates"
-)
-```
-
-**MemoryMultiEdit** - Multiple edits in one operation
-```ruby
-MemoryMultiEdit(
-  file_path: "concept/ruby/classes.md",
-  edits_json: '[
-    {"old_string": "foo", "new_string": "bar"},
-    {"old_string": "baz", "new_string": "qux"}
-  ]'
 )
 ```
 
@@ -382,7 +371,7 @@ end
 When memory is configured:
 
 1. **Storage Created**: `FilesystemAdapter` + `InformersEmbedder`
-2. **Tools Registered**: 8 memory tools + LoadSkill
+2. **Tools Registered**: 7 memory tools + LoadSkill (8 total)
 3. **Prompt Injected**: Memory system guidance
 4. **Discovery Enabled**: Semantic search on user messages
 5. **Embeddings Generated**: For all stored content

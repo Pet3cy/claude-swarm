@@ -60,6 +60,11 @@ module SwarmSDK
       # Uses the Registry factory pattern to instantiate tools based on their
       # declared requirements. This eliminates the need for a giant case statement.
       #
+      # Tool lookup order:
+      # 1. Plugin tools (registered via SwarmSDK::PluginRegistry)
+      # 2. Custom tools (registered via SwarmSDK.register_tool)
+      # 3. Built-in tools (SwarmSDK::Tools::Registry)
+      #
       # File tools and TodoWrite require agent context for tracking state.
       # Scratchpad tools require shared scratchpad instance.
       # Plugin tools are delegated to their respective plugins.
@@ -80,7 +85,16 @@ module SwarmSDK
           return create_plugin_tool(tool_name_sym, agent_name, directory, chat, agent_definition)
         end
 
-        # Use Registry factory pattern - tools declare their own requirements
+        # Check if tool is a custom registered tool
+        if CustomToolRegistry.registered?(tool_name_sym)
+          context = {
+            agent_name: agent_name,
+            directory: directory,
+          }
+          return CustomToolRegistry.create(tool_name_sym, context)
+        end
+
+        # Use Registry factory pattern for built-in tools
         context = {
           agent_name: agent_name,
           directory: directory,
@@ -267,7 +281,7 @@ module SwarmSDK
       def register_plugin_tools(chat, agent_name, agent_definition, explicit_tool_names)
         PluginRegistry.all.each do |plugin|
           # Check if plugin has storage enabled for this agent
-          next unless plugin.storage_enabled?(agent_definition)
+          next unless plugin.memory_configured?(agent_definition)
 
           # Register each tool provided by the plugin
           plugin.tools.each do |tool_name|
