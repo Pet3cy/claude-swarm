@@ -22,6 +22,9 @@ module SwarmMemory
         # Track memory mode for each agent: { agent_name => mode }
         # Modes: :assistant (default), :retrieval, :researcher
         @modes = {}
+        # Track threshold configuration for each agent: { agent_name => config }
+        # Enables per-adapter threshold tuning with ENV fallback
+        @threshold_configs = {}
       end
 
       # Plugin identifier
@@ -199,24 +202,36 @@ module SwarmMemory
         end
       end
 
-      # Check if storage should be created for this agent
+      # Check if memory is configured for this agent
+      #
+      # Delegates adapter-specific validation to the adapter itself.
+      # Filesystem adapter requires 'directory', custom adapters may use other keys.
       #
       # @param agent_definition [Agent::Definition] Agent definition
-      # @return [Boolean] True if agent has memory configuration
-      def storage_enabled?(agent_definition)
+      # @return [Boolean] True if agent has valid memory configuration
+      def memory_configured?(agent_definition)
         memory_config = agent_definition.plugin_config(:memory)
         return false if memory_config.nil?
 
-        # MemoryConfig object (from DSL)
+        # MemoryConfig object (from DSL) - delegates to its enabled? method
         return memory_config.enabled? if memory_config.respond_to?(:enabled?)
 
-        # Hash (from YAML) - check for directory key
-        if memory_config.is_a?(Hash)
-          directory = memory_config[:directory] || memory_config["directory"]
-          return !directory.nil? && !directory.to_s.strip.empty?
-        end
+        # Hash (from YAML)
+        return false unless memory_config.is_a?(Hash)
+        return false if memory_config.empty?
 
-        false
+        adapter = (memory_config[:adapter] || memory_config["adapter"] || :filesystem).to_sym
+
+        case adapter
+        when :filesystem
+          # Filesystem adapter requires directory
+          directory = memory_config[:directory] || memory_config["directory"]
+          !directory.nil? && !directory.to_s.strip.empty?
+        else
+          # Custom adapters: presence of config is sufficient
+          # Adapter will validate its own requirements during initialization
+          true
+        end
       end
 
       # Contribute to agent serialization
@@ -293,9 +308,18 @@ module SwarmMemory
 
         builder.instance_eval do
           memory do
+            # Standard options
             directory(memory_config[:directory]) if memory_config[:directory]
             adapter(memory_config[:adapter]) if memory_config[:adapter]
             mode(memory_config[:mode]) if memory_config[:mode]
+
+            # Pass through all custom adapter options
+            # Handle both symbol and string keys (YAML may have either)
+            standard_keys = [:directory, :adapter, :mode, "directory", "adapter", "mode"]
+            custom_keys = memory_config.keys - standard_keys
+            custom_keys.each do |key|
+              option(key.to_sym, memory_config[key]) # Normalize to symbol
+            end
           end
         end
       end
@@ -336,6 +360,7 @@ module SwarmMemory
         # Store storage and mode using BASE NAME
         @storages[base_name] = storage # ← Changed from agent_name to base_name
         @modes[base_name] = mode # ← Changed from agent_name to base_name
+        @threshold_configs[base_name] = extract_threshold_config(memory_config)
 
         # Get mode-specific tools
         allowed_tools = tools_for_mode(mode)
@@ -384,20 +409,27 @@ module SwarmMemory
         # V7.0: Extract base name for storage lookup (delegation instances share storage)
         base_name = agent_name.to_s.split("@").first.to_sym
         storage = @storages[base_name] # ← Changed from agent_name to base_name
+        config = @threshold_configs[base_name] || {}
 
         return [] unless storage&.semantic_index
         return [] if prompt.nil? || prompt.empty?
 
         # Adaptive threshold based on query length
         # Short queries use lower threshold as they have less semantic richness
-        # Optimal: cutoff=10 words, short=0.25, normal=0.35 (discovered via systematic evaluation)
+        # Fallback chain: config → ENV → default
         word_count = prompt.split.size
-        word_cutoff = (ENV["SWARM_MEMORY_ADAPTIVE_WORD_CUTOFF"] || "10").to_i
+        word_cutoff = config[:adaptive_word_cutoff] ||
+          ENV["SWARM_MEMORY_ADAPTIVE_WORD_CUTOFF"]&.to_i ||
+          10
 
         threshold = if word_count < word_cutoff
-          (ENV["SWARM_MEMORY_DISCOVERY_THRESHOLD_SHORT"] || "0.25").to_f
+          config[:discovery_threshold_short] ||
+            ENV["SWARM_MEMORY_DISCOVERY_THRESHOLD_SHORT"]&.to_f ||
+            0.25
         else
-          (ENV["SWARM_MEMORY_DISCOVERY_THRESHOLD"] || "0.35").to_f
+          config[:discovery_threshold] ||
+            ENV["SWARM_MEMORY_DISCOVERY_THRESHOLD"]&.to_f ||
+            0.35
         end
         reminders = []
 
@@ -482,9 +514,15 @@ module SwarmMemory
           }
         end
 
-        # Get actual weights being used (from ENV or defaults)
-        semantic_weight = (ENV["SWARM_MEMORY_SEMANTIC_WEIGHT"] || "0.5").to_f
-        keyword_weight = (ENV["SWARM_MEMORY_KEYWORD_WEIGHT"] || "0.5").to_f
+        # Get actual weights being used (fallback chain: config → ENV → defaults)
+        base_name = agent_name.to_s.split("@").first.to_sym
+        config = @threshold_configs[base_name] || {}
+        semantic_weight = config[:semantic_weight] ||
+          ENV["SWARM_MEMORY_SEMANTIC_WEIGHT"]&.to_f ||
+          0.5
+        keyword_weight = config[:keyword_weight] ||
+          ENV["SWARM_MEMORY_KEYWORD_WEIGHT"]&.to_f ||
+          0.5
 
         SwarmSDK::LogStream.emit(
           type: "semantic_skill_search",
@@ -545,9 +583,15 @@ module SwarmMemory
           }
         end
 
-        # Get actual weights being used (from ENV or defaults)
-        semantic_weight = (ENV["SWARM_MEMORY_SEMANTIC_WEIGHT"] || "0.5").to_f
-        keyword_weight = (ENV["SWARM_MEMORY_KEYWORD_WEIGHT"] || "0.5").to_f
+        # Get actual weights being used (fallback chain: config → ENV → defaults)
+        base_name = agent_name.to_s.split("@").first.to_sym
+        config = @threshold_configs[base_name] || {}
+        semantic_weight = config[:semantic_weight] ||
+          ENV["SWARM_MEMORY_SEMANTIC_WEIGHT"]&.to_f ||
+          0.5
+        keyword_weight = config[:keyword_weight] ||
+          ENV["SWARM_MEMORY_KEYWORD_WEIGHT"]&.to_f ||
+          0.5
 
         SwarmSDK::LogStream.emit(
           type: "semantic_memory_search",
@@ -625,6 +669,40 @@ module SwarmMemory
         reminder += "</system-reminder>"
 
         reminder
+      end
+
+      # Extract threshold configuration from memory config
+      #
+      # Supports both MemoryConfig objects (from DSL) and Hash configs (from YAML).
+      # Extracts semantic search thresholds and hybrid search weights.
+      #
+      # @param memory_config [MemoryConfig, Hash, nil] Memory configuration
+      # @return [Hash] Threshold config with symbol keys
+      def extract_threshold_config(memory_config)
+        return {} unless memory_config
+
+        threshold_keys = [
+          :discovery_threshold,
+          :discovery_threshold_short,
+          :adaptive_word_cutoff,
+          :semantic_weight,
+          :keyword_weight,
+        ]
+
+        if memory_config.respond_to?(:adapter_options)
+          # MemoryConfig object (from DSL)
+          memory_config.adapter_options.slice(*threshold_keys)
+        elsif memory_config.is_a?(Hash)
+          # Hash (from YAML) - handle both symbol and string keys
+          result = {}
+          threshold_keys.each do |key|
+            value = memory_config[key] || memory_config[key.to_s]
+            result[key] = value if value
+          end
+          result
+        else
+          {}
+        end
       end
     end
   end

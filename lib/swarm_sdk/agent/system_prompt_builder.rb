@@ -148,7 +148,7 @@ module SwarmSDK
         contributions = []
 
         PluginRegistry.all.each do |plugin|
-          next unless plugin.storage_enabled?(@definition)
+          next unless plugin.memory_configured?(@definition)
 
           contribution = plugin.system_prompt_contribution(agent_definition: @definition, storage: nil)
           contributions << contribution if contribution && !contribution.strip.empty?

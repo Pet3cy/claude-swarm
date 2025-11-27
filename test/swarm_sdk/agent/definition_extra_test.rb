@@ -914,7 +914,7 @@ module SwarmSDK
           []
         end
 
-        def storage_enabled?(agent_def)
+        def memory_configured?(agent_def)
           true
         end
 
@@ -953,7 +953,7 @@ module SwarmSDK
           []
         end
 
-        def storage_enabled?(agent_def)
+        def memory_configured?(agent_def)
           true
         end
 

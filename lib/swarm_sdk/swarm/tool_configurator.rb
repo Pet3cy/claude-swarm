@@ -267,7 +267,7 @@ module SwarmSDK
       def register_plugin_tools(chat, agent_name, agent_definition, explicit_tool_names)
         PluginRegistry.all.each do |plugin|
           # Check if plugin has storage enabled for this agent
-          next unless plugin.storage_enabled?(agent_definition)
+          next unless plugin.memory_configured?(agent_definition)
 
           # Register each tool provided by the plugin
           plugin.tools.each do |tool_name|
