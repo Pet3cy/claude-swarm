@@ -343,4 +343,150 @@ class McpGeneratorArgsTest < Minitest::Test
   ensure
     ENV.delete("TEST_OPENAI_KEY")
   end
+
+  def test_mcp_config_with_prompt_file
+    prompt_file_config = <<~YAML
+      version: 1
+      swarm:
+        name: "Prompt File Test Swarm"
+        main: lead
+        instances:
+          lead:
+            description: "Lead developer"
+            directory: .
+            model: opus
+            connections: [worker]
+          worker:
+            description: "Worker instance"
+            directory: .
+            model: sonnet
+            prompt_file: worker_prompt.md
+    YAML
+
+    Dir.mktmpdir do |tmpdir|
+      # Write the config file
+      config_path = File.join(tmpdir, "claude-swarm.yml")
+      File.write(config_path, prompt_file_config)
+
+      # Create the prompt file
+      prompt_file_path = File.join(tmpdir, "worker_prompt.md")
+      File.write(prompt_file_path, "You are a dedicated worker agent")
+
+      # Create the configuration and generator
+      config = ClaudeSwarm::Configuration.new(config_path, base_dir: tmpdir)
+      generator = ClaudeSwarm::McpGenerator.new(config)
+
+      # Generate MCP configs
+      generator.generate_all
+
+      # Read the lead instance MCP config
+      lead_config = read_mcp_config("lead")
+
+      # Check that worker connection uses prompt from file
+      worker_mcp = lead_config["mcpServers"]["worker"]
+      args = worker_mcp["args"]
+
+      # Should include --prompt with content from file
+      assert_includes(args, "--prompt")
+      prompt_index = args.index("--prompt")
+
+      assert_equal("You are a dedicated worker agent", args[prompt_index + 1])
+    end
+  end
+
+  def test_mcp_config_with_prompt_file_missing_file
+    prompt_file_config = <<~YAML
+      version: 1
+      swarm:
+        name: "Missing Prompt File Test"
+        main: lead
+        instances:
+          lead:
+            description: "Lead developer"
+            directory: .
+            model: opus
+            connections: [worker]
+          worker:
+            description: "Worker instance"
+            directory: .
+            model: sonnet
+            prompt_file: nonexistent_prompt.md
+    YAML
+
+    Dir.mktmpdir do |tmpdir|
+      # Write the config file
+      config_path = File.join(tmpdir, "claude-swarm.yml")
+      File.write(config_path, prompt_file_config)
+
+      # Do NOT create the prompt file
+
+      # Create the configuration and generator
+      config = ClaudeSwarm::Configuration.new(config_path, base_dir: tmpdir)
+      generator = ClaudeSwarm::McpGenerator.new(config)
+
+      # Generate MCP configs
+      generator.generate_all
+
+      # Read the lead instance MCP config
+      lead_config = read_mcp_config("lead")
+
+      # Check that worker connection does not have --prompt when file is missing
+      worker_mcp = lead_config["mcpServers"]["worker"]
+      args = worker_mcp["args"]
+
+      # Should NOT include --prompt when file doesn't exist
+      refute_includes(args, "--prompt")
+    end
+  end
+
+  def test_mcp_config_with_prompt_file_takes_precedence_over_inline_prompt
+    prompt_file_config = <<~YAML
+      version: 1
+      swarm:
+        name: "Prompt Precedence Test"
+        main: lead
+        instances:
+          lead:
+            description: "Lead developer"
+            directory: .
+            model: opus
+            connections: [worker]
+          worker:
+            description: "Worker instance"
+            directory: .
+            model: sonnet
+            prompt_file: worker_prompt.md
+            prompt: "Inline prompt that should be ignored"
+    YAML
+
+    Dir.mktmpdir do |tmpdir|
+      # Write the config file
+      config_path = File.join(tmpdir, "claude-swarm.yml")
+      File.write(config_path, prompt_file_config)
+
+      # Create the prompt file
+      prompt_file_path = File.join(tmpdir, "worker_prompt.md")
+      File.write(prompt_file_path, "Prompt from file")
+
+      # Create the configuration and generator
+      config = ClaudeSwarm::Configuration.new(config_path, base_dir: tmpdir)
+      generator = ClaudeSwarm::McpGenerator.new(config)
+
+      # Generate MCP configs
+      generator.generate_all
+
+      # Read the lead instance MCP config
+      lead_config = read_mcp_config("lead")
+
+      # Check that worker uses prompt from file, not inline
+      worker_mcp = lead_config["mcpServers"]["worker"]
+      args = worker_mcp["args"]
+
+      # Should include --prompt with content from file
+      assert_includes(args, "--prompt")
+      prompt_index = args.index("--prompt")
+
+      assert_equal("Prompt from file", args[prompt_index + 1])
+    end
+  end
 end
