@@ -28,6 +28,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency("informers", "~> 1.2.1")
   spec.add_dependency("rice", "~> 4.6.0")
   spec.add_dependency("ruby_llm_swarm", "~> 1.9.5")
-  spec.add_dependency("swarm_sdk", "~> 2.5.0")
+  spec.add_dependency("swarm_sdk", "~> 2.5.1")
   spec.add_dependency("zeitwerk", "~> 2.6")
 end
