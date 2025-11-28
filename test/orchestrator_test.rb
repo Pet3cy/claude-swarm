@@ -589,6 +589,114 @@ class OrchestratorTest < Minitest::Test
     refute_includes(expected_command, "--append-system-prompt")
   end
 
+  def test_build_main_command_with_prompt_file
+    # Create a prompt file
+    prompt_file_path = File.join(@tmpdir, "lead_prompt.md")
+    File.write(prompt_file_path, "You are the lead developer from a file")
+
+    write_config(<<~YAML)
+      version: 1
+      swarm:
+        name: "Test"
+        main: lead
+        instances:
+          lead:
+            description: "Test instance"
+            directory: .
+            tools: [Read]
+            prompt_file: lead_prompt.md
+    YAML
+
+    config = ClaudeSwarm::Configuration.new(@config_path)
+    generator = ClaudeSwarm::McpGenerator.new(config)
+    orchestrator = ClaudeSwarm::Orchestrator.new(config, generator)
+
+    expected_command = nil
+    orchestrator.stub(:system_with_pid!, lambda { |*args, **_kwargs, &block|
+      expected_command = args
+      block&.call(12345)
+      true
+    }) do
+      capture_io { orchestrator.start }
+    end
+
+    # Should add instance prompt from file via --append-system-prompt
+    append_prompt_index = expected_command.index("--append-system-prompt")
+
+    assert(append_prompt_index, "--append-system-prompt flag should be present")
+    assert_equal("You are the lead developer from a file", expected_command[append_prompt_index + 1])
+  end
+
+  def test_build_main_command_with_prompt_file_missing_file
+    write_config(<<~YAML)
+      version: 1
+      swarm:
+        name: "Test"
+        main: lead
+        instances:
+          lead:
+            description: "Test instance"
+            directory: .
+            tools: [Read]
+            prompt_file: nonexistent_prompt.md
+    YAML
+
+    config = ClaudeSwarm::Configuration.new(@config_path)
+    generator = ClaudeSwarm::McpGenerator.new(config)
+    orchestrator = ClaudeSwarm::Orchestrator.new(config, generator)
+
+    expected_command = nil
+    orchestrator.stub(:system_with_pid!, lambda { |*args, **_kwargs, &block|
+      expected_command = args
+      block&.call(12345)
+      true
+    }) do
+      capture_io { orchestrator.start }
+    end
+
+    # Should not add --append-system-prompt when prompt file doesn't exist
+    refute_includes(expected_command, "--append-system-prompt")
+  end
+
+  def test_build_main_command_with_prompt_file_takes_precedence
+    # Create a prompt file
+    prompt_file_path = File.join(@tmpdir, "lead_prompt.md")
+    File.write(prompt_file_path, "Prompt from file")
+
+    write_config(<<~YAML)
+      version: 1
+      swarm:
+        name: "Test"
+        main: lead
+        instances:
+          lead:
+            description: "Test instance"
+            directory: .
+            tools: [Read]
+            prompt_file: lead_prompt.md
+            prompt: "Inline prompt that should be ignored"
+    YAML
+
+    config = ClaudeSwarm::Configuration.new(@config_path)
+    generator = ClaudeSwarm::McpGenerator.new(config)
+    orchestrator = ClaudeSwarm::Orchestrator.new(config, generator)
+
+    expected_command = nil
+    orchestrator.stub(:system_with_pid!, lambda { |*args, **_kwargs, &block|
+      expected_command = args
+      block&.call(12345)
+      true
+    }) do
+      capture_io { orchestrator.start }
+    end
+
+    # prompt_file should take precedence over inline prompt
+    append_prompt_index = expected_command.index("--append-system-prompt")
+
+    assert(append_prompt_index, "--append-system-prompt flag should be present")
+    assert_equal("Prompt from file", expected_command[append_prompt_index + 1])
+  end
+
   def test_before_commands_feature_exists
     write_config(<<~YAML)
       version: 1

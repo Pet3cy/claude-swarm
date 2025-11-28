@@ -568,7 +568,14 @@ module ClaudeSwarm
       end
 
       # Always add instance prompt if it exists
-      if instance[:prompt]
+      if instance[:prompt_file]
+        prompt_file_path = File.join(@config.base_dir, instance[:prompt_file])
+        if File.exist?(prompt_file_path)
+          prompt_content = File.read(prompt_file_path)
+          parts << "--append-system-prompt"
+          parts << prompt_content
+        end
+      elsif instance[:prompt]
         parts << "--append-system-prompt"
         parts << instance[:prompt]
       end
