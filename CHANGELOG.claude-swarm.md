@@ -1,3 +1,6 @@
+## [1.0.11]
+- Fix: load prompt_file for main instance in orchestrator: https://github.com/parruda/swarm/pull/183
+
 ## [1.0.10]
 
 ### Changed
