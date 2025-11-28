@@ -109,6 +109,43 @@ module SwarmSDK
       @logs.map { |entry| entry[:agent] }.compact.uniq.map(&:to_sym)
     end
 
+    # Generate an LLM-readable transcript of the conversation
+    #
+    # Converts the execution logs into a human/LLM-readable format suitable for
+    # reflection, analysis, memory creation, or passing to another agent.
+    #
+    # @param agents [Array<Symbol>] Optional list of agents to filter by.
+    #   If no agents specified, includes all agents.
+    #   If one or more agents specified, only includes events from those agents.
+    # @param include_tool_results [Boolean] Include tool execution results (default: true)
+    # @param include_thinking [Boolean] Include agent_step content/thinking (default: false)
+    # @return [String] Formatted transcript ready for LLM consumption
+    #
+    # @example Get full transcript
+    #   result.transcript
+    #   # => "USER: Help me with CORS\n\nAGENT [assistant]: ..."
+    #
+    # @example Filter to specific agents
+    #   result.transcript(:backend, :database)
+    #   # => Only events from backend and database agents
+    #
+    # @example Single agent transcript
+    #   result.transcript(:backend)
+    #   # => Only events from backend agent
+    #
+    # @example Include thinking steps
+    #   result.transcript(include_thinking: true)
+    #   # => Includes agent_step intermediate reasoning
+    def transcript(*agents, include_tool_results: true, include_thinking: false)
+      agent_filter = agents.empty? ? nil : agents
+      TranscriptBuilder.build(
+        @logs,
+        agents: agent_filter,
+        include_tool_results: include_tool_results,
+        include_thinking: include_thinking,
+      )
+    end
+
     # Get per-agent usage breakdown from logs
     #
     # Aggregates context usage, tokens, and cost for each agent from their

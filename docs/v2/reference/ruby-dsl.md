@@ -2604,6 +2604,82 @@ usage[:backend]
 # }
 ```
 
+**transcript**
+```ruby
+result.transcript(*agents, include_tool_results: true, include_thinking: false) → String
+```
+Returns an LLM-readable transcript of the conversation, formatted with clear prefixes for user messages, agent responses, tool calls, and tool results.
+
+**Parameters:**
+- `*agents` - Optional agent names to filter (e.g., `:backend`, `:database`). If omitted, includes all agents.
+- `include_tool_results` - Include tool execution results (default: true)
+- `include_thinking` - Include agent_step intermediate reasoning (default: false)
+
+**Output Format:**
+- `USER:` - User prompts
+- `AGENT [name]:` - Agent responses
+- `TOOL [agent] → ToolName(args)` - Tool calls
+- `RESULT [tool]:` - Tool results
+- `DELEGATE:` - Delegation events
+- Events separated by double newlines for readability
+
+**Use Cases:**
+- Creating memory entries from conversations
+- Passing execution context to other agents
+- Debugging and conversation analysis
+- Training data extraction
+- Reflection and self-improvement workflows
+
+**Example:**
+```ruby
+result = swarm.execute("Build authentication system")
+
+# Full transcript from all agents
+puts result.transcript
+# => USER: Build authentication system
+#
+#    TOOL [backend] → Read({"path":"auth.rb"})
+#
+#    RESULT [Read]: module Auth
+#      def authenticate(user)
+#        # existing code
+#      end
+#    end
+#
+#    AGENT [backend]: I've reviewed the existing authentication code.
+#    I recommend implementing JWT tokens for session management.
+
+# Filter to specific agents only
+puts result.transcript(:backend, :database)
+# => Only includes events from backend and database agents
+
+# Include thinking steps (agent_step events)
+puts result.transcript(include_thinking: true)
+# => AGENT [backend] (thinking): Let me analyze the requirements first...
+#    AGENT [backend]: Here's my implementation.
+
+# Exclude tool results for cleaner output
+puts result.transcript(include_tool_results: false)
+# => Shows tool calls but not their results
+
+# Common pattern: Save transcript to memory
+memory_entry = <<~ENTRY
+  # Authentication System Implementation
+
+  ## Conversation
+  #{result.transcript}
+
+  ## Outcome
+  Successfully implemented JWT-based authentication.
+ENTRY
+
+File.write("memory/auth-implementation.md", memory_entry)
+```
+
+**Related:**
+- `result.logs` - Raw structured log events
+- `TranscriptBuilder.build()` - Lower-level formatting control
+
 ---
 
 ## Swarm Methods

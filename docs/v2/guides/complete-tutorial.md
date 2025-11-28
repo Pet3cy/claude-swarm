@@ -2606,7 +2606,99 @@ end
 - Use agent-less nodes for computation
 - Cache results in scratchpad
 
-### 7.3 Error Handling and Recovery
+### 7.3 Conversation Transcripts
+
+Generate LLM-readable transcripts from execution:
+
+```ruby
+result = swarm.execute("Build authentication system")
+
+# Full formatted transcript
+puts result.transcript
+# => USER: Build authentication system
+#
+#    TOOL [backend] → Read({"path":"auth.rb"})
+#
+#    RESULT [Read]: module Auth
+#      def authenticate(user)
+#        # existing code
+#      end
+#    end
+#
+#    AGENT [backend]: I've reviewed the existing code.
+#    I recommend implementing JWT tokens.
+```
+
+**Filter to specific agents**:
+```ruby
+# Only backend and database interactions
+backend_work = result.transcript(:backend, :database)
+
+# Save for later analysis
+File.write("logs/conversation-#{Time.now.to_i}.txt", backend_work)
+```
+
+**Include thinking steps**:
+```ruby
+# Show intermediate reasoning (agent_step events)
+full_reasoning = result.transcript(include_thinking: true)
+# => AGENT [backend] (thinking): Let me analyze the requirements...
+#    AGENT [backend]: Here's my implementation.
+```
+
+**Use cases**:
+```ruby
+# 1. Create memory entries from conversations
+memory_entry = <<~ENTRY
+  # #{Date.today} - Authentication Implementation
+
+  ## Conversation
+  #{result.transcript}
+
+  ## Outcome
+  Successfully implemented JWT-based authentication.
+
+  ## Key Decisions
+  - Chose JWT over sessions for stateless auth
+  - Set token expiry to 24 hours
+  - Added refresh token mechanism
+ENTRY
+
+File.write("memory/auth-implementation.md", memory_entry)
+
+# 2. Pass to another agent for reflection
+reflection_swarm = SwarmSDK.build do
+  name "Reflector"
+  lead :analyst
+
+  agent :analyst do
+    model "claude-opus-4"
+    description "Analyzes past work"
+    system_prompt "You extract learnings from conversations"
+    tools :Write
+  end
+end
+
+reflection_result = reflection_swarm.execute(<<~PROMPT)
+  Analyze this conversation and extract key technical insights:
+
+  #{result.transcript}
+PROMPT
+
+# 3. Compare structured logs vs formatted transcript
+puts "Structured logs: #{result.logs.count} events"
+puts "Formatted transcript: #{result.transcript.lines.count} lines"
+
+# Structured for programmatic access, transcript for humans/LLMs
+```
+
+**Transcript vs Logs**:
+- `result.logs` - Raw structured data (Hash array) for programmatic processing
+- `result.transcript` - Formatted text for human/LLM consumption
+- Both derived from same events, different representations
+- Use logs for metrics, transcript for conversation analysis
+
+### 7.4 Error Handling and Recovery
 
 Handle errors gracefully:
 
@@ -2684,7 +2776,7 @@ all_agents do
 end
 ```
 
-### 7.4 Validation and Warnings
+### 7.5 Validation and Warnings
 
 SwarmSDK validates configurations and emits warnings:
 
@@ -2710,7 +2802,7 @@ end
 - Context tracking unavailable
 - Missing API keys
 
-### 7.5 Document Conversion
+### 7.6 Document Conversion
 
 SwarmSDK can read and convert documents:
 

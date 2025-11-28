@@ -855,6 +855,68 @@ result = swarm.execute(prompt) do |log_entry|
 end
 ```
 
+**Capture conversation transcripts for analysis**:
+
+```ruby
+# Pattern: Save transcript for auditing or training
+result = swarm.execute(prompt)
+
+if result.success?
+  # Full transcript with all agents
+  ConversationLog.create!(
+    user: current_user,
+    prompt: prompt,
+    response: result.content,
+    transcript: result.transcript,  # LLM-readable formatted transcript
+    cost: result.total_cost,
+    duration: result.duration
+  )
+
+  # Or filter to specific agents for focused analysis
+  backend_transcript = result.transcript(:backend, :database)
+
+  # Or process in background job for reflection/learning
+  AnalyzeConversationJob.perform_later(
+    conversation_id: conversation.id,
+    transcript: result.transcript
+  )
+end
+```
+
+**Background job for conversation analysis**:
+
+```ruby
+# app/jobs/analyze_conversation_job.rb
+class AnalyzeConversationJob < ApplicationJob
+  queue_as :default
+
+  def perform(conversation_id:, transcript:)
+    conversation = Conversation.find(conversation_id)
+
+    # Use transcript for reflection or learning
+    reflection_swarm = SwarmLoader.load(:reflector)
+    reflection_result = reflection_swarm.execute(<<~PROMPT)
+      Analyze this conversation and extract key learnings:
+
+      #{transcript}
+
+      Create a structured summary with:
+      - Main topics discussed
+      - Decisions made
+      - Action items
+      - Technical insights
+    PROMPT
+
+    if reflection_result.success?
+      conversation.update!(
+        analysis: reflection_result.content,
+        analyzed_at: Time.current
+      )
+    end
+  end
+end
+```
+
 ---
 
 ## Performance Considerations

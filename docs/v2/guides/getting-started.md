@@ -547,6 +547,7 @@ result.error        # => nil (or exception object if failed)
 | `total_tokens` | Integer | Total tokens used across all agents |
 | `agents_involved` | Array[Symbol] | List of agents that participated |
 | `error` | Exception \| nil | Error object if execution failed |
+| `transcript` | String | LLM-readable conversation transcript with all messages |
 
 ### Common Result Patterns
 
@@ -1435,6 +1436,12 @@ result.total_cost      # Float (USD)
 result.total_tokens    # Integer
 result.agents_involved # Array[Symbol]
 result.error           # Exception | nil
+result.transcript      # LLM-readable conversation transcript
+
+# Transcript with filters and options
+result.transcript(:backend, :database)              # Filter to specific agents
+result.transcript(include_thinking: true)           # Include agent reasoning
+result.transcript(include_tool_results: false)      # Hide tool results
 ```
 
 ### Model Examples

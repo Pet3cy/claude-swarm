@@ -222,6 +222,7 @@ module SwarmSDK
           agent: context.agent_name,
           swarm_id: @swarm_id,
           parent_swarm_id: @parent_swarm_id,
+          prompt: context.metadata[:prompt],
           model: context.metadata[:model] || "unknown",
           provider: context.metadata[:provider] || "unknown",
           message_count: context.metadata[:message_count] || 0,

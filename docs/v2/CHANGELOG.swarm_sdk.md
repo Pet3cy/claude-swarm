@@ -5,6 +5,40 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.2] - 2025-11-28
+
+### Added
+
+- **LLM-Readable Transcript Generation**: New `result.transcript()` method for generating formatted conversation transcripts
+  - **`result.transcript`**: Returns full transcript from all agents in LLM-consumable format
+  - **Agent filtering**: `result.transcript(:backend, :database)` filters to specific agents
+  - **Options**:
+    - `include_tool_results: true` - Include/exclude tool execution results (default: true)
+    - `include_thinking: false` - Include/exclude agent_step reasoning (default: false)
+  - **Format**: Human/LLM-readable with clear prefixes (USER:, AGENT [name]:, TOOL, RESULT, DELEGATE)
+  - **Truncation**: Automatic truncation of long tool results (500 chars) and arguments (200 chars)
+  - **Use cases**: Memory creation, reflection, debugging, conversation analysis, passing context to other agents
+  - **Example**:
+    ```ruby
+    result = swarm.execute("Build authentication")
+
+    # Full transcript
+    puts result.transcript
+    # => USER: Build authentication
+    #    TOOL [backend] → Read({"path":"auth.rb"})
+    #    RESULT [Read]: def authenticate...
+    #    AGENT [backend]: I've implemented authentication.
+
+    # Filter to specific agents
+    puts result.transcript(:backend, :database)
+
+    # Include thinking steps
+    puts result.transcript(include_thinking: true)
+    ```
+  - **Implementation**: New `TranscriptBuilder` class for flexible log formatting
+  - **Files**: `lib/swarm_sdk/transcript_builder.rb`, `lib/swarm_sdk/result.rb`, `lib/swarm_sdk/swarm/logging_callbacks.rb`
+  - **Tests**: 22 comprehensive tests covering all formatting scenarios
+
 ## [2.5.1]
 
 ### Dependencies
