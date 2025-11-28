@@ -110,10 +110,12 @@ module SwarmMemory
           # MemoryConfig object (from DSL)
           [config.adapter_type, config.adapter_options]
         elsif config.is_a?(Hash)
-          # Hash (from YAML)
+          # Hash (from YAML) - symbolize keys for adapter compatibility
           adapter = (config[:adapter] || config["adapter"] || :filesystem).to_sym
-          options = config.reject { |k, _v| k == :adapter || k == "adapter" || k == :mode || k == "mode" }
-          [adapter, options]
+          options = config.reject { |k, _v| [:adapter, "adapter", :mode, "mode"].include?(k) }
+          # Symbolize keys so adapter receives keyword arguments correctly
+          symbolized_options = options.transform_keys { |k| k.to_s.to_sym }
+          [adapter, symbolized_options]
         else
           raise SwarmSDK::ConfigurationError, "Invalid memory configuration for #{agent_name}"
         end
@@ -125,7 +127,17 @@ module SwarmMemory
           raise SwarmSDK::ConfigurationError, "#{e.message} for agent #{agent_name}"
         end
 
-        # Instantiate adapter with options
+        # Extract hybrid search weights and other SDK-level config (before passing to adapter)
+        # Keys are already symbolized at this point
+        semantic_weight = adapter_options.delete(:semantic_weight)
+        keyword_weight = adapter_options.delete(:keyword_weight)
+
+        # Remove other SDK-level threshold configs that shouldn't go to adapter
+        adapter_options.delete(:discovery_threshold)
+        adapter_options.delete(:discovery_threshold_short)
+        adapter_options.delete(:adaptive_word_cutoff)
+
+        # Instantiate adapter with options (weights removed, adapter doesn't need them)
         # Note: Adapter is responsible for validating its own requirements
         begin
           adapter = adapter_class.new(**adapter_options)
@@ -137,8 +149,13 @@ module SwarmMemory
         # Create embedder for semantic search
         embedder = Embeddings::InformersEmbedder.new
 
-        # Create storage with embedder (enables semantic features)
-        Core::Storage.new(adapter: adapter, embedder: embedder)
+        # Create storage with embedder and hybrid search weights
+        Core::Storage.new(
+          adapter: adapter,
+          embedder: embedder,
+          semantic_weight: semantic_weight,
+          keyword_weight: keyword_weight,
+        )
       end
 
       # Parse memory configuration

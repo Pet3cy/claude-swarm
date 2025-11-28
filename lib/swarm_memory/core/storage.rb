@@ -18,7 +18,9 @@ module SwarmMemory
       #
       # @param adapter [Adapters::Base] Storage adapter
       # @param embedder [Embeddings::Embedder, nil] Optional embedder for semantic search
-      def initialize(adapter:, embedder: nil)
+      # @param semantic_weight [Float, nil] Weight for semantic similarity in hybrid search (0.0-1.0)
+      # @param keyword_weight [Float, nil] Weight for keyword matching in hybrid search (0.0-1.0)
+      def initialize(adapter:, embedder: nil, semantic_weight: nil, keyword_weight: nil)
         raise ArgumentError, "adapter is required" unless adapter.is_a?(Adapters::Base)
 
         @adapter = adapter
@@ -26,7 +28,10 @@ module SwarmMemory
 
         # Create semantic index if embedder is provided
         @semantic_index = if embedder
-          SemanticIndex.new(adapter: adapter, embedder: embedder)
+          index_options = { adapter: adapter, embedder: embedder }
+          index_options[:semantic_weight] = semantic_weight if semantic_weight
+          index_options[:keyword_weight] = keyword_weight if keyword_weight
+          SemanticIndex.new(**index_options)
         end
       end
 

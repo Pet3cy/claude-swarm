@@ -84,6 +84,43 @@ module SwarmMemory
         @mode = value.to_sym
       end
 
+      # DSL method to set/get semantic weight for hybrid search
+      #
+      # Controls how much semantic (embedding) similarity affects search results.
+      # Default is 0.5 (50%). Set to 1.0 for pure semantic search.
+      #
+      # @param value [Float, nil] Weight between 0.0 and 1.0
+      # @return [Float, nil] Current semantic weight
+      #
+      # @example Pure semantic search (no keyword penalty)
+      #   semantic_weight 1.0
+      #   keyword_weight 0.0
+      def semantic_weight(value = nil)
+        if value.nil?
+          @adapter_options[:semantic_weight]
+        else
+          @adapter_options[:semantic_weight] = value.to_f
+        end
+      end
+
+      # DSL method to set/get keyword weight for hybrid search
+      #
+      # Controls how much keyword (tag) matching affects search results.
+      # Default is 0.5 (50%). Set to 0.0 to disable keyword matching.
+      #
+      # @param value [Float, nil] Weight between 0.0 and 1.0
+      # @return [Float, nil] Current keyword weight
+      #
+      # @example Disable keyword matching
+      #   keyword_weight 0.0
+      def keyword_weight(value = nil)
+        if value.nil?
+          @adapter_options[:keyword_weight]
+        else
+          @adapter_options[:keyword_weight] = value.to_f
+        end
+      end
+
       # Check if memory is enabled
       #
       # @return [Boolean] True if adapter is configured with required options

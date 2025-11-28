@@ -181,6 +181,9 @@ module SwarmMemory
 
       # Calculate hybrid scores combining semantic similarity and keyword matching
       #
+      # When keyword_score is 0 (no tag matches), falls back to pure semantic scoring
+      # to avoid penalizing results that have excellent semantic matches but no tag overlap.
+      #
       # @param results [Array<Hash>] Results with semantic :similarity scores
       # @param query_keywords [Array<String>] Keywords from query
       # @return [Array<Hash>] Results with updated :similarity (hybrid score) and debug info
@@ -189,8 +192,13 @@ module SwarmMemory
           semantic_score = result[:similarity]
           keyword_score = calculate_keyword_score(result, query_keywords)
 
-          # Hybrid score: weighted combination
-          hybrid_score = (@semantic_weight * semantic_score) + (@keyword_weight * keyword_score)
+          # Fallback to pure semantic when no keyword matches
+          # This prevents penalizing results with excellent semantic matches but no tag overlap
+          hybrid_score = if keyword_score.zero?
+            semantic_score
+          else
+            (@semantic_weight * semantic_score) + (@keyword_weight * keyword_score)
+          end
 
           # Update result with hybrid score and debug info
           result.merge(

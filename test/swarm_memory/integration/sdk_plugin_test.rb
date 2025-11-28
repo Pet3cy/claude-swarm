@@ -283,6 +283,139 @@ module SwarmMemory
         assert_in_delta(0.35, skills_search[:threshold], 0.001)
       end
 
+      # create_storage weight extraction tests
+
+      def test_create_storage_extracts_semantic_weight_from_config
+        temp_dir = Dir.mktmpdir
+        begin
+          config = SwarmMemory::DSL::MemoryConfig.new
+          config.directory(temp_dir)
+          config.semantic_weight(1.0)
+          config.keyword_weight(0.0)
+
+          storage = @plugin.create_storage(agent_name: :test, config: config)
+
+          # Verify weights were passed through by testing search behavior
+          storage.write(
+            file_path: "concept/test/entry.md",
+            content: "Test content for search",
+            title: "Test Entry",
+            metadata: {},
+          )
+
+          results = storage.semantic_index.search(query: "test content", top_k: 1, threshold: 0.0)
+          # With pure semantic weights, hybrid score should equal semantic score
+          assert_in_delta(results.first[:semantic_score], results.first[:similarity], 0.001)
+        ensure
+          FileUtils.rm_rf(temp_dir)
+        end
+      end
+
+      def test_create_storage_extracts_weights_from_hash_config_symbol_keys
+        temp_dir = Dir.mktmpdir
+        begin
+          config = {
+            directory: temp_dir,
+            semantic_weight: 0.8,
+            keyword_weight: 0.2,
+          }
+
+          storage = @plugin.create_storage(agent_name: :test, config: config)
+
+          storage.write(
+            file_path: "concept/test/entry.md",
+            content: "Test content",
+            title: "Test Entry",
+            metadata: { "tags" => ["test"] },
+          )
+
+          results = storage.semantic_index.search(query: "test", top_k: 1, threshold: 0.0)
+          # Verify 0.8/0.2 weights were applied
+          semantic = results.first[:semantic_score]
+          keyword = results.first[:keyword_score]
+          expected = (0.8 * semantic) + (0.2 * keyword)
+
+          assert_in_delta(expected, results.first[:similarity], 0.001)
+        ensure
+          FileUtils.rm_rf(temp_dir)
+        end
+      end
+
+      def test_create_storage_extracts_weights_from_hash_config_string_keys
+        temp_dir = Dir.mktmpdir
+        begin
+          config = {
+            "directory" => temp_dir,
+            "semantic_weight" => 1.0,
+            "keyword_weight" => 0.0,
+          }
+
+          storage = @plugin.create_storage(agent_name: :test, config: config)
+
+          storage.write(
+            file_path: "concept/test/entry.md",
+            content: "Test content",
+            title: "Test Entry",
+            metadata: {},
+          )
+
+          results = storage.semantic_index.search(query: "test content", top_k: 1, threshold: 0.0)
+          # With pure semantic weights, hybrid score should equal semantic score
+          assert_in_delta(results.first[:semantic_score], results.first[:similarity], 0.001)
+        ensure
+          FileUtils.rm_rf(temp_dir)
+        end
+      end
+
+      def test_create_storage_filters_sdk_level_options_from_adapter
+        temp_dir = Dir.mktmpdir
+        begin
+          # Config with all SDK-level options that should NOT go to adapter
+          config = {
+            directory: temp_dir,
+            semantic_weight: 0.9,
+            keyword_weight: 0.1,
+            discovery_threshold: 0.5,
+            discovery_threshold_short: 0.3,
+            adaptive_word_cutoff: 8,
+          }
+
+          # Should not raise (adapter would error on unknown kwargs)
+          storage = @plugin.create_storage(agent_name: :test, config: config)
+
+          refute_nil(storage)
+        ensure
+          FileUtils.rm_rf(temp_dir)
+        end
+      end
+
+      def test_create_storage_uses_defaults_when_weights_not_specified
+        temp_dir = Dir.mktmpdir
+        begin
+          # Config WITHOUT weights - should use SemanticIndex defaults (ENV or 0.5/0.5)
+          config = { directory: temp_dir }
+
+          storage = @plugin.create_storage(agent_name: :test, config: config)
+
+          # Write entry without tags
+          storage.write(
+            file_path: "concept/test/entry.md",
+            content: "Test content for default weights",
+            title: "Test Entry",
+            metadata: {},
+          )
+
+          results = storage.semantic_index.search(query: "test content", top_k: 1, threshold: 0.0)
+
+          assert_equal(1, results.size)
+          # With default weights and no tags (keyword_score=0),
+          # fallback behavior: hybrid score equals semantic score (no penalty)
+          assert_in_delta(results.first[:semantic_score], results.first[:similarity], 0.001)
+        ensure
+          FileUtils.rm_rf(temp_dir)
+        end
+      end
+
       # serialize_config tests
 
       def test_serialize_config_with_memory

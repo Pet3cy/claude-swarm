@@ -5,6 +5,39 @@ All notable changes to SwarmMemory will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3]
+
+### Fixed
+
+- **Hybrid search weight configuration**: Fixed bug where `semantic_weight` and `keyword_weight` from config weren't being passed to SemanticIndex
+  - **Issue**: SDK plugin extracted weights from config but didn't pass them to Storage/SemanticIndex
+  - **Fix**: Storage now accepts and passes weight parameters through to SemanticIndex
+  - **Impact**: Per-agent weight configuration now works correctly (was only used for logging before)
+  - **Files**: `lib/swarm_memory/core/storage.rb:23-35`, `lib/swarm_memory/integration/sdk_plugin.rb:130-150`
+
+- **YAML config with string keys**: Fixed bug where Hash configs with string keys would fail adapter initialization
+  - **Issue**: Adapters expect symbol keyword arguments, but YAML configs have string keys
+  - **Fix**: Symbolize adapter option keys in create_storage for Hash configs
+  - **Impact**: YAML configurations now work correctly with all adapters
+  - **Files**: `lib/swarm_memory/integration/sdk_plugin.rb:113-118`
+
+### Added
+
+- **DSL methods for weights**: Added `semantic_weight()` and `keyword_weight()` methods to MemoryConfig
+  - **Before**: `option(:semantic_weight, 0.8)`
+  - **After**: `semantic_weight(0.8)` (cleaner syntax, consistent with `directory()` and `mode()`)
+  - **Backward compatible**: `option()` method still works
+  - **Files**: `lib/swarm_memory/dsl/memory_config.rb:87-122`
+
+### Changed
+
+- **Automatic semantic fallback**: Hybrid search now falls back to pure semantic scoring when keyword_score is 0
+  - **Before**: semantic=0.92, keyword=0.0 → final=0.46 (penalized by 50/50 weights)
+  - **After**: semantic=0.92, keyword=0.0 → final=0.92 (no penalty when no tag matches)
+  - **Rationale**: Prevents excellent semantic matches from being penalized when there's no keyword/tag overlap
+  - **Impact**: Improved recall for queries with no tag matches
+  - **Files**: `lib/swarm_memory/core/semantic_index.rb:195-201`
+
 ## [2.2.2]
 
 ### Dependencies
