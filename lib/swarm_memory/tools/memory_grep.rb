@@ -7,6 +7,8 @@ module SwarmMemory
     # Searches content stored in memory entries using regex patterns.
     # Each agent has its own isolated memory storage.
     class MemoryGrep < RubyLLM::Tool
+      include TitleLookup
+
       description <<~DESC
         Search your memory content using regular expression patterns (like grep).
 
@@ -197,7 +199,7 @@ module SwarmMemory
         result = []
         result << "Memory entries matching #{search_desc} (#{paths.size} #{paths.size == 1 ? "entry" : "entries"}):"
         paths.each do |path|
-          result << "  memory://#{path}"
+          result << "- #{format_memory_path_with_title(path)}"
         end
         result.join("\n")
       end

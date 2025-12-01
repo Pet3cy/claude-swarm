@@ -138,7 +138,7 @@ module SwarmMemory
         result << "Memory entries matching '#{pattern}' (#{entries.size} #{entries.size == 1 ? "entry" : "entries"}):"
 
         entries.each do |entry|
-          result << "  memory://#{entry[:path]} - \"#{entry[:title]}\" (#{format_bytes(entry[:size])})"
+          result << "- memory://#{entry[:path]} \"#{entry[:title]}\" (#{format_bytes(entry[:size])})"
         end
 
         output = result.join("\n")

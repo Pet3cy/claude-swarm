@@ -1,6 +1,6 @@
 # SwarmMemory: Comprehensive Technical Reference
 
-**Version:** 2.1.1
+**Version:** 2.2.4
 **Purpose:** Persistent memory system with semantic search for SwarmSDK agents
 **Location:** `lib/swarm_memory/`
 
@@ -745,6 +745,32 @@ end
 
 All tools inherit from `RubyLLM::Tool` and are registered with SwarmSDK's plugin system.
 
+### Shared Module: TitleLookup
+
+**File:** `lib/swarm_memory/tools/title_lookup.rb`
+
+A shared module included by MemoryRead, MemoryGrep, and MemoryGlob to provide consistent title lookups for memory entries.
+
+**Methods:**
+```ruby
+# Look up the title of a memory entry
+def lookup_title(path)
+  # Returns the title if found, nil otherwise
+end
+
+# Format a memory path with its title
+def format_memory_path_with_title(path)
+  # Returns: 'memory://path "Title"' or 'memory://path' if no title
+end
+```
+
+**Usage in Tools:**
+- **MemoryRead**: Formats related memory paths in the system-reminder section
+- **MemoryGrep**: Includes titles in `files_with_matches` output mode
+- **MemoryGlob**: Shows titles next to each matching entry
+
+---
+
 ### 1. MemoryWrite
 
 **File:** `lib/swarm_memory/tools/memory_write.rb`
@@ -796,27 +822,32 @@ Extract key entities and split into multiple memories."
 
 **File:** `lib/swarm_memory/tools/memory_read.rb`
 
-Reads memory entries with metadata.
+Reads memory entries with line-numbered content. Uses the `TitleLookup` module for formatting related memory paths with their titles.
 
-**Output Format (JSON):**
-```json
-{
-  "content": "    1→# Ruby Classes\n    2→\n    3→Classes in Ruby...",
-  "metadata": {
-    "title": "Ruby Classes",
-    "type": "concept",
-    "confidence": "high",
-    "tags": ["ruby", "oop"],
-    "related": ["memory://concept/ruby/modules.md"],
-    "domain": "programming/ruby"
-  }
-}
+**Output Format (Plain Text with Line Numbers):**
 ```
+     1 # Ruby Classes
+     2
+     3 Classes in Ruby are blueprints for objects.
+     4 They encapsulate data and behavior together.
+
+<system-reminder>
+Related memories that may provide additional context:
+- memory://concept/ruby/modules.md "Ruby Modules"
+- memory://concept/ruby/inheritance.md "Ruby Inheritance"
+</system-reminder>
+```
+
+**Output Structure:**
+- Content is displayed with 6-character right-justified line numbers followed by a space
+- If the entry has `related` paths in metadata, a `<system-reminder>` section is appended
+- Related memory paths include their titles in quotes (via `TitleLookup` module)
+- If a related memory's title cannot be found, the path is shown without quotes
 
 **Side Effect:**
 ```ruby
 # Registers read in StorageReadTracker
-Core::StorageReadTracker.register_read(agent_name, file_path)
+Core::StorageReadTracker.register_read(agent_name, file_path, content)
 ```
 
 ---
@@ -875,13 +906,20 @@ Pattern-based file discovery (like filesystem glob).
 "**/api-*.md"   # → any path ending with api-*.md
 ```
 
+**Output Format:**
+```
+Memory entries matching 'concept/ruby/*' (2 entries):
+- memory://concept/ruby/classes.md "Ruby Classes" (1.2KB)
+- memory://concept/ruby/modules.md "Ruby Modules" (856B)
+```
+
 **Examples:**
 ```ruby
 MemoryGlob(pattern: "concept/ruby/*")
-# Returns: concept/ruby/classes.md, concept/ruby/modules.md
+# Returns entries with paths, titles, and sizes
 
 MemoryGlob(pattern: "skill/**")
-# Returns: All skills recursively
+# Returns: All skills recursively with titles
 
 MemoryGlob(pattern: "**/*")
 # Returns: All entries across all categories
@@ -910,9 +948,24 @@ output_mode:      "files_with_matches"      # See below
 
 **Output Modes:**
 
-1. **files_with_matches** (default) - Just paths
+1. **files_with_matches** (default) - Paths with titles
+   ```
+   Memory entries matching 'Ruby' (2 entries):
+   - memory://concept/ruby/classes.md "Ruby Classes"
+   - memory://concept/ruby/modules.md "Ruby Modules"
+   ```
 2. **content** - Matching lines with line numbers
+   ```
+   memory://concept/ruby/classes.md:
+   2: Ruby classes are blueprints...
+   (1 match in 1 entry)
+   ```
 3. **count** - Match counts per file
+   ```
+   3 total matches in 2 entries:
+   - memory://concept/ruby/classes.md: 2 matches
+   - memory://concept/ruby/modules.md: 1 match
+   ```
 
 **Path Filtering:**
 ```ruby
@@ -1675,8 +1728,9 @@ sequenceDiagram
     Adapter->>Adapter: increment_hits(file_path)
     Adapter-->>Storage: Entry
     Storage-->>MemoryRead: Entry
-    MemoryRead->>MemoryRead: format_as_json(entry)
-    MemoryRead-->>Agent: JSON{content, metadata}
+    MemoryRead->>MemoryRead: format_with_line_numbers(entry.content)
+    MemoryRead->>MemoryRead: format_related_memories_reminder(related_paths)
+    MemoryRead-->>Agent: Plain text with line numbers + system-reminder
 ```
 
 ### Edit Flow
@@ -2001,6 +2055,7 @@ lib/swarm_memory/
 │   └── text_similarity.rb       # Similarity metrics
 │
 ├── tools/                       # Memory tools
+│   ├── title_lookup.rb          # Shared module for title lookups
 │   ├── memory_write.rb
 │   ├── memory_read.rb
 │   ├── memory_edit.rb

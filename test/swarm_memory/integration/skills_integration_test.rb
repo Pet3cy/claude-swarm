@@ -180,15 +180,9 @@ class SkillsIntegrationTest < Minitest::Test
     memory_read = agent.tools.values.find { |t| t.name == "MemoryRead" }
     result = memory_read.execute(file_path: "skill/test-skill.md")
 
-    # Should return JSON with line numbers in content
-    parsed = JSON.parse(result)
-
-    assert_match(/     1→# Test Skill/, parsed["content"])
-    assert_match(/     3→Step by step instructions/, parsed["content"])
-    assert_equal("Test Skill", parsed["metadata"]["title"])
-    assert_equal("skill", parsed["metadata"]["type"])
-    assert_equal(["Read", "Edit"], parsed["metadata"]["tools"])
-    assert_equal({ "Edit" => { "allowed_paths" => ["tmp/**"] } }, parsed["metadata"]["permissions"])
+    # Should return plain text with line numbers
+    assert_match(/     1 # Test Skill/, result)
+    assert_match(/     3 Step by step instructions/, result)
   end
 
   def test_swarm_sdk_works_without_swarm_memory_gem

@@ -175,10 +175,16 @@ MemoryWrite(
 )
 ```
 
-**MemoryRead** - Retrieve stored content
+**MemoryRead** - Retrieve stored content with line numbers
 ```ruby
 MemoryRead(file_path: "concept/ruby/classes.md")
-# Returns JSON: {content: "...", metadata: {...}}
+# Returns plain text with line numbers:
+#      1 # Ruby Classes
+#      2
+#      3 Classes are blueprints...
+#
+# If the entry has related memories in metadata, a system-reminder
+# section is appended showing related memory paths with titles.
 ```
 
 **MemoryEdit** - Exact string replacement

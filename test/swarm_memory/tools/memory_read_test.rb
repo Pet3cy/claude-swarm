@@ -12,7 +12,7 @@ class MemoryReadToolTest < Minitest::Test
     cleanup_storage(@storage)
   end
 
-  def test_returns_json_with_line_numbers_in_content
+  def test_returns_content_with_line_numbers
     # Write entry with minimal metadata
     @storage.write(
       file_path: "test/plain.md",
@@ -23,17 +23,16 @@ class MemoryReadToolTest < Minitest::Test
 
     result = @tool.execute(file_path: "test/plain.md")
 
-    # Should always return JSON with line numbers in content
-    parsed = JSON.parse(result)
+    # Should return plain text with line numbers (not JSON)
+    assert_match(/     1 Line 1/, result)
+    assert_match(/     2 Line 2/, result)
+    assert_match(/     3 Line 3/, result)
 
-    assert_match(/     1→Line 1/, parsed["content"])
-    assert_match(/     2→Line 2/, parsed["content"])
-    assert_match(/     3→Line 3/, parsed["content"])
-    assert_equal("Plain Entry", parsed["metadata"]["title"])
-    assert_equal("fact", parsed["metadata"]["type"])
+    # Should NOT be JSON
+    assert_raises(JSON::ParserError) { JSON.parse(result) }
   end
 
-  def test_returns_json_with_all_metadata
+  def test_returns_content_without_metadata_wrapper
     # Write entry with full metadata
     @storage.write(
       file_path: "test/with_meta.md",
@@ -48,17 +47,15 @@ class MemoryReadToolTest < Minitest::Test
 
     result = @tool.execute(file_path: "test/with_meta.md")
 
-    # Should return JSON format with line numbers in content
-    parsed = JSON.parse(result)
+    # Should return plain text with line numbers
+    assert_match(/     1 Content with metadata/, result)
 
-    assert_match(/     1→Content with metadata/, parsed["content"])
-    assert_equal("Entry With Metadata", parsed["metadata"]["title"])
-    assert_equal("concept", parsed["metadata"]["type"])
-    assert_equal("high", parsed["metadata"]["confidence"])
-    assert_equal(["test", "ruby"], parsed["metadata"]["tags"])
+    # Should NOT include JSON structure or metadata fields
+    refute_match(/"metadata"/, result)
+    refute_match(/"content"/, result)
   end
 
-  def test_returns_json_for_skill_with_tools_and_permissions
+  def test_skill_content_returns_plain_text
     # Write skill entry with tools and permissions
     @storage.write(
       file_path: "skill/debug-react.md",
@@ -77,18 +74,160 @@ class MemoryReadToolTest < Minitest::Test
 
     result = @tool.execute(file_path: "skill/debug-react.md")
 
-    # Should return JSON with all skill metadata and line numbers in content
-    parsed = JSON.parse(result)
+    # Should return plain content with line numbers
+    assert_match(/     1 # Debug React Performance/, result)
+    assert_match(/     3 1\. Profile components/, result)
+    assert_match(/     4 2\. Check re-renders/, result)
 
-    assert_equal("Debug React Performance", parsed["metadata"]["title"])
-    assert_equal("skill", parsed["metadata"]["type"])
-    assert_equal(["Read", "Edit", "Bash"], parsed["metadata"]["tools"])
-    assert_equal({ "Bash" => { "allowed_commands" => ["^npm", "^git"] } }, parsed["metadata"]["permissions"])
+    # Should NOT include metadata in output
+    refute_match(/"tools"/, result)
+    refute_match(/"permissions"/, result)
+  end
 
-    # Content should have line numbers
-    assert_match(/     1→# Debug React Performance/, parsed["content"])
-    assert_match(/     3→1\. Profile components/, parsed["content"])
-    assert_match(/     4→2\. Check re-renders/, parsed["content"])
+  def test_includes_related_memories_reminder
+    # Write a related memory first
+    @storage.write(
+      file_path: "concept/ruby/modules.md",
+      content: "Ruby modules provide mixins",
+      title: "Ruby Modules",
+      metadata: { "type" => "concept" },
+    )
+
+    # Write main entry with related memory
+    @storage.write(
+      file_path: "concept/ruby/classes.md",
+      content: "Ruby classes are blueprints",
+      title: "Ruby Classes",
+      metadata: {
+        "type" => "concept",
+        "related" => ["memory://concept/ruby/modules.md"],
+      },
+    )
+
+    result = @tool.execute(file_path: "concept/ruby/classes.md")
+
+    # Should include system-reminder with related memories
+    assert_match(/<system-reminder>/, result)
+    assert_match(/Related memories that may provide additional context:/, result)
+    assert_match(%r{memory://concept/ruby/modules\.md "Ruby Modules"}, result)
+    assert_match(%r{</system-reminder>}, result)
+  end
+
+  def test_related_memories_without_prefix
+    # Write a related memory first
+    @storage.write(
+      file_path: "concept/ruby/inheritance.md",
+      content: "Ruby inheritance",
+      title: "Ruby Inheritance",
+      metadata: { "type" => "concept" },
+    )
+
+    # Write main entry with related memory (without memory:// prefix)
+    @storage.write(
+      file_path: "concept/ruby/classes.md",
+      content: "Ruby classes content",
+      title: "Ruby Classes",
+      metadata: {
+        "type" => "concept",
+        "related" => ["concept/ruby/inheritance.md"],
+      },
+    )
+
+    result = @tool.execute(file_path: "concept/ruby/classes.md")
+
+    # Should normalize path and include with memory:// prefix
+    assert_match(%r{memory://concept/ruby/inheritance\.md "Ruby Inheritance"}, result)
+  end
+
+  def test_related_memory_not_found_shows_path_only
+    # Write main entry with related memory that doesn't exist
+    @storage.write(
+      file_path: "concept/ruby/classes.md",
+      content: "Ruby classes content",
+      title: "Ruby Classes",
+      metadata: {
+        "type" => "concept",
+        "related" => ["memory://concept/ruby/nonexistent.md"],
+      },
+    )
+
+    result = @tool.execute(file_path: "concept/ruby/classes.md")
+
+    # Should include the path without title (since memory doesn't exist)
+    assert_match(/<system-reminder>/, result)
+    assert_match(%r{- memory://concept/ruby/nonexistent\.md$}, result)
+    # Should NOT have a quoted title
+    refute_match(/nonexistent\.md "/, result)
+  end
+
+  def test_no_related_memories_no_reminder
+    # Write entry without related memories
+    @storage.write(
+      file_path: "concept/ruby/classes.md",
+      content: "Ruby classes content",
+      title: "Ruby Classes",
+      metadata: { "type" => "concept" },
+    )
+
+    result = @tool.execute(file_path: "concept/ruby/classes.md")
+
+    # Should NOT include system-reminder section
+    refute_match(/<system-reminder>/, result)
+    refute_match(/Related memories/, result)
+  end
+
+  def test_empty_related_array_no_reminder
+    # Write entry with empty related array
+    @storage.write(
+      file_path: "concept/ruby/classes.md",
+      content: "Ruby classes content",
+      title: "Ruby Classes",
+      metadata: {
+        "type" => "concept",
+        "related" => [],
+      },
+    )
+
+    result = @tool.execute(file_path: "concept/ruby/classes.md")
+
+    # Should NOT include system-reminder section
+    refute_match(/<system-reminder>/, result)
+  end
+
+  def test_multiple_related_memories
+    # Write related memories
+    @storage.write(
+      file_path: "concept/ruby/modules.md",
+      content: "Ruby modules",
+      title: "Ruby Modules",
+      metadata: { "type" => "concept" },
+    )
+    @storage.write(
+      file_path: "concept/ruby/inheritance.md",
+      content: "Ruby inheritance",
+      title: "Ruby Inheritance",
+      metadata: { "type" => "concept" },
+    )
+
+    # Write main entry with multiple related memories
+    @storage.write(
+      file_path: "concept/ruby/classes.md",
+      content: "Ruby classes content",
+      title: "Ruby Classes",
+      metadata: {
+        "type" => "concept",
+        "related" => [
+          "memory://concept/ruby/modules.md",
+          "memory://concept/ruby/inheritance.md",
+        ],
+      },
+    )
+
+    result = @tool.execute(file_path: "concept/ruby/classes.md")
+
+    # Should include both related memories
+    assert_match(%r{memory://concept/ruby/modules\.md "Ruby Modules"}, result)
+    assert_match(%r{memory://concept/ruby/inheritance\.md "Ruby Inheritance"}, result)
   end
 
   def test_error_for_nonexistent_file

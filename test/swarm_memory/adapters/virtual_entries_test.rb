@@ -29,16 +29,12 @@ class VirtualEntriesTest < Minitest::Test
   end
 
   def test_virtual_skill_works_with_memory_read_tool
-    # MemoryRead should return JSON for virtual entries
+    # MemoryRead should return plain text for virtual entries
     tool = SwarmMemory::Tools::MemoryRead.new(storage: @storage, agent_name: :test)
     result = tool.execute(file_path: "skill/meta/deep-learning.md")
 
-    # Should return JSON
-    parsed = JSON.parse(result)
-
-    assert_equal("Deep Learning Protocol", parsed["metadata"]["title"])
-    assert_equal("skill", parsed["metadata"]["type"])
-    assert_match(/     1→# Deep Learning Protocol/, parsed["content"])
+    # Should return plain text with line numbers
+    assert_match(/     1 # Deep Learning Protocol/, result)
   end
 
   def test_virtual_skill_works_with_load_skill_tool

@@ -80,14 +80,9 @@ class SkillWorkflowTest < Minitest::Test
     memory_read = agent.tools.values.find { |t| t.name == "MemoryRead" }
     read_result = memory_read.execute(file_path: "skill/optimize-performance.md")
 
-    # Should return JSON with metadata and line numbers in content
-    parsed = JSON.parse(read_result)
-
-    assert_equal("Optimize Application Performance", parsed["metadata"]["title"])
-    assert_equal("skill", parsed["metadata"]["type"])
-    assert_equal(["Read", "Grep"], parsed["metadata"]["tools"])
-    assert_match(/     1→# Optimize Performance/, parsed["content"])
-    assert_match(/Profile the application/, parsed["content"])
+    # Should return plain text with line numbers
+    assert_match(/     1 # Optimize Performance/, read_result)
+    assert_match(/Profile the application/, read_result)
 
     # Step 4: Capture initial tools
     initial_tools = agent.tools.values.map(&:name)

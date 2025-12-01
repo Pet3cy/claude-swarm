@@ -16,12 +16,12 @@ Gem::Specification.new do |spec|
     inter-process communication. Perfect for building lightweight, efficient AI agent teams with
     specialized roles and capabilities.
   DESC
-  spec.homepage = "https://github.com/parruda/claude-swarm"
+  spec.homepage = "https://github.com/parruda/swarm"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.0"
 
-  spec.metadata["source_code_uri"] = "https://github.com/parruda/claude-swarm"
-  spec.metadata["changelog_uri"] = "https://github.com/parruda/claude-swarm/blob/main/docs/v2/CHANGELOG.swarm_sdk.md"
+  spec.metadata["source_code_uri"] = "https://github.com/parruda/swarm"
+  spec.metadata["changelog_uri"] = "https://github.com/parruda/swarm/blob/main/docs/v2/CHANGELOG.swarm_sdk.md"
 
   spec.files = IO.popen(["git", "ls-files", "-z"], chdir: __dir__, err: IO::NULL) do |ls|
     ls.readlines("\x0", chomp: true).select do |f|

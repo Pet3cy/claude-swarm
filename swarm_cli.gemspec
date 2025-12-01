@@ -10,17 +10,17 @@ Gem::Specification.new do |spec|
 
   spec.summary = "Command-line interface for SwarmSDK"
   spec.description = <<~DESC
-    SwarmCLI provides a beautiful command-line interface for SwarmSDK, the lightweight multi-agent
+    SwarmCLI provides a command-line interface for SwarmSDK, the lightweight multi-agent
     AI orchestration framework. Built with the TTY toolkit, it offers an intuitive and interactive
     way to define, manage, and execute AI agent swarms with progress indicators, formatted output,
     and comprehensive help documentation.
   DESC
-  spec.homepage = "https://github.com/parruda/claude-swarm"
+  spec.homepage = "https://github.com/parruda/swarm"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2.0"
 
-  spec.metadata["source_code_uri"] = "https://github.com/parruda/claude-swarm"
-  spec.metadata["changelog_uri"] = "https://github.com/parruda/claude-swarm/blob/main/docs/v2/CHANGELOG.swarm_cli.md"
+  spec.metadata["source_code_uri"] = "https://github.com/parruda/swarm"
+  spec.metadata["changelog_uri"] = "https://github.com/parruda/swarm/blob/main/docs/v2/CHANGELOG.swarm_cli.md"
 
   File.basename(__FILE__)
   spec.files = IO.popen(["git", "ls-files", "-z"], chdir: __dir__, err: IO::NULL) do |ls|

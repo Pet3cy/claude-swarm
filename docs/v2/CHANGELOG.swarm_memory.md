@@ -5,6 +5,52 @@ All notable changes to SwarmMemory will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.4]
+
+### Changed
+
+- **MemoryRead returns plain text instead of JSON**
+  - **Before**: JSON with `content` and `metadata` fields
+  - **After**: Plain text with line numbers (same format as `cat -n`)
+  - **Rationale**: Simpler output format, easier for agents to consume
+  - **Files**: `lib/swarm_memory/tools/memory_read.rb:66-83`
+
+- **MemoryRead shows related memories in system-reminder**
+  - Related memories from metadata are now displayed at the bottom of output
+  - Includes title lookup for each related memory path
+  - Format: `- memory://path/to/entry.md "Entry Title"`
+  - Gracefully handles missing entries (shows path without title)
+  - **Files**: `lib/swarm_memory/tools/memory_read.rb:107-124`
+
+- **MemoryGrep files_with_matches includes titles**
+  - **Before**: `  memory://concept/ruby/classes.md`
+  - **After**: `- memory://concept/ruby/classes.md "Ruby Classes"`
+  - Titles looked up for each matching entry
+  - **Files**: `lib/swarm_memory/tools/memory_grep.rb:192-205`
+
+- **MemoryGlob output uses bullet points**
+  - **Before**: `  memory://path "Title" (1.2KB)`
+  - **After**: `- memory://path "Title" (1.2KB)`
+  - Consistent formatting across all memory discovery tools
+  - **Files**: `lib/swarm_memory/tools/memory_glob.rb:140-142`
+
+### Added
+
+- **TitleLookup shared module** - DRY utility for title lookups
+  - `lookup_title(path)` - Returns title or nil for a memory path
+  - `format_memory_path_with_title(path)` - Formats as `memory://path "Title"`
+  - Handles `memory://` prefix normalization
+  - Graceful error handling for missing entries
+  - Used by MemoryRead, MemoryGrep
+  - **Files**: `lib/swarm_memory/tools/title_lookup.rb`
+
+- **Comprehensive test coverage for memory tools**
+  - `title_lookup_test.rb` - 6 tests for shared module
+  - `memory_grep_test.rb` - 11 tests for all output modes and error handling
+  - `memory_glob_test.rb` - 13 tests for glob patterns, titles, and formatting
+  - Total: 26 new tests (199 → 225)
+  - **Files**: `test/swarm_memory/tools/title_lookup_test.rb`, `test/swarm_memory/tools/memory_grep_test.rb`, `test/swarm_memory/tools/memory_glob_test.rb`
+
 ## [2.2.3]
 
 ### Fixed
