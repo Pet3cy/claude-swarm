@@ -892,5 +892,287 @@ module SwarmSDK
 
       assert_equal(test_tool, result, "Should remove tool by falling back to symbol lookup")
     end
+
+    # --- Orphan Tool Call Pruning Tests ---
+    # These tests verify orphan tool call recovery through the public ask() interface
+
+    def test_ask_recovers_from_orphan_tool_calls_on_bad_request
+      chat = Agent::Chat.new(definition: { model: "gpt-5" })
+
+      # Set up the orphan tool call in the chat
+      tool_call = RubyLLM::ToolCall.new(id: "tc_orphan", name: "Read", arguments: {})
+      chat.add_message(role: :user, content: "Previous message")
+      chat.add_message(
+        RubyLLM::Message.new(role: :assistant, content: nil, tool_calls: { "tc_orphan" => tool_call }),
+      )
+      # NOTE: no tool result message - this creates the orphan!
+
+      call_count = 0
+      events = []
+
+      # First call raises BadRequestError with tool-related message
+      # Second call succeeds (after orphan pruning)
+      stub_request(:post, "https://api.openai.com/v1/chat/completions")
+        .to_return do |_request|
+        call_count += 1
+        if call_count == 1
+          # First call fails with tool_use error
+          {
+            status: 400,
+            body: { error: { message: "tool_use block must have corresponding tool_result" } }.to_json,
+            headers: { "Content-Type" => "application/json" },
+          }
+        else
+          # Second call succeeds
+          {
+            status: 200,
+            body: {
+              id: "chatcmpl-123",
+              object: "chat.completion",
+              created: 1_677_652_288,
+              model: "gpt-5",
+              choices: [{ index: 0, message: { role: "assistant", content: "Recovered!" }, finish_reason: "stop" }],
+              usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+            }.to_json,
+            headers: { "Content-Type" => "application/json" },
+          }
+        end
+      end
+
+      LogStream.stub(:emit, ->(event) { events << event }) do
+        response = chat.ask("New message")
+
+        assert_equal("Recovered!", response.content)
+      end
+
+      # Verify pruning event was emitted
+      pruned_event = events.find { |e| e[:type] == "orphan_tool_calls_pruned" }
+
+      refute_nil(pruned_event, "Should emit orphan_tool_calls_pruned event")
+      assert_equal(1, pruned_event[:pruned_count])
+
+      # Verify the orphan assistant message was removed
+      # Should have: user (previous), user (new message), assistant (recovered)
+      # The empty assistant with orphan tool_call should be gone
+      assistant_messages = chat.messages.select { |m| m.role == :assistant }
+
+      assert_equal(1, assistant_messages.size, "Should only have one assistant message after recovery")
+      assert_equal("Recovered!", assistant_messages.first.content)
+    end
+
+    def test_ask_does_not_prune_on_non_tool_related_bad_request
+      chat = Agent::Chat.new(definition: { model: "gpt-5" })
+
+      # Set up an orphan tool call
+      tool_call = RubyLLM::ToolCall.new(id: "tc_orphan", name: "Read", arguments: {})
+      chat.add_message(role: :user, content: "Previous message")
+      chat.add_message(
+        RubyLLM::Message.new(role: :assistant, content: nil, tool_calls: { "tc_orphan" => tool_call }),
+      )
+
+      original_message_count = chat.message_count
+      events = []
+
+      # Stub to return non-tool-related 400 error
+      stub_request(:post, "https://api.openai.com/v1/chat/completions")
+        .to_return(
+          status: 400,
+          body: { error: { message: "Invalid JSON format" } }.to_json,
+          headers: { "Content-Type" => "application/json" },
+        )
+
+      LogStream.stub(:emit, ->(event) { events << event }) do
+        # Should raise the error after retries (not recover via pruning)
+        assert_raises(RubyLLM::BadRequestError) do
+          chat.ask("New message")
+        end
+      end
+
+      # Verify NO pruning event was emitted
+      pruned_event = events.find { |e| e[:type] == "orphan_tool_calls_pruned" }
+
+      assert_nil(pruned_event, "Should NOT emit orphan_tool_calls_pruned for non-tool errors")
+
+      # Message count should have increased by 1 (the user message was added before error)
+      assert_equal(original_message_count + 1, chat.message_count)
+    end
+
+    def test_ask_prunes_multiple_orphan_tool_calls
+      chat = Agent::Chat.new(definition: { model: "gpt-5" })
+
+      # Set up multiple orphan tool calls
+      tool_call_1 = RubyLLM::ToolCall.new(id: "tc_1", name: "Read", arguments: {})
+      tool_call_2 = RubyLLM::ToolCall.new(id: "tc_2", name: "Write", arguments: {})
+
+      chat.add_message(role: :user, content: "Previous message")
+      chat.add_message(
+        RubyLLM::Message.new(
+          role: :assistant,
+          content: nil,
+          tool_calls: { "tc_1" => tool_call_1, "tc_2" => tool_call_2 },
+        ),
+      )
+
+      call_count = 0
+      events = []
+
+      stub_request(:post, "https://api.openai.com/v1/chat/completions")
+        .to_return do |_request|
+        call_count += 1
+        if call_count == 1
+          {
+            status: 400,
+            body: { error: { message: "tool_use block must have corresponding tool_result" } }.to_json,
+            headers: { "Content-Type" => "application/json" },
+          }
+        else
+          {
+            status: 200,
+            body: {
+              id: "chatcmpl-123",
+              object: "chat.completion",
+              created: 1_677_652_288,
+              model: "gpt-5",
+              choices: [{ index: 0, message: { role: "assistant", content: "Done!" }, finish_reason: "stop" }],
+              usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+            }.to_json,
+            headers: { "Content-Type" => "application/json" },
+          }
+        end
+      end
+
+      LogStream.stub(:emit, ->(event) { events << event }) do
+        response = chat.ask("New message")
+
+        assert_equal("Done!", response.content)
+      end
+
+      # Verify pruning event shows 2 orphans pruned
+      pruned_event = events.find { |e| e[:type] == "orphan_tool_calls_pruned" }
+
+      refute_nil(pruned_event)
+      assert_equal(2, pruned_event[:pruned_count])
+    end
+
+    def test_ask_keeps_assistant_content_when_pruning_orphan_tool_calls
+      chat = Agent::Chat.new(definition: { model: "gpt-5" })
+
+      # Set up orphan tool call with assistant content
+      tool_call = RubyLLM::ToolCall.new(id: "tc_orphan", name: "Read", arguments: {})
+      chat.add_message(role: :user, content: "Previous message")
+      chat.add_message(
+        RubyLLM::Message.new(
+          role: :assistant,
+          content: "Let me check that file...",
+          tool_calls: { "tc_orphan" => tool_call },
+        ),
+      )
+
+      call_count = 0
+
+      stub_request(:post, "https://api.openai.com/v1/chat/completions")
+        .to_return do |_request|
+        call_count += 1
+        if call_count == 1
+          {
+            status: 400,
+            body: { error: { message: "tool_use block must have corresponding tool_result" } }.to_json,
+            headers: { "Content-Type" => "application/json" },
+          }
+        else
+          {
+            status: 200,
+            body: {
+              id: "chatcmpl-123",
+              object: "chat.completion",
+              created: 1_677_652_288,
+              model: "gpt-5",
+              choices: [{ index: 0, message: { role: "assistant", content: "Recovered!" }, finish_reason: "stop" }],
+              usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+            }.to_json,
+            headers: { "Content-Type" => "application/json" },
+          }
+        end
+      end
+
+      LogStream.stub(:emit, ->(_event) {}) do
+        chat.ask("New message")
+      end
+
+      # Find the first assistant message (the one that had the orphan tool call)
+      assistant_messages = chat.messages.select { |m| m.role == :assistant }
+
+      assert_equal(2, assistant_messages.size, "Should have 2 assistant messages")
+
+      # First assistant message should have content but no tool_calls
+      first_assistant = assistant_messages.first
+
+      assert_equal("Let me check that file...", first_assistant.content)
+      assert(first_assistant.tool_calls.nil? || first_assistant.tool_calls.empty?)
+    end
+
+    def test_ask_adds_system_reminder_when_pruning_orphan_tool_calls
+      chat = Agent::Chat.new(definition: { model: "gpt-5" })
+
+      # Set up orphan tool call with specific arguments
+      tool_call = RubyLLM::ToolCall.new(
+        id: "tc_orphan",
+        name: "Read",
+        arguments: { file_path: "/test/important_file.rb" },
+      )
+      chat.add_message(role: :user, content: "Previous message")
+      chat.add_message(
+        RubyLLM::Message.new(role: :assistant, content: nil, tool_calls: { "tc_orphan" => tool_call }),
+      )
+
+      call_count = 0
+      captured_request_body = nil
+
+      stub_request(:post, "https://api.openai.com/v1/chat/completions")
+        .to_return do |request|
+        call_count += 1
+        if call_count == 1
+          {
+            status: 400,
+            body: { error: { message: "tool_use block must have corresponding tool_result" } }.to_json,
+            headers: { "Content-Type" => "application/json" },
+          }
+        else
+          # Capture the second request to verify system reminder was added
+          captured_request_body = JSON.parse(request.body)
+          {
+            status: 200,
+            body: {
+              id: "chatcmpl-123",
+              object: "chat.completion",
+              created: 1_677_652_288,
+              model: "gpt-5",
+              choices: [{ index: 0, message: { role: "assistant", content: "Done!" }, finish_reason: "stop" }],
+              usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+            }.to_json,
+            headers: { "Content-Type" => "application/json" },
+          }
+        end
+      end
+
+      LogStream.stub(:emit, ->(_event) {}) do
+        chat.ask("New message")
+      end
+
+      # Verify the request body contains a system reminder about the pruned tool call
+      refute_nil(captured_request_body, "Should have captured the retry request")
+
+      # Find the last user message in the captured request (the one with the new prompt)
+      user_messages = captured_request_body["messages"].select { |m| m["role"] == "user" }
+      last_user_message = user_messages.last
+
+      refute_nil(last_user_message, "Should have user message in request")
+
+      # Check for system reminder content in the last user message
+      assert_includes(last_user_message["content"], "<system-reminder>")
+      assert_includes(last_user_message["content"], "tool calls were interrupted")
+      assert_includes(last_user_message["content"], "Read(file_path: \"/test/important_file.rb\")")
+      assert_includes(last_user_message["content"], "never executed")
+    end
   end
 end

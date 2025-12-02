@@ -5,6 +5,50 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Orphan Tool Call Recovery**: Automatic recovery from malformed conversation history on 400 Bad Request errors
+  - **What are orphan tool calls?**: Assistant messages with `tool_use` blocks that lack corresponding `tool_result` messages
+  - **Causes**: Tool execution interruption, session state restoration issues, network disruptions during tool execution
+  - **Automatic detection**: Scans message history when receiving tool-related 400 errors from API
+  - **Smart pruning**: Removes orphan `tool_calls` while preserving assistant message content
+  - **System reminder**: Informs agent about interrupted tool calls with details (tool name, arguments)
+  - **Zero-cost retry**: Pruning and retry happen immediately without counting toward retry limit
+  - **Error patterns detected**:
+    - `"tool_use block must have corresponding tool_result"`
+    - `"tool_use_id not found"`
+    - `"must immediately follow"`
+  - **Behavior**:
+    - Partial orphans: Keeps completed tool calls, removes only orphans
+    - Empty messages: Removes assistant messages that become empty after pruning
+    - Content preservation: Keeps assistant message content, only removes `tool_calls`
+  - **System reminder format**:
+    ```
+    <system-reminder>
+    The following tool calls were interrupted and removed from conversation history:
+    - Read(file_path: "/important/file.rb")
+    - Write(file_path: "/output.txt", content: "Hello...")
+    These tools were never executed. If you still need their results, please run them again.
+    </system-reminder>
+    ```
+  - **Logging**: Emits `orphan_tool_calls_pruned` event with count and error details
+  - **Test coverage**: 5 comprehensive integration tests through public API
+  - **Files**: `lib/swarm_sdk/agent/chat.rb` (+150 lines), `test/swarm_sdk/agent/chat_test.rb` (+200 lines)
+  - **Documentation**: Updated `lib/swarm_sdk/agent/RETRY_LOGIC.md` with complete recovery guide
+
+### Fixed
+
+- **Ephemeral Content Timing Bug**: Fixed system reminders not being injected on retry after orphan tool call pruning
+  - **Issue**: `prepare_for_llm` was called once before retry loop, so retries used stale message state
+  - **Impact**: System reminders added after pruning weren't included in retry requests
+  - **Root cause**: Prepared messages calculated before `call_llm_with_retry`, reused on all retry attempts
+  - **Fix**: Moved `prepare_for_llm(@llm_chat.messages)` inside retry block for fresh calculation on each attempt
+  - **Result**: Ephemeral content (system reminders) now correctly recalculated after message pruning
+  - **Side effect**: All retries now get fresh ephemeral content (correct behavior, negligible performance impact)
+  - **Files**: `lib/swarm_sdk/agent/chat.rb:647-662`
+
 ## [2.5.2] - 2025-11-28
 
 ### Added

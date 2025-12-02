@@ -644,13 +644,14 @@ module SwarmSDK
       # - Clear ephemeral content after each LLM call
       # - Add retry logic for transient failures
       def setup_llm_request_hook
-        @llm_chat.around_llm_request do |messages, &send_request|
-          # Inject ephemeral content (system reminders, etc.)
-          # These are sent to LLM but NOT persisted in message history
-          prepared_messages = @context_manager.prepare_for_llm(messages)
-
+        @llm_chat.around_llm_request do |_messages, &send_request|
           # Make the actual LLM API call with retry logic
+          # NOTE: prepare_for_llm must be called INSIDE the retry block so that
+          # ephemeral content is recalculated after orphan tool call pruning
           response = call_llm_with_retry do
+            # Inject ephemeral content fresh for each attempt
+            # Use @llm_chat.messages to get current state (may have been modified by pruning)
+            prepared_messages = @context_manager.prepare_for_llm(@llm_chat.messages)
             send_request.call(prepared_messages)
           end
 
@@ -713,51 +714,297 @@ module SwarmSDK
 
       # Call LLM provider with retry logic for transient failures
       #
+      # Includes special handling for 400 Bad Request errors:
+      # - Attempts to prune orphan tool calls (tool_use without tool_result)
+      # - If pruning succeeds, retries immediately without counting as retry
+      #
       # @param max_retries [Integer] Maximum retry attempts
       # @param delay [Integer] Delay between retries in seconds
       # @yield Block that performs the LLM call
       # @return [Object] Result from block
       def call_llm_with_retry(max_retries: 10, delay: 10, &block)
         attempts = 0
+        pruning_attempted = false
 
         loop do
           attempts += 1
 
           begin
             return yield
-          rescue StandardError => e
-            if attempts >= max_retries
-              LogStream.emit(
-                type: "llm_retry_exhausted",
-                agent: @agent_name,
-                swarm_id: @agent_context&.swarm_id,
-                parent_swarm_id: @agent_context&.parent_swarm_id,
-                model: model_id,
-                attempts: attempts,
-                error_class: e.class.name,
-                error_message: e.message,
-                error_backtrace: e.backtrace,
-              )
-              raise
+          rescue RubyLLM::BadRequestError => e
+            # Try to recover from 400 Bad Request by pruning orphan tool calls
+            # This can happen when tool execution is interrupted mid-stream
+            unless pruning_attempted
+              pruned = recover_from_orphan_tool_calls(e)
+              if pruned > 0
+                pruning_attempted = true
+                # Don't count this as a regular retry, try again immediately
+                attempts -= 1
+                next
+              end
             end
 
-            LogStream.emit(
-              type: "llm_retry_attempt",
-              agent: @agent_name,
-              swarm_id: @agent_context&.swarm_id,
-              parent_swarm_id: @agent_context&.parent_swarm_id,
-              model: model_id,
-              attempt: attempts,
-              max_retries: max_retries,
-              error_class: e.class.name,
-              error_message: e.message,
-              error_backtrace: e.backtrace,
-              retry_delay: delay,
-            )
-
-            sleep(delay)
+            # Fall through to standard retry logic
+            handle_retry_or_raise(e, attempts, max_retries, delay)
+          rescue StandardError => e
+            handle_retry_or_raise(e, attempts, max_retries, delay)
           end
         end
+      end
+
+      # Handle retry decision or re-raise error
+      #
+      # @param error [StandardError] The error that occurred
+      # @param attempts [Integer] Current attempt count
+      # @param max_retries [Integer] Maximum retry attempts
+      # @param delay [Integer] Delay between retries in seconds
+      # @raise [StandardError] Re-raises error if max retries exceeded
+      def handle_retry_or_raise(error, attempts, max_retries, delay)
+        if attempts >= max_retries
+          LogStream.emit(
+            type: "llm_retry_exhausted",
+            agent: @agent_name,
+            swarm_id: @agent_context&.swarm_id,
+            parent_swarm_id: @agent_context&.parent_swarm_id,
+            model: model_id,
+            attempts: attempts,
+            error_class: error.class.name,
+            error_message: error.message,
+            error_backtrace: error.backtrace,
+          )
+          raise
+        end
+
+        LogStream.emit(
+          type: "llm_retry_attempt",
+          agent: @agent_name,
+          swarm_id: @agent_context&.swarm_id,
+          parent_swarm_id: @agent_context&.parent_swarm_id,
+          model: model_id,
+          attempt: attempts,
+          max_retries: max_retries,
+          error_class: error.class.name,
+          error_message: error.message,
+          error_backtrace: error.backtrace,
+          retry_delay: delay,
+        )
+
+        sleep(delay)
+      end
+
+      # Recover from 400 Bad Request by pruning orphan tool calls
+      #
+      # @param error [RubyLLM::BadRequestError] The error that occurred
+      # @return [Integer] Number of orphan tool calls pruned (0 if none or not applicable)
+      def recover_from_orphan_tool_calls(error)
+        # Only attempt recovery for tool-related errors
+        error_message = error.message.to_s.downcase
+        tool_error_patterns = [
+          "tool_use",
+          "tool_result",
+          "tool_use_id",
+          "tool use",
+          "tool result",
+          "corresponding tool_result",
+          "must immediately follow",
+        ]
+
+        return 0 unless tool_error_patterns.any? { |pattern| error_message.include?(pattern) }
+
+        # Clear stale ephemeral content from the failed LLM call
+        # This is important because message indices changed after pruning
+        @context_manager&.clear_ephemeral
+
+        # Attempt to prune orphan tool calls
+        result = prune_orphan_tool_calls
+        pruned_count = result[:count]
+
+        if pruned_count > 0
+          LogStream.emit(
+            type: "orphan_tool_calls_pruned",
+            agent: @agent_name,
+            swarm_id: @agent_context&.swarm_id,
+            parent_swarm_id: @agent_context&.parent_swarm_id,
+            model: model_id,
+            pruned_count: pruned_count,
+            original_error: error.message,
+          )
+
+          # Add system reminder about pruned tool calls
+          add_orphan_tool_calls_reminder(result[:pruned_tools])
+        end
+
+        pruned_count
+      end
+
+      # Prune orphan tool calls from message history
+      #
+      # An orphan tool call is a tool_use in an assistant message that doesn't
+      # have a corresponding tool_result before the next user/assistant message.
+      #
+      # @return [Hash] { count: Integer, pruned_tools: Array<Hash> }
+      def prune_orphan_tool_calls
+        messages = @llm_chat.messages
+        return { count: 0, pruned_tools: [] } if messages.empty?
+
+        orphans = find_orphan_tool_calls(messages)
+        return { count: 0, pruned_tools: [] } if orphans.empty?
+
+        # Collect details about pruned tool calls
+        pruned_tools = collect_orphan_tool_details(messages, orphans)
+
+        # Build new message array with orphans removed
+        new_messages = remove_orphan_tool_calls(messages, orphans)
+
+        # Replace messages atomically
+        replace_messages(new_messages)
+
+        {
+          count: orphans.values.flatten.size,
+          pruned_tools: pruned_tools,
+        }
+      end
+
+      # Collect details about orphan tool calls for system reminder
+      #
+      # @param messages [Array<RubyLLM::Message>] Original messages
+      # @param orphans [Hash<Integer, Array<String>>] Map of message index to orphan tool_call_ids
+      # @return [Array<Hash>] Array of { name:, arguments: } hashes
+      def collect_orphan_tool_details(messages, orphans)
+        pruned_tools = []
+
+        orphans.each do |msg_idx, orphan_ids|
+          msg = messages[msg_idx]
+          next unless msg.tool_calls
+
+          orphan_ids.each do |tool_call_id|
+            tool_call = msg.tool_calls[tool_call_id]
+            next unless tool_call
+
+            pruned_tools << {
+              name: tool_call.name,
+              arguments: tool_call.arguments,
+            }
+          end
+        end
+
+        pruned_tools
+      end
+
+      # Add system reminder about pruned orphan tool calls
+      #
+      # @param pruned_tools [Array<Hash>] Array of { name:, arguments: } hashes
+      # @return [void]
+      def add_orphan_tool_calls_reminder(pruned_tools)
+        return if pruned_tools.empty?
+
+        # Format tool calls for the reminder
+        tool_list = pruned_tools.map do |tool|
+          args_str = format_tool_arguments(tool[:arguments])
+          "- #{tool[:name]}(#{args_str})"
+        end.join("\n")
+
+        reminder = <<~REMINDER
+          <system-reminder>
+          The following tool calls were interrupted and removed from conversation history:
+
+          #{tool_list}
+
+          These tools were never executed. If you still need their results, please run them again.
+          </system-reminder>
+        REMINDER
+
+        add_ephemeral_reminder(reminder.strip)
+      end
+
+      # Format tool arguments for display in reminder
+      #
+      # @param arguments [Hash] Tool call arguments
+      # @return [String] Formatted arguments
+      def format_tool_arguments(arguments)
+        return "" if arguments.nil? || arguments.empty?
+
+        # Format key-value pairs, truncating long values
+        args = arguments.map do |key, value|
+          formatted_value = if value.is_a?(String) && value.length > 50
+            "#{value[0...47]}..."
+          else
+            value.inspect
+          end
+          "#{key}: #{formatted_value}"
+        end
+
+        args.join(", ")
+      end
+
+      # Find all orphan tool calls in message history
+      #
+      # @param messages [Array<RubyLLM::Message>] Message array to scan
+      # @return [Hash<Integer, Array<String>>] Map of message index to orphan tool_call_ids
+      def find_orphan_tool_calls(messages)
+        orphans = {}
+
+        messages.each_with_index do |msg, idx|
+          next unless msg.role == :assistant && msg.tool_calls && !msg.tool_calls.empty?
+
+          # Get all tool_call_ids from this assistant message
+          expected_tool_call_ids = msg.tool_calls.keys.to_set
+
+          # Find tool results between this message and the next user/assistant message
+          found_tool_call_ids = Set.new
+
+          (idx + 1...messages.size).each do |subsequent_idx|
+            subsequent_msg = messages[subsequent_idx]
+
+            # Stop at next user or assistant message
+            break if [:user, :assistant].include?(subsequent_msg.role)
+
+            # Collect tool result IDs
+            if subsequent_msg.role == :tool && subsequent_msg.tool_call_id
+              found_tool_call_ids << subsequent_msg.tool_call_id
+            end
+          end
+
+          # Identify orphan tool_call_ids (expected but not found)
+          orphan_ids = (expected_tool_call_ids - found_tool_call_ids).to_a
+          orphans[idx] = orphan_ids unless orphan_ids.empty?
+        end
+
+        orphans
+      end
+
+      # Remove orphan tool calls from messages
+      #
+      # @param messages [Array<RubyLLM::Message>] Original messages
+      # @param orphans [Hash<Integer, Array<String>>] Map of message index to orphan tool_call_ids
+      # @return [Array<RubyLLM::Message>] New message array with orphans removed
+      def remove_orphan_tool_calls(messages, orphans)
+        messages.map.with_index do |msg, idx|
+          orphan_ids = orphans[idx]
+
+          # No orphans in this message - keep as-is
+          next msg unless orphan_ids
+
+          # Remove orphan tool_calls from this assistant message
+          remaining_tool_calls = msg.tool_calls.reject { |id, _| orphan_ids.include?(id) }
+
+          # If no tool_calls remain and no content, skip this message entirely
+          if remaining_tool_calls.empty? && (msg.content.nil? || msg.content.to_s.strip.empty?)
+            next nil
+          end
+
+          # Create new message with remaining tool_calls
+          RubyLLM::Message.new(
+            role: msg.role,
+            content: msg.content,
+            tool_calls: remaining_tool_calls.empty? ? nil : remaining_tool_calls,
+            model_id: msg.model_id,
+            input_tokens: msg.input_tokens,
+            output_tokens: msg.output_tokens,
+            cached_tokens: msg.cached_tokens,
+            cache_creation_tokens: msg.cache_creation_tokens,
+          )
+        end.compact
       end
 
       # Check if a tool call is a delegation tool
