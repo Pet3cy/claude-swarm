@@ -510,5 +510,87 @@ module SwarmSDK
       assert_equal(4000, hash[:parameters][:max_tokens])
       assert_in_delta(0.9, hash[:parameters][:top_p])
     end
+
+    # ========================================
+    # context_window coercion tests
+    # ========================================
+
+    def test_context_window_string_coerced_to_integer
+      # YAML sometimes parses numbers as strings (e.g., context_window: '1000000')
+      # This caused NoMethodError: undefined method 'zero?' for String
+      agent_def = Agent::Definition.new(
+        :test_agent,
+        {
+          description: "Test agent",
+          system_prompt: "Test prompt",
+          directory: ".",
+          context_window: "1000000", # String instead of Integer
+        },
+      )
+
+      # Should be coerced to Integer
+      assert_instance_of(Integer, agent_def.context_window)
+      assert_equal(1_000_000, agent_def.context_window)
+    end
+
+    def test_context_window_integer_unchanged
+      agent_def = Agent::Definition.new(
+        :test_agent,
+        {
+          description: "Test agent",
+          system_prompt: "Test prompt",
+          directory: ".",
+          context_window: 500_000, # Already an Integer
+        },
+      )
+
+      assert_instance_of(Integer, agent_def.context_window)
+      assert_equal(500_000, agent_def.context_window)
+    end
+
+    def test_context_window_nil_unchanged
+      agent_def = Agent::Definition.new(
+        :test_agent,
+        {
+          description: "Test agent",
+          system_prompt: "Test prompt",
+          directory: ".",
+          # context_window not provided
+        },
+      )
+
+      assert_nil(agent_def.context_window)
+    end
+
+    def test_context_window_with_chat_does_not_raise_error
+      # Regression test: String context_window caused NoMethodError in context_usage_percentage
+      # when it called limit.zero? on the string value
+
+      # Setup API key for test
+      ENV["OPENAI_API_KEY"] = "test-key"
+      RubyLLM.configure { |config| config.openai_api_key = "test-key" }
+
+      agent_def = Agent::Definition.new(
+        :test_agent,
+        {
+          description: "Test agent",
+          system_prompt: "Test prompt",
+          directory: ".",
+          context_window: "1000000", # String from YAML
+        },
+      )
+
+      # Create a chat with this definition
+      chat = Agent::Chat.new(definition: agent_def.to_h, agent_name: :test_agent)
+
+      # This should not raise NoMethodError: undefined method 'zero?' for String
+      # If the bug exists, this will raise: NoMethodError: undefined method 'zero?' for an instance of String
+      percentage = chat.context_usage_percentage
+
+      # Should return 0.0 since there are no messages
+      assert_in_delta(0.0, percentage)
+    ensure
+      ENV.delete("OPENAI_API_KEY")
+    end
   end
 end

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Context Window String Coercion Bug**: Fixed `NoMethodError: undefined method 'zero?' for String` when `context_window` is a quoted string in YAML
+  - **Issue**: YAML configs with `context_window: '1000000'` (string) caused error when calling `context_usage_percentage`
+  - **Root cause**: `TokenTracking#context_usage_percentage` called `.zero?` on string value from YAML
+  - **Fix**: Added `coerce_to_integer` helper in `Agent::Definition` to convert string numeric values to integers
+  - **Impact**: String context_window values from YAML now properly coerced during agent initialization
+  - **Files**: `lib/swarm_sdk/agent/definition.rb`
+  - **Tests**: 4 comprehensive tests covering string coercion, integer preservation, nil handling, and regression protection
+
 ### Added
 
 - **Orphan Tool Call Recovery**: Automatic recovery from malformed conversation history on 400 Bad Request errors

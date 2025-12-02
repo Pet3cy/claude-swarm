@@ -71,7 +71,7 @@ module SwarmSDK
         @provider = config[:provider] || SwarmSDK.config.default_provider
         @base_url = config[:base_url]
         @api_version = config[:api_version]
-        @context_window = config[:context_window] # Explicit context window override
+        @context_window = coerce_to_integer(config[:context_window]) # Explicit context window override
         @parameters = config[:parameters] || {}
         @headers = Utils.stringify_keys(config[:headers] || {})
         @timeout = config[:timeout] || SwarmSDK.config.agent_request_timeout
@@ -445,6 +445,21 @@ module SwarmSDK
             raise ConfigurationError, "Hook missing 'command' field for event #{event_name}" if hook_type.to_s == "command" && !command
           end
         end
+      end
+
+      # Coerce value to integer if it's a numeric string
+      #
+      # YAML sometimes parses numbers as strings (especially when quoted).
+      # This ensures numeric values are properly converted.
+      #
+      # @param value [String, Integer, nil] Value to coerce
+      # @return [Integer, nil] Coerced integer or nil
+      def coerce_to_integer(value)
+        return if value.nil?
+        return value if value.is_a?(Integer)
+        return value.to_i if value.is_a?(String) && value.match?(/\A\d+\z/)
+
+        value
       end
 
       def validate!
