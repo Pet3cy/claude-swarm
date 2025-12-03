@@ -23,3 +23,6 @@ gem "rubocop-rake", require: false
 
 gem "headless_browser_tool", require: false
 gem "vcr"
+
+# Use local ruby_llm-mcp with 400 fix
+gem "ruby_llm_swarm-mcp", path: "/Users/paulo/src/github.com/parruda/ruby_llm-mcp"

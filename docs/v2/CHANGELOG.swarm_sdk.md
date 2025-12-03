@@ -5,6 +5,25 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.4]
+
+### Fixed
+
+- **MCP Non-Compliant Server Compatibility** - Added support for MCP servers that return HTTP 400 instead of 405
+  - **Issue**: Some MCP servers (e.g., Firecrawl) return `400 Bad Request` when rejecting SSE streams, causing swarm execution to fail
+  - **MCP Spec**: Per MCP HTTP+SSE specification, servers should return `405 Method Not Allowed` for unsupported SSE
+  - **Non-compliant behavior**: Firecrawl and other servers incorrectly return `400 Bad Request`
+  - **Previous behavior**: `ruby_llm-mcp` logged ERROR and raised TransportError exception, stopping execution
+  - **Fix**: Using local `ruby_llm-mcp` fork with modified `StreamableHTTP` transport:
+    - Treats HTTP 400 the same as 405 (graceful degradation)
+    - Logs INFO-level message explaining non-compliant behavior
+    - Returns `nil` to continue execution without SSE streaming
+    - No ERROR logs, clean execution
+  - **Configuration**: Both `type: http` and `type: streamable` work correctly (are equivalent)
+  - **Impact**: Swarms can now use non-compliant MCP servers without errors
+  - **Files**: `Gemfile` (added local path to `ruby_llm-mcp`)
+  - **Documentation**: `decisions/2025-12-03-003-mcp-400-handling.md`
+
 ## [2.5.3]
 
 ### Fixed

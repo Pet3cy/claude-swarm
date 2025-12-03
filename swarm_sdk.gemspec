@@ -38,6 +38,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency("faraday-follow_redirects", "~> 0.4")
   spec.add_dependency("openssl", "~> 3.3.2")
   spec.add_dependency("ruby_llm_swarm", "~> 1.9.5")
-  spec.add_dependency("ruby_llm_swarm-mcp", "~> 0.8.1")
+  spec.add_dependency("ruby_llm_swarm-mcp", "~> 0.8.2")
   spec.add_dependency("zeitwerk", "~> 2.6")
 end

@@ -5,6 +5,24 @@ All notable changes to SwarmCLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.9]
+
+### Fixed
+
+- **JSON Formatter Error Handling** - Fixed silent failures when using `--output-format json`
+  - **Issue**: Errors during initialization or configuration were not emitted in JSON output format
+  - **Root cause**: `JsonFormatter#on_error` was a no-op, assuming SwarmSDK would always emit `swarm_stop` events
+  - **Problem**: Errors before swarm execution starts (e.g., configuration errors, missing API keys) had no output
+  - **Fix**: `JsonFormatter#on_error` now emits proper JSON error events with:
+    - `type: "error"`
+    - `error_class`: Full class name (e.g., `"SwarmSDK::ConfigurationError"`)
+    - `error_message`: Error message
+    - `timestamp`: ISO 8601 timestamp
+    - `duration`: Execution duration (if available)
+    - `backtrace`: Full backtrace array
+  - **Impact**: JSON output mode now properly reports all errors, making CLI suitable for automation/scripting
+  - **Files**: `lib/swarm_cli/formatters/json_formatter.rb`
+
 ## [2.1.8]
 - Add reline as dependency
 

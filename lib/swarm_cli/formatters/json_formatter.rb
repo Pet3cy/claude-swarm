@@ -35,9 +35,20 @@ module SwarmCLI
 
       # Called when swarm execution fails
       #
-      # No action needed - SwarmSDK's swarm_stop event already contains error information
+      # Emits error information as JSON. If error occurs during execution,
+      # SwarmSDK's swarm_stop event will also contain error details.
+      # This handles errors that occur before or outside swarm execution.
       def on_error(error:, duration: nil)
-        # SwarmSDK emits swarm_stop automatically with error information
+        error_data = {
+          type: "error",
+          error_class: error.class.name,
+          error_message: error.message,
+          timestamp: Time.now.utc.iso8601(6),
+        }
+        error_data[:duration] = duration if duration
+        error_data[:backtrace] = error.backtrace if error.respond_to?(:backtrace) && error.backtrace
+
+        emit(error_data)
       end
 
       private
