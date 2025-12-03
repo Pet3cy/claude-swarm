@@ -1,12 +1,4 @@
 PATH
-  remote: ../ruby_llm-mcp
-  specs:
-    ruby_llm_swarm-mcp (0.8.2)
-      httpx (~> 1.4)
-      json-schema (~> 5.0)
-      zeitwerk (~> 2)
-
-PATH
   remote: .
   specs:
     claude_swarm (1.0.11)
@@ -354,6 +346,10 @@ GEM
       openssl (~> 3.3.2)
       ruby_llm-schema (~> 0.2.1)
       zeitwerk (~> 2)
+    ruby_llm_swarm-mcp (0.8.2)
+      httpx (~> 1.4)
+      json-schema (~> 5.0)
+      zeitwerk (~> 2)
     rubyzip (3.1.1)
     selenium-webdriver (4.38.0)
       base64 (~> 0.2)
@@ -441,7 +437,7 @@ DEPENDENCIES
   rubocop-performance
   rubocop-rake
   rubocop-shopify
-  ruby_llm_swarm-mcp!
+  ruby_llm_swarm-mcp
   simplecov (~> 0.22)
   swarm_cli!
   swarm_memory!
