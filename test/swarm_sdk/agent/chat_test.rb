@@ -982,10 +982,14 @@ module SwarmSDK
         )
 
       LogStream.stub(:emit, ->(event) { events << event }) do
-        # Should raise the error after retries (not recover via pruning)
-        assert_raises(RubyLLM::BadRequestError) do
-          chat.ask("New message")
-        end
+        # NEW BEHAVIOR: Returns error message instead of raising (for delegation)
+        response = chat.ask("New message")
+
+        # Should return an assistant message with error details
+        assert_equal(:assistant, response.role)
+        assert_includes(response.content, "BadRequestError")
+        assert_includes(response.content, "400")
+        assert_includes(response.content, "Invalid JSON format")
       end
 
       # Verify NO pruning event was emitted
@@ -993,8 +997,15 @@ module SwarmSDK
 
       assert_nil(pruned_event, "Should NOT emit orphan_tool_calls_pruned for non-tool errors")
 
-      # Message count should have increased by 1 (the user message was added before error)
-      assert_equal(original_message_count + 1, chat.message_count)
+      # Verify llm_request_failed event was emitted
+      failed_event = events.find { |e| e[:type] == "llm_request_failed" }
+
+      refute_nil(failed_event, "Should emit llm_request_failed for non-retryable errors")
+      assert_equal("BadRequest", failed_event[:error_type])
+      refute(failed_event[:retryable])
+
+      # Message count should have increased by 2 (user message + error response)
+      assert_equal(original_message_count + 2, chat.message_count)
     end
 
     def test_ask_prunes_multiple_orphan_tool_calls

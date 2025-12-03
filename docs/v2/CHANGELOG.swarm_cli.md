@@ -5,6 +5,36 @@ All notable changes to SwarmCLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.10] - 2025-12-03
+
+### Added
+
+- **LLM Request Failed Event Handler**: New display support for `llm_request_failed` events in human-readable output
+  - **Event type**: `llm_request_failed` - Emitted by SwarmSDK for non-retryable errors (401, 403, 422, etc.)
+  - **Display**: Red error panel with status code, error class, and message
+  - **Spinner handling**: Automatically stops agent thinking spinner when error occurs
+  - **Message format**:
+    ```
+    ╔═══ REQUEST FAILED [agent_name] ═══╗
+    │ LLM request failed (401)          │
+    │ Error: UnauthorizedError: Invalid API key │
+    │ This error cannot be automatically recovered │
+    ╚════════════════════════════════════╝
+    ```
+  - **Integration**: Works with SwarmSDK v2.5.5 smart retry strategy
+  - **Files**: `lib/swarm_cli/formatters/human_formatter.rb`
+
+### Changed
+
+- **Dependencies**: Updated to `swarm_sdk ~> 2.5.5` for smart retry strategy support
+
+### Fixed
+
+- **JSON Formatter Tests**: Updated tests to reflect current `on_error` behavior
+  - Tests now correctly expect error emissions in JSON format
+  - Fixed pre-existing test failures from commit 7451bd0
+  - Files: `test/swarm_cli/formatters/json_formatter_test.rb`
+
 ## [2.1.9]
 
 ### Fixed

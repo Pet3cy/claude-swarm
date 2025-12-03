@@ -712,17 +712,64 @@ module SwarmSDK
 
       # --- LLM Call Retry Logic ---
 
-      # Call LLM provider with retry logic for transient failures
+      # Call LLM provider with smart retry logic based on error type
       #
-      # Includes special handling for 400 Bad Request errors:
+      # ## Error Categorization
+      #
+      # **Non-Retryable Client Errors (4xx)**: Return error message immediately
+      # - 400 Bad Request (after orphan tool call recovery attempt)
+      # - 401 Unauthorized (invalid API key)
+      # - 402 Payment Required (billing issue)
+      # - 403 Forbidden (permission denied)
+      # - 422 Unprocessable Entity (invalid parameters)
+      # - Other 4xx errors
+      #
+      # **Retryable Server Errors (5xx)**: Retry with delays
+      # - 429 Rate Limit (RubyLLM already retried 3x)
+      # - 500 Server Error (RubyLLM already retried 3x)
+      # - 502-503 Service Unavailable (RubyLLM already retried 3x)
+      # - 529 Overloaded (RubyLLM already retried 3x)
+      # Note: If we see these errors, RubyLLM has already tried 3 times
+      #
+      # **Network Errors**: Retry with delays
+      # - Timeouts, connection failures, etc.
+      #
+      # ## Special Handling
+      #
+      # **400 Bad Request with Orphan Tool Calls**:
       # - Attempts to prune orphan tool calls (tool_use without tool_result)
       # - If pruning succeeds, retries immediately without counting as retry
+      # - If pruning fails or not applicable, returns error message immediately
       #
-      # @param max_retries [Integer] Maximum retry attempts
+      # ## Error Response Format
+      #
+      # Non-retryable errors return as assistant messages for natural delegation flow:
+      # ```ruby
+      # RubyLLM::Message.new(
+      #   role: :assistant,
+      #   content: "I encountered an error: [details]"
+      # )
+      # ```
+      #
+      # @param max_retries [Integer] Maximum retry attempts at SDK level
+      #   Note: RubyLLM already retries 429/5xx errors 3 times before this
       # @param delay [Integer] Delay between retries in seconds
       # @yield Block that performs the LLM call
-      # @return [Object] Result from block
-      def call_llm_with_retry(max_retries: 10, delay: 10, &block)
+      # @return [RubyLLM::Message, Object] Result from block or error message
+      #
+      # @example Handling 401 Unauthorized
+      #   result = call_llm_with_retry do
+      #     @llm_chat.complete
+      #   end
+      #   # Returns immediately: Message with "Unauthorized" error
+      #
+      # @example Handling 500 Server Error
+      #   result = call_llm_with_retry(max_retries: 3, delay: 15) do
+      #     @llm_chat.complete
+      #   end
+      #   # Retries up to 3 times with 15s delays
+      #   # (RubyLLM already tried 3x, so 6 total attempts)
+      def call_llm_with_retry(max_retries: 3, delay: 15, &block)
         attempts = 0
         pruning_attempted = false
 
@@ -731,22 +778,68 @@ module SwarmSDK
 
           begin
             return yield
+
+          # === CATEGORY A: NON-RETRYABLE CLIENT ERRORS ===
           rescue RubyLLM::BadRequestError => e
-            # Try to recover from 400 Bad Request by pruning orphan tool calls
-            # This can happen when tool execution is interrupted mid-stream
+            # Special case: Try orphan tool call recovery ONCE
+            # This handles interrupted tool executions (tool_use without tool_result)
             unless pruning_attempted
               pruned = recover_from_orphan_tool_calls(e)
               if pruned > 0
                 pruning_attempted = true
-                # Don't count this as a regular retry, try again immediately
-                attempts -= 1
+                attempts -= 1 # Don't count as retry
                 next
               end
             end
 
-            # Fall through to standard retry logic
+            # No recovery possible - fail immediately with error message
+            emit_non_retryable_error(e, "BadRequest")
+            return build_error_message(e)
+          rescue RubyLLM::UnauthorizedError => e
+            # 401: Authentication failed - won't fix by retrying
+            emit_non_retryable_error(e, "Unauthorized")
+            return build_error_message(e)
+          rescue RubyLLM::PaymentRequiredError => e
+            # 402: Billing issue - won't fix by retrying
+            emit_non_retryable_error(e, "PaymentRequired")
+            return build_error_message(e)
+          rescue RubyLLM::ForbiddenError => e
+            # 403: Permission denied - won't fix by retrying
+            emit_non_retryable_error(e, "Forbidden")
+            return build_error_message(e)
+
+          # === CATEGORY B: RETRYABLE SERVER ERRORS ===
+          # IMPORTANT: Must come BEFORE generic RubyLLM::Error to avoid being caught by it
+          rescue RubyLLM::RateLimitError,
+                 RubyLLM::ServerError,
+                 RubyLLM::ServiceUnavailableError,
+                 RubyLLM::OverloadedError => e
+            # These errors indicate temporary provider issues
+            # RubyLLM already retried 3 times with exponential backoff (~0.7s)
+            # Retry a few more times with longer delays to give provider time
             handle_retry_or_raise(e, attempts, max_retries, delay)
+
+          # === CATEGORY A (CONTINUED): OTHER CLIENT ERRORS ===
+          # IMPORTANT: Must come AFTER specific error classes (including server errors)
+          rescue RubyLLM::Error => e
+            # Generic RubyLLM::Error - check for specific status codes
+            if e.response&.status == 422
+              # 422: Unprocessable Entity - semantic validation failure
+              emit_non_retryable_error(e, "UnprocessableEntity")
+              return build_error_message(e)
+            elsif e.response&.status && (400..499).include?(e.response.status)
+              # Other 4xx errors - conservative: don't retry unknown client errors
+              emit_non_retryable_error(e, "ClientError")
+              return build_error_message(e)
+            end
+
+            # Unknown error type without status code - conservative: don't retry
+            emit_non_retryable_error(e, "UnknownAPIError")
+            return build_error_message(e)
+
+          # === CATEGORY C: NETWORK/OTHER ERRORS ===
           rescue StandardError => e
+            # Network errors, timeouts, unknown errors - retry with delays
             handle_retry_or_raise(e, attempts, max_retries, delay)
           end
         end
@@ -790,6 +883,95 @@ module SwarmSDK
         )
 
         sleep(delay)
+      end
+
+      # Build an error message as an assistant response
+      #
+      # Non-retryable errors are returned as assistant messages instead of raising.
+      # This allows errors to flow naturally through delegation - parent agents
+      # can see child agent errors and respond appropriately.
+      #
+      # @param error [RubyLLM::Error, StandardError] The error that occurred
+      # @return [RubyLLM::Message] Assistant message containing formatted error
+      #
+      # @example Error message for delegation
+      #   error = RubyLLM::UnauthorizedError.new(response, "Invalid API key")
+      #   message = build_error_message(error)
+      #   # => Message with role: :assistant, content: "I encountered an error: ..."
+      def build_error_message(error)
+        content = format_error_message(error)
+
+        RubyLLM::Message.new(
+          role: :assistant,
+          content: content,
+          model_id: model_id,
+        )
+      end
+
+      # Format error details into user-friendly message
+      #
+      # @param error [RubyLLM::Error, StandardError] The error to format
+      # @return [String] Formatted error message with type, status, and guidance
+      #
+      # @example Formatting 401 error
+      #   format_error_message(unauthorized_error)
+      #   # => "I encountered an error while processing your request:
+      #   #     **Error Type:** UnauthorizedError
+      #   #     **Status Code:** 401
+      #   #     **Message:** Invalid API key
+      #   #     Please check your API credentials."
+      def format_error_message(error)
+        status = error.respond_to?(:response) ? error.response&.status : nil
+
+        msg = "I encountered an error while processing your request:\n\n"
+        msg += "**Error Type:** #{error.class.name.split("::").last}\n"
+        msg += "**Status Code:** #{status}\n" if status
+        msg += "**Message:** #{error.message}\n\n"
+        msg += "This error indicates a problem that cannot be automatically recovered. "
+
+        # Add context-specific guidance based on error type
+        msg += case error
+        when RubyLLM::UnauthorizedError
+          "Please check your API credentials."
+        when RubyLLM::PaymentRequiredError
+          "Please check your account billing status."
+        when RubyLLM::ForbiddenError
+          "You may not have permission to access this resource."
+        when RubyLLM::BadRequestError
+          "The request format may be invalid."
+        else
+          "Please review the error and try again."
+        end
+
+        msg
+      end
+
+      # Emit llm_request_failed event for non-retryable errors
+      #
+      # This event provides visibility into errors that fail immediately
+      # without retry attempts. Useful for monitoring auth failures,
+      # billing issues, and other non-transient problems.
+      #
+      # @param error [RubyLLM::Error, StandardError] The error that occurred
+      # @param error_type [String] Friendly error type name for logging
+      # @return [void]
+      #
+      # @example Emitting unauthorized error event
+      #   emit_non_retryable_error(error, "Unauthorized")
+      #   # Emits: { type: "llm_request_failed", error_type: "Unauthorized", ... }
+      def emit_non_retryable_error(error, error_type)
+        LogStream.emit(
+          type: "llm_request_failed",
+          agent: @agent_name,
+          swarm_id: @agent_context&.swarm_id,
+          parent_swarm_id: @agent_context&.parent_swarm_id,
+          model: model_id,
+          error_type: error_type,
+          error_class: error.class.name,
+          error_message: error.message,
+          status_code: error.respond_to?(:response) ? error.response&.status : nil,
+          retryable: false,
+        )
       end
 
       # Recover from 400 Bad Request by pruning orphan tool calls

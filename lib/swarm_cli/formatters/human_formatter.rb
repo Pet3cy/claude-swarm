@@ -99,6 +99,8 @@ module SwarmCLI
           handle_llm_retry_attempt(entry)
         when "llm_retry_exhausted"
           handle_llm_retry_exhausted(entry)
+        when "llm_request_failed"
+          handle_llm_request_failed(entry)
         end
       end
 
@@ -640,6 +642,34 @@ module SwarmCLI
         @output.puts @panel.render(
           type: :error,
           title: "RETRY EXHAUSTED #{@agent_badge.render(agent)}",
+          lines: lines,
+          indent: @depth_tracker.get(agent),
+        )
+      end
+
+      def handle_llm_request_failed(entry)
+        agent = entry[:agent]
+        entry[:error_type]
+        error_class = entry[:error_class]
+        error_message = entry[:error_message]
+        status_code = entry[:status_code]
+
+        # Stop agent thinking spinner (if active)
+        unless @quiet
+          spinner_key = "agent_#{agent}".to_sym
+          @spinner_manager.stop(spinner_key) if @spinner_manager.active?(spinner_key)
+        end
+
+        status_display = status_code ? " (#{status_code})" : ""
+        lines = [
+          @pastel.red("LLM request failed#{status_display}"),
+          @pastel.dim("Error: #{error_class}: #{error_message}"),
+          @pastel.dim("This error cannot be automatically recovered"),
+        ]
+
+        @output.puts @panel.render(
+          type: :error,
+          title: "REQUEST FAILED #{@agent_badge.render(agent)}",
           lines: lines,
           indent: @depth_tracker.get(agent),
         )

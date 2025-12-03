@@ -79,21 +79,39 @@ class JsonFormatterTest < Minitest::Test
     assert_empty(@output.string)
   end
 
-  def test_on_error_does_not_emit
-    # on_error should not emit because SDK emits swarm_stop automatically
+  def test_on_error_emits_structured_json
+    # on_error emits error events in JSON format for automation
+    # This handles errors that occur before or outside swarm execution
     error = StandardError.new("test error")
 
     @formatter.on_error(error: error)
 
-    assert_empty(@output.string)
+    output = @output.string
+
+    refute_empty(output)
+
+    # Parse JSON to verify structure
+    parsed = JSON.parse(output.strip)
+
+    assert_equal("error", parsed["type"])
+    assert_equal("StandardError", parsed["error_class"])
+    assert_equal("test error", parsed["error_message"])
+    assert(parsed.key?("timestamp"))
   end
 
-  def test_on_error_with_duration_does_not_emit
+  def test_on_error_with_duration_includes_duration
     error = StandardError.new("test error")
 
     @formatter.on_error(error: error, duration: 1.5)
 
-    assert_empty(@output.string)
+    output = @output.string
+
+    refute_empty(output)
+
+    parsed = JSON.parse(output.strip)
+
+    assert_equal("error", parsed["type"])
+    assert_in_delta(1.5, parsed["duration"])
   end
 
   def test_emit_uses_to_json

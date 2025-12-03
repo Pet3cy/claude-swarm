@@ -5,6 +5,58 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.5] - 2025-12-03
+
+### Changed - BREAKING
+
+- **Smart LLM Retry Strategy**: Redesigned retry logic to differentiate between recoverable and non-recoverable errors
+  - **Retry defaults reduced**: `max_retries` from 10 to 3, `delay` increased from 10s to 15s
+  - **Non-retryable client errors (4xx)**: Now return error messages immediately instead of retrying
+    - 400 Bad Request (after orphan recovery attempt)
+    - 401 Unauthorized (invalid API key)
+    - 402 Payment Required (billing issue)
+    - 403 Forbidden (permission denied)
+    - 422 Unprocessable Entity (invalid parameters)
+    - Other 4xx errors
+  - **Retryable server errors (5xx)**: Retry up to 3 times at SDK level
+    - Note: RubyLLM already retries 3 times internally with exponential backoff
+    - Total attempts: 6 (3 RubyLLM + 3 SDK)
+    - Affected: 429 Rate Limit, 500 Server Error, 502-503 Service Unavailable, 529 Overloaded
+  - **Orphan tool call recovery**: Preserved for 400 Bad Request errors (existing behavior)
+  - **Error message format**: Non-retryable errors return as formatted assistant messages for natural delegation flow
+  - **Performance improvement**:
+    - Client error failures: 100s faster (0s vs 100s with old logic)
+    - Server error failures: 55s faster (45.7s vs 100.7s)
+    - API call reduction: 90% fewer wasted calls for client errors (1 vs 10 attempts)
+  - **Files**: `lib/swarm_sdk/agent/chat.rb`
+  - **Tests**: Updated `test/swarm_sdk/agent/chat_test.rb` to reflect new behavior
+  - **Documentation**: `decisions/2025-12-03-004-llm-retry-strategy.md`
+
+### Added
+
+- **New event type**: `llm_request_failed` - Emitted for non-retryable errors
+  - Includes: error_type, error_class, error_message, status_code, retryable flag
+  - Useful for monitoring authentication failures, billing issues, and other non-transient problems
+  - Example:
+    ```ruby
+    {
+      type: "llm_request_failed",
+      agent: :backend,
+      error_type: "Unauthorized",
+      error_class: "RubyLLM::UnauthorizedError",
+      error_message: "Invalid API key",
+      status_code: 401,
+      retryable: false
+    }
+    ```
+
+### Fixed
+
+- **Critical rescue block order bug**: Generic `RubyLLM::Error` catch-all was intercepting server errors before specific rescue blocks
+  - **Impact**: 500 errors were incorrectly treated as non-retryable and returned as messages
+  - **Fix**: Moved server error rescue blocks before generic catch-all
+  - **Result**: Server errors now retry correctly (3 attempts) then raise
+
 ## [2.5.4]
 
 ### Fixed
