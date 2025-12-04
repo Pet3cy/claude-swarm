@@ -5,6 +5,15 @@ All notable changes to SwarmCLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.11] - 2025-12-04
+
+### Changed
+
+- **Dependencies**: Updated to `swarm_sdk ~> 2.6.0` for execution timeout support
+  - Supports new `execution_timeout` configuration in YAML/DSL
+  - Handles new `execution_timeout` and `turn_timeout` events
+  - Compatible with breaking change: `timeout` → `request_timeout` rename
+
 ## [2.1.10] - 2025-12-03
 
 ### Added
