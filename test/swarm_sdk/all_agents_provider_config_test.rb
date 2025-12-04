@@ -113,7 +113,7 @@ module SwarmSDK
         lead(:agent1)
 
         all_agents do
-          timeout(180)
+          request_timeout(180)
         end
 
         agent(:agent1) do
@@ -124,15 +124,15 @@ module SwarmSDK
         agent(:agent2) do
           description("Agent 2")
           model("gpt-4")
-          timeout(60) # Override
+          request_timeout(60) # Override
         end
       end
 
       agent1_def = swarm.agent_definition(:agent1)
       agent2_def = swarm.agent_definition(:agent2)
 
-      assert_equal(180, agent1_def.timeout) # Inherited
-      assert_equal(60, agent2_def.timeout) # Overridden
+      assert_equal(180, agent1_def.request_timeout) # Inherited
+      assert_equal(60, agent2_def.request_timeout) # Overridden
     end
 
     def test_all_agents_parameters_merged
@@ -244,7 +244,7 @@ module SwarmSDK
           model("gpt-4o")
           provider(:openai)
           base_url("http://proxy.com/v1")
-          timeout(180)
+          request_timeout(180)
           parameters({ temperature: 0.7 })
           headers({ "X-Common" => "value" })
           coding_agent(false)
@@ -269,7 +269,7 @@ module SwarmSDK
       assert_equal("gpt-4o", backend_def.model)
       assert_equal(:openai, backend_def.provider)
       assert_equal("http://proxy.com/v1", backend_def.base_url)
-      assert_equal(180, backend_def.timeout)
+      assert_equal(180, backend_def.request_timeout)
       assert_in_delta(0.7, backend_def.parameters[:temperature])
       assert_equal("value", backend_def.headers["X-Common"])
       refute(backend_def.coding_agent)

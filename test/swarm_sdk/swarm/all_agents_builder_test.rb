@@ -44,10 +44,10 @@ module SwarmSDK
       end
 
       def test_timeout_setter
-        @builder.timeout(180)
+        @builder.request_timeout(180)
         config = @builder.to_h
 
-        assert_equal(180, config[:timeout])
+        assert_equal(180, config[:request_timeout])
       end
 
       def test_parameters_setter
@@ -188,7 +188,7 @@ module SwarmSDK
         @builder.model(:opus)
         @builder.provider(:openai)
         @builder.base_url("http://proxy.com")
-        @builder.timeout(180)
+        @builder.request_timeout(180)
         @builder.tools(:Read, :Write)
 
         config = @builder.to_h
@@ -196,7 +196,7 @@ module SwarmSDK
         assert_equal(:opus, config[:model])
         assert_equal(:openai, config[:provider])
         assert_equal("http://proxy.com", config[:base_url])
-        assert_equal(180, config[:timeout])
+        assert_equal(180, config[:request_timeout])
         assert_equal([:Read, :Write], config[:tools])
       end
 
@@ -219,7 +219,7 @@ module SwarmSDK
         @builder.provider(:openai)
         @builder.base_url("http://proxy.com/v1")
         @builder.api_version("2024-01-01")
-        @builder.timeout(180)
+        @builder.request_timeout(180)
         @builder.parameters({ temperature: 0.7 })
         @builder.headers({ "X-Custom" => "value" })
         @builder.coding_agent(false)
@@ -234,7 +234,7 @@ module SwarmSDK
         assert_equal(:openai, config[:provider])
         assert_equal("http://proxy.com/v1", config[:base_url])
         assert_equal("2024-01-01", config[:api_version])
-        assert_equal(180, config[:timeout])
+        assert_equal(180, config[:request_timeout])
         assert_equal({ temperature: 0.7 }, config[:parameters])
         assert_equal({ "X-Custom" => "value" }, config[:headers])
         refute(config[:coding_agent])

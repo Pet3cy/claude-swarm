@@ -271,7 +271,7 @@ module SwarmSDK
 
       agent_def = swarm.agent_definition(:agent1)
 
-      assert_equal(300, agent_def.timeout) # 5 minutes default
+      assert_equal(300, agent_def.request_timeout) # 5 minutes default
     end
 
     def test_agent_can_override_timeout
@@ -283,12 +283,12 @@ module SwarmSDK
         model: "gpt-5",
         system_prompt: "Test",
         directory: ".",
-        timeout: 600, # 10 minutes for reasoning models
+        request_timeout: 600, # 10 minutes for reasoning models
       ))
 
       agent_def = swarm.agent_definition(:agent1)
 
-      assert_equal(600, agent_def.timeout)
+      assert_equal(600, agent_def.request_timeout)
     end
 
     def test_agent_method_with_string_converts_to_symbol

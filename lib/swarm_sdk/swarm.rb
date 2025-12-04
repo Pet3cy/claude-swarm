@@ -72,7 +72,7 @@ module SwarmSDK
     # Default tools available to all agents
     DEFAULT_TOOLS = ToolConfigurator::DEFAULT_TOOLS
 
-    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions, :swarm_id, :parent_swarm_id, :swarm_registry, :scratchpad_storage, :allow_filesystem_tools, :hook_registry, :global_semaphore, :plugin_storages, :config_for_hooks, :observer_configs
+    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions, :swarm_id, :parent_swarm_id, :swarm_registry, :scratchpad_storage, :allow_filesystem_tools, :hook_registry, :global_semaphore, :plugin_storages, :config_for_hooks, :observer_configs, :execution_timeout
     attr_accessor :delegation_call_stack
 
     # Check if scratchpad tools are enabled
@@ -139,12 +139,24 @@ module SwarmSDK
     # @param scratchpad [Tools::Stores::Scratchpad, nil] Optional scratchpad instance (for testing/internal use)
     # @param scratchpad_mode [Symbol, String] Scratchpad mode (:enabled or :disabled). :per_node not allowed for non-node swarms.
     # @param allow_filesystem_tools [Boolean, nil] Whether to allow filesystem tools (nil uses global setting)
-    def initialize(name:, swarm_id: nil, parent_swarm_id: nil, global_concurrency: nil, default_local_concurrency: nil, scratchpad: nil, scratchpad_mode: :enabled, allow_filesystem_tools: nil)
+    def initialize(name:, swarm_id: nil, parent_swarm_id: nil, global_concurrency: nil, default_local_concurrency: nil, scratchpad: nil, scratchpad_mode: :enabled, allow_filesystem_tools: nil, execution_timeout: :__use_default__)
       @name = name
       @swarm_id = swarm_id || generate_swarm_id(name)
       @parent_swarm_id = parent_swarm_id
       @global_concurrency = global_concurrency || SwarmSDK.config.global_concurrency_limit
       @default_local_concurrency = default_local_concurrency || SwarmSDK.config.local_concurrency_limit
+
+      # Use default from config unless explicitly set (including nil to disable)
+      @execution_timeout = if execution_timeout == :__use_default__
+        SwarmSDK.config.default_execution_timeout
+      else
+        execution_timeout # Could be a number OR nil (to disable)
+      end
+
+      # Validate execution_timeout is positive if set
+      if @execution_timeout && @execution_timeout <= 0
+        raise ConfigurationError, "execution_timeout must be positive (got #{@execution_timeout})"
+      end
 
       # Handle scratchpad_mode parameter
       # For Swarm: :enabled or :disabled (not :per_node - that's for nodes)

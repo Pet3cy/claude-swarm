@@ -294,7 +294,8 @@ module SwarmSDK
       assert_respond_to(agent_def, :base_url)
       assert_respond_to(agent_def, :mcp_servers)
       assert_respond_to(agent_def, :parameters)
-      assert_respond_to(agent_def, :timeout)
+      assert_respond_to(agent_def, :request_timeout)
+      assert_respond_to(agent_def, :turn_timeout)
     end
 
     def test_default_timeout_constant
@@ -311,7 +312,7 @@ module SwarmSDK
         },
       )
 
-      assert_equal(300, agent_def.timeout)
+      assert_equal(300, agent_def.request_timeout)
     end
 
     def test_timeout_can_be_customized
@@ -321,11 +322,11 @@ module SwarmSDK
           description: "Test agent",
           system_prompt: "Test prompt",
           directory: ".",
-          timeout: 600,
+          request_timeout: 600,
         },
       )
 
-      assert_equal(600, agent_def.timeout)
+      assert_equal(600, agent_def.request_timeout)
     end
 
     def test_to_h_includes_timeout
@@ -335,13 +336,13 @@ module SwarmSDK
           description: "Test agent",
           system_prompt: "Test prompt",
           directory: ".",
-          timeout: 450,
+          request_timeout: 450,
         },
       )
 
       hash = agent_def.to_h
 
-      assert_equal(450, hash[:timeout])
+      assert_equal(450, hash[:request_timeout])
     end
 
     def test_api_version_with_openai_provider

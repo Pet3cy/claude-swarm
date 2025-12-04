@@ -243,7 +243,7 @@ module SwarmSDK
           all_agents:
             model: gpt-5
             provider: openai
-            timeout: 300
+            request_timeout: 300
             directory: "."
             parameters:
               temperature: 0.7
@@ -257,7 +257,7 @@ module SwarmSDK
               system_prompt: "You override"
               model: claude-sonnet-4     # Override model
               provider: anthropic         # Override provider
-              timeout: 600                # Override timeout
+              request_timeout: 600                # Override timeout
               directory: "."          # Override directories (use same dir for testing)
               parameters:
                 temperature: 0.9          # Override parameters
@@ -273,14 +273,14 @@ module SwarmSDK
         # Inherits should have all_agents values
         assert_equal("gpt-5", inherits_def.model)
         assert_equal("openai", inherits_def.provider)
-        assert_equal(300, inherits_def.timeout)
+        assert_equal(300, inherits_def.request_timeout)
         assert_in_delta(0.7, inherits_def.parameters[:temperature])
         assert_equal(1000, inherits_def.parameters[:max_tokens])
 
         # Overrides should have agent-specific values
         assert_equal("claude-sonnet-4", overrides_def.model)
         assert_equal("anthropic", overrides_def.provider)
-        assert_equal(600, overrides_def.timeout)
+        assert_equal(600, overrides_def.request_timeout)
         assert_in_delta(0.9, overrides_def.parameters[:temperature])
         assert_equal(2000, overrides_def.parameters[:max_tokens])
       end

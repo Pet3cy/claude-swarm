@@ -149,6 +149,38 @@ swarm:
 
 ---
 
+### execution_timeout
+
+**Type:** Integer (optional)
+**Default:** `1800` (30 minutes)
+**Description:** Maximum wall-clock time for entire `swarm.execute()` call in seconds.
+
+**Behavior:**
+- Uses external timeout enforcement via Async's `task.with_timeout()` with `Async::Barrier`
+- Uses barrier to stop ALL child tasks (tool executions, delegations) when timeout fires
+- Guarantees immediate termination - interrupts ongoing operations, not just queued work
+- Starts counting when execution begins (after agent initialization)
+- On timeout, returns `Result` with `ExecutionTimeoutError` and `metadata: { timeout: true }`
+- Emits `execution_timeout` event for monitoring
+- Cleanup (`ensure` blocks) always runs, barrier ensures no zombie tasks
+- Set to `null` to disable
+
+```yaml
+swarm:
+  name: "Development Team"
+  execution_timeout: 3600  # 1 hour max
+
+swarm:
+  name: "Quick Tasks"
+  execution_timeout: 300  # 5 minutes max
+
+swarm:
+  name: "No Timeout"
+  execution_timeout: null  # Disable timeout
+```
+
+---
+
 ### swarms
 
 **Type:** Object (optional)
@@ -326,7 +358,8 @@ swarm:
 swarm:
   all_agents:
     provider: openai
-    timeout: 180
+    request_timeout: 180
+    turn_timeout: 900
     tools: [Read, Write]
     coding_agent: false
 
@@ -946,19 +979,48 @@ agents:
 
 ---
 
-### timeout
+### request_timeout
 
 **Type:** Integer (optional)
 **Default:** `300` (5 minutes)
-**Description:** Request timeout in seconds.
+**Description:** LLM HTTP request timeout in seconds (Faraday level). Controls timeout for single HTTP request to LLM API.
 
 ```yaml
 agents:
   fast:
-    timeout: 60
+    request_timeout: 60
 
   reasoning:
-    timeout: 600  # 10 minutes for reasoning models
+    request_timeout: 600  # 10 minutes for reasoning models
+```
+
+---
+
+### turn_timeout
+
+**Type:** Integer (optional)
+**Default:** `1800` (30 minutes)
+**Description:** Maximum time for entire agent turn in seconds. Covers LLM requests AND all tool executions in a single `agent.ask()` call.
+
+**Behavior:**
+- Uses external timeout enforcement via Async's `task.with_timeout()` with `Async::Barrier`
+- Uses barrier to stop ALL child tasks (tool executions) when timeout fires
+- Starts counting when `agent.ask()` is invoked (initialization time NOT included)
+- On timeout, returns error message (not exception): "Error: Request timed out after Xs..."
+- Allows delegating agents to handle timeout gracefully
+- Emits `turn_timeout` event for monitoring
+- Set to `null` to disable
+
+```yaml
+agents:
+  careful_thinker:
+    turn_timeout: 900   # 15 minutes max
+
+  extended_reasoning:
+    turn_timeout: 3600  # 1 hour for complex tasks
+
+  no_timeout:
+    turn_timeout: null  # Disable turn timeout
 ```
 
 ---
@@ -1138,15 +1200,30 @@ swarm:
 
 ---
 
-### timeout
+### request_timeout
 
-**Type:** Integer
-**Description:** Default timeout for all agents.
+**Type:** Integer (optional)
+**Default:** `300` (5 minutes)
+**Description:** Default LLM HTTP request timeout for all agents in seconds.
 
 ```yaml
 swarm:
   all_agents:
-    timeout: 180
+    request_timeout: 180
+```
+
+---
+
+### turn_timeout
+
+**Type:** Integer (optional)
+**Default:** `1800` (30 minutes)
+**Description:** Default agent turn timeout for all agents in seconds. Covers LLM requests AND all tool executions.
+
+```yaml
+swarm:
+  all_agents:
+    turn_timeout: 900  # 15 minutes max per agent turn
 ```
 
 ---
@@ -1979,7 +2056,8 @@ swarm:
   # Global configuration for all agents
   all_agents:
     provider: openai
-    timeout: 180
+    request_timeout: 180
+    turn_timeout: 900
     coding_agent: false
     tools: [Read, Write]
 
@@ -2124,7 +2202,8 @@ workflow:
   # Global configuration for all agents
   all_agents:
     provider: openai
-    timeout: 180
+    request_timeout: 180
+    turn_timeout: 900
     coding_agent: true
 
   # Agent definitions (shared across nodes)

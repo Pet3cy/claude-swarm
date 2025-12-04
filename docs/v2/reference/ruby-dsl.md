@@ -99,7 +99,7 @@ swarm = SwarmSDK.build do
   agent :backend do
     delegates_to :database, :cache  # Set delegation for this swarm
     tools :CustomTool               # Adds to registry tools
-    timeout 300                     # Overrides registry timeout
+    request_timeout 300             # Overrides registry request timeout
   end
 end
 ```
@@ -658,6 +658,42 @@ name "Code Review Swarm"
 
 ---
 
+### execution_timeout
+
+Set maximum execution time for entire swarm.
+
+**Signature:**
+```ruby
+execution_timeout(seconds) → void
+```
+
+**Parameters:**
+- `seconds` (Integer, required): Maximum wall-clock time for entire `swarm.execute()` call
+- Set to `nil` to disable execution timeout
+
+**Default:** `1800` (30 minutes)
+
+**Example:**
+```ruby
+execution_timeout 3600  # 1 hour max
+execution_timeout nil   # Disable timeout
+```
+
+**Behavior:**
+- Wraps entire swarm execution using Async's `task.with_timeout()` with `Async::Barrier`
+- Uses barrier to stop ALL child tasks (tool executions, delegations) when timeout fires
+- Guarantees immediate termination - interrupts ongoing operations, not just queued work
+- On timeout, returns `Result` with `ExecutionTimeoutError` and `metadata: { timeout: true }`
+- Emits `execution_timeout` event for monitoring
+- Cleanup (`ensure` blocks) always runs, barrier ensures no zombie tasks
+
+**Note:**
+- Starts counting when `swarm.execute()` is called (after agent initialization)
+- This is the outer timeout. If both `execution_timeout` and agent `turn_timeout` are set, whichever fires first wins.
+- Works with delegations - stops delegated agents immediately when timeout fires
+
+---
+
 ### swarms
 
 Register external swarms for composable swarms feature.
@@ -938,7 +974,8 @@ Settings configured here apply to ALL agents but can be overridden at the agent 
 all_agents do
   provider :openai
   base_url "http://proxy.example.com/v1"
-  timeout 180
+  request_timeout 180
+  turn_timeout 900
   tools :Read, :Write
   coding_agent false
 
@@ -1653,26 +1690,62 @@ headers authorization: "Bearer token"
 
 ---
 
-### timeout
+### request_timeout
 
-Set request timeout.
+Set LLM HTTP request timeout (Faraday level).
 
 **Signature:**
 ```ruby
-timeout(seconds) → void
-timeout() → Integer  # getter
+request_timeout(seconds) → void
+request_timeout() → Integer  # getter
 ```
 
 **Parameters:**
-- `seconds` (Integer, required): Timeout in seconds
+- `seconds` (Integer, required): Timeout in seconds for single HTTP request
 
 **Default:** `300` (5 minutes)
 
 **Example:**
 ```ruby
-timeout 180  # 3 minutes
-timeout 600  # 10 minutes for reasoning models
+request_timeout 180  # 3 minutes
+request_timeout 600  # 10 minutes for reasoning models
 ```
+
+**Note:** This controls only the HTTP request timeout to the LLM API. For controlling the entire agent turn (including tools), use `turn_timeout`.
+
+---
+
+### turn_timeout
+
+Set maximum time for entire agent turn (LLM + all tool executions).
+
+**Signature:**
+```ruby
+turn_timeout(seconds) → void
+turn_timeout() → Integer  # getter
+```
+
+**Parameters:**
+- `seconds` (Integer, required): Timeout in seconds for entire `agent.ask()` call
+- Set to `nil` to disable turn timeout
+
+**Default:** `1800` (30 minutes)
+
+**Example:**
+```ruby
+turn_timeout 900   # 15 minutes max for entire turn
+turn_timeout 3600  # 1 hour for complex reasoning
+turn_timeout nil   # Disable turn timeout
+```
+
+**Behavior:**
+- Wraps entire `ask()` execution using Async's `task.with_timeout()` with `Async::Barrier`
+- Uses barrier to stop ALL child tasks (tool executions) when timeout fires
+- Covers LLM requests AND all tool executions during this turn
+- Starts counting when `ask()` is invoked (agent initialization time NOT included)
+- On timeout, returns error message (not exception): "Error: Request timed out after Xs..."
+- Allows delegating agents to handle timeout gracefully
+- Emits `turn_timeout` event for monitoring
 
 ---
 
@@ -1878,22 +1951,43 @@ end
 
 ---
 
-### timeout
+### request_timeout
 
-Set default timeout for all agents.
+Set default LLM HTTP request timeout for all agents.
 
 **Signature:**
 ```ruby
-timeout(seconds) → void
+request_timeout(seconds) → void
 ```
 
 **Parameters:**
-- `seconds` (Integer, required): Timeout in seconds
+- `seconds` (Integer, required): Timeout in seconds for single HTTP request
 
 **Example:**
 ```ruby
 all_agents do
-  timeout 180
+  request_timeout 180
+end
+```
+
+---
+
+### turn_timeout
+
+Set default agent turn timeout for all agents.
+
+**Signature:**
+```ruby
+turn_timeout(seconds) → void
+```
+
+**Parameters:**
+- `seconds` (Integer, required): Timeout in seconds for entire `agent.ask()` call
+
+**Example:**
+```ruby
+all_agents do
+  turn_timeout 900  # 15 minutes max per agent turn
 end
 ```
 
@@ -3208,7 +3302,8 @@ swarm = SwarmSDK.build do
   # Apply settings to all agents
   all_agents do
     provider :anthropic
-    timeout 180
+    request_timeout 180
+    turn_timeout 900
     coding_agent false
 
     permissions do

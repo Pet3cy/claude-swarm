@@ -645,7 +645,7 @@ module SwarmSDK
           api_version: "v1/responses",
           parameters: { temperature: 0.5 },
           headers: { authorization: "Bearer token" },
-          timeout: 600,
+          request_timeout: 600,
           directory: ".",
           tools: [:Read],
           delegates_to: [:backend],
@@ -671,7 +671,7 @@ module SwarmSDK
       assert_equal("v1/responses", hash[:api_version])
       assert_equal({ temperature: 0.5 }, hash[:parameters])
       assert_equal({ "authorization" => "Bearer token" }, hash[:headers])
-      assert_equal(600, hash[:timeout])
+      assert_equal(600, hash[:request_timeout])
       assert(hash[:bypass_permissions])
       assert_equal([:Think], hash[:disable_default_tools])
       assert(hash[:coding_agent])

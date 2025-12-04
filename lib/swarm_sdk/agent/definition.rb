@@ -32,7 +32,8 @@ module SwarmSDK
         :mcp_servers,
         :parameters,
         :headers,
-        :timeout,
+        :request_timeout,
+        :turn_timeout,
         :disable_default_tools,
         :coding_agent,
         :default_permissions,
@@ -74,9 +75,16 @@ module SwarmSDK
         @context_window = coerce_to_integer(config[:context_window]) # Explicit context window override
         @parameters = config[:parameters] || {}
         @headers = Utils.stringify_keys(config[:headers] || {})
-        @timeout = config[:timeout] || SwarmSDK.config.agent_request_timeout
+        @request_timeout = config[:request_timeout] || SwarmSDK.config.agent_request_timeout
         @bypass_permissions = config[:bypass_permissions] || false
         @max_concurrent_tools = config[:max_concurrent_tools]
+
+        # Use default from config unless explicitly set (including nil to disable)
+        @turn_timeout = if config.key?(:turn_timeout)
+          config[:turn_timeout] # Could be a number OR nil (to disable)
+        else
+          SwarmSDK.config.default_turn_timeout
+        end
         # Always assume model exists - SwarmSDK validates models separately using models.json
         # This prevents RubyLLM from trying to validate models in its registry
         @assume_model_exists = true
@@ -160,7 +168,8 @@ module SwarmSDK
           mcp_servers: @mcp_servers,
           parameters: @parameters,
           headers: @headers,
-          timeout: @timeout,
+          request_timeout: @request_timeout,
+          turn_timeout: @turn_timeout,
           bypass_permissions: @bypass_permissions,
           disable_default_tools: @disable_default_tools,
           coding_agent: @coding_agent,
@@ -294,7 +303,8 @@ module SwarmSDK
           :context_window,
           :parameters,
           :headers,
-          :timeout,
+          :request_timeout,
+          :turn_timeout,
           :bypass_permissions,
           :max_concurrent_tools,
           :assume_model_exists,
@@ -464,6 +474,11 @@ module SwarmSDK
 
       def validate!
         raise ConfigurationError, "Agent '#{@name}' missing required 'description' field" unless @description
+
+        # Validate turn_timeout is positive if set
+        if @turn_timeout && @turn_timeout <= 0
+          raise ConfigurationError, "Agent '#{@name}' turn_timeout must be positive (got #{@turn_timeout})"
+        end
 
         # Validate api_version can only be set for OpenAI-compatible providers
         if @api_version

@@ -484,7 +484,7 @@ module SwarmSDK
 
       assert_equal("custom-model", definition.model)
       assert_equal("anthropic", definition.provider)
-      assert_equal(120, definition.timeout)
+      assert_equal(120, definition.request_timeout)
     end
   end
 end

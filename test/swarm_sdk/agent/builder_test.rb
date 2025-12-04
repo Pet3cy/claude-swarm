@@ -16,7 +16,7 @@ module SwarmSDK
         assert_nil(@builder.provider)
         assert_nil(@builder.base_url)
         assert_nil(@builder.api_version)
-        assert_nil(@builder.timeout)
+        assert_nil(@builder.request_timeout)
         assert_empty(@builder.tools_list)
         assert_empty(@builder.mcp_servers)
       end
@@ -156,19 +156,19 @@ module SwarmSDK
       # === Timeout Getter/Setter Tests ===
 
       def test_timeout_getter_returns_nil_by_default
-        assert_nil(@builder.timeout)
+        assert_nil(@builder.request_timeout)
       end
 
       def test_timeout_setter_changes_value
-        @builder.timeout(600)
+        @builder.request_timeout(600)
 
-        assert_equal(600, @builder.timeout)
+        assert_equal(600, @builder.request_timeout)
       end
 
       def test_timeout_with_no_args_returns_current
-        @builder.timeout(300)
+        @builder.request_timeout(300)
 
-        assert_equal(300, @builder.timeout)
+        assert_equal(300, @builder.request_timeout)
       end
 
       # === MCP Server Tests ===
@@ -554,13 +554,13 @@ module SwarmSDK
       end
 
       def test_timeout_set_returns_false_by_default
-        refute_predicate(@builder, :timeout_set?)
+        refute_predicate(@builder, :request_timeout_set?)
       end
 
       def test_timeout_set_returns_true_when_set
-        @builder.timeout(600)
+        @builder.request_timeout(600)
 
-        assert_predicate(@builder, :timeout_set?)
+        assert_predicate(@builder, :request_timeout_set?)
       end
 
       def test_coding_agent_set_returns_false_by_default
@@ -704,12 +704,12 @@ module SwarmSDK
 
       def test_to_definition_with_timeout
         @builder.description("Test")
-        @builder.timeout(600)
+        @builder.request_timeout(600)
 
         capture_io do
           definition = @builder.to_definition
 
-          assert_equal(600, definition.timeout)
+          assert_equal(600, definition.request_timeout)
         end
       end
 
@@ -1032,7 +1032,7 @@ module SwarmSDK
         @builder.context_window(200000)
         @builder.parameters({ temperature: 0.7, max_tokens: 4000 })
         @builder.headers({ "X-Custom" => "value" })
-        @builder.timeout(600)
+        @builder.request_timeout(600)
         @builder.system_prompt("You are a test agent")
         @builder.tools(:Read, :Write, :Bash)
         @builder.delegates_to(:backend, :frontend)
@@ -1054,7 +1054,7 @@ module SwarmSDK
           assert_equal("claude-opus", definition.model)
           assert_equal("anthropic", definition.provider)
           assert_equal("https://api.anthropic.com", definition.base_url)
-          assert_equal(600, definition.timeout)
+          assert_equal(600, definition.request_timeout)
           assert_equal(File.expand_path("lib"), definition.directory)
           assert_equal([:backend, :frontend], definition.delegates_to)
         end

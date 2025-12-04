@@ -75,6 +75,20 @@ module SwarmSDK
       # data transformation operations while preventing stalls.
       TRANSFORMER_COMMAND_SECONDS = 60
 
+      # Execution timeout (seconds)
+      #
+      # Maximum wall-clock time for entire swarm.execute() call.
+      # 30 minutes allows complex multi-agent workflows while preventing
+      # runaway execution.
+      EXECUTION_TIMEOUT_SECONDS = 1800
+
+      # Turn timeout (seconds)
+      #
+      # Maximum time for a single agent.ask() call, including all LLM requests
+      # and tool executions. 30 minutes accommodates extended thinking models
+      # and complex tool chains.
+      TURN_TIMEOUT_SECONDS = 1800
+
       # OpenAI responses API ID TTL (seconds)
       #
       # Time-to-live for cached response IDs. 5 minutes allows conversation

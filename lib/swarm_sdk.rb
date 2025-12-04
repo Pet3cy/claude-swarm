@@ -13,6 +13,7 @@ require "set"
 require "yaml"
 
 require "async"
+require "async/barrier"
 require "async/semaphore"
 require "ruby_llm"
 require "ruby_llm/mcp"
@@ -60,6 +61,15 @@ module SwarmSDK
   class ToolExecutionError < Error; end
   class LLMError < Error; end
   class StateError < Error; end
+
+  # Base class for SwarmSDK timeout errors
+  class TimeoutError < Error; end
+
+  # Raised when swarm execution exceeds execution_timeout
+  class ExecutionTimeoutError < TimeoutError; end
+
+  # Raised when agent turn exceeds turn_timeout
+  class TurnTimeoutError < TimeoutError; end
 
   class << self
     # Get the global configuration instance

@@ -40,6 +40,7 @@ module SwarmSDK
         builder.id(@parser.swarm_id) if @parser.swarm_id
         builder.name(@parser.swarm_name)
         builder.scratchpad(@parser.scratchpad_mode)
+        builder.execution_timeout(@parser.execution_timeout) if @parser.execution_timeout
 
         if @parser.external_swarms&.any?
           external_swarms = @parser.external_swarms
@@ -92,7 +93,8 @@ module SwarmSDK
           provider(all_agents_cfg[:provider]) if all_agents_cfg[:provider]
           base_url(all_agents_cfg[:base_url]) if all_agents_cfg[:base_url]
           api_version(all_agents_cfg[:api_version]) if all_agents_cfg[:api_version]
-          timeout(all_agents_cfg[:timeout]) if all_agents_cfg[:timeout]
+          request_timeout(all_agents_cfg[:request_timeout]) if all_agents_cfg[:request_timeout]
+          turn_timeout(all_agents_cfg[:turn_timeout]) if all_agents_cfg[:turn_timeout]
           parameters(all_agents_cfg[:parameters]) if all_agents_cfg[:parameters]
           headers(all_agents_cfg[:headers]) if all_agents_cfg[:headers]
           coding_agent(all_agents_cfg[:coding_agent]) unless all_agents_cfg[:coding_agent].nil?
@@ -152,7 +154,8 @@ module SwarmSDK
           context_window(config[:context_window]) if config[:context_window]
           system_prompt(config[:system_prompt]) if config[:system_prompt]
           directory(config[:directory]) if config[:directory]
-          timeout(config[:timeout]) if config[:timeout]
+          request_timeout(config[:request_timeout]) if config[:request_timeout]
+          turn_timeout(config[:turn_timeout]) if config[:turn_timeout]
           parameters(config[:parameters]) if config[:parameters]
           headers(config[:headers]) if config[:headers]
           coding_agent(config[:coding_agent]) unless config[:coding_agent].nil?

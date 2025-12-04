@@ -976,7 +976,7 @@ module SwarmSDK
       SwarmSDK.agent(:tuned_agent) do
         model("gpt-4")
         description("Tuned agent")
-        timeout(120)
+        request_timeout(120)
         context_window(32_000)
       end
 
@@ -988,7 +988,7 @@ module SwarmSDK
 
       definition = swarm.agent_definition(:tuned_agent)
 
-      assert_equal(120, definition.timeout)
+      assert_equal(120, definition.request_timeout)
       assert_equal(32_000, definition.context_window)
     end
 

@@ -74,9 +74,20 @@ Default values for agent and swarm configuration.
 
 Timeout values for various operations.
 
+### Execution & Turn Timeouts
+
 | Environment Variable | Config Key | Description | Default |
 |---------------------|------------|-------------|---------|
-| `SWARM_SDK_AGENT_REQUEST_TIMEOUT` | `agent_request_timeout` | LLM API request timeout in seconds | `300` (5 min) |
+| `SWARM_SDK_DEFAULT_EXECUTION_TIMEOUT` | `default_execution_timeout` | Maximum wall-clock time for entire `swarm.execute()` call in seconds | `1800` (30 min) |
+| `SWARM_SDK_DEFAULT_TURN_TIMEOUT` | `default_turn_timeout` | Maximum time for single `agent.ask()` call (LLM + tools) in seconds | `1800` (30 min) |
+| `SWARM_SDK_AGENT_REQUEST_TIMEOUT` | `agent_request_timeout` | Single LLM HTTP request timeout (Faraday level) in seconds | `300` (5 min) |
+
+**Note:** Set to `nil` to disable timeout enforcement. Per-agent and per-swarm overrides are available via DSL/YAML.
+
+### Tool & Command Timeouts
+
+| Environment Variable | Config Key | Description | Default |
+|---------------------|------------|-------------|---------|
 | `SWARM_SDK_BASH_COMMAND_TIMEOUT` | `bash_command_timeout` | Bash command execution timeout in milliseconds | `120000` (2 min) |
 | `SWARM_SDK_BASH_COMMAND_MAX_TIMEOUT` | `bash_command_max_timeout` | Maximum allowed bash command timeout in milliseconds | `600000` (10 min) |
 | `SWARM_SDK_WEB_FETCH_TIMEOUT` | `web_fetch_timeout` | HTTP request timeout for WebFetch tool in seconds | `30` |

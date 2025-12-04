@@ -260,7 +260,8 @@ module SwarmSDK
         builder.context_window(config[:context_window]) if config[:context_window]
         builder.system_prompt(config[:system_prompt]) if config[:system_prompt]
         builder.directory(config[:directory]) if config[:directory]
-        builder.timeout(config[:timeout]) if config[:timeout]
+        builder.request_timeout(config[:request_timeout]) if config[:request_timeout]
+        builder.turn_timeout(config[:turn_timeout]) if config[:turn_timeout]
         builder.parameters(config[:parameters]) if config[:parameters]
         builder.headers(config[:headers]) if config[:headers]
         builder.coding_agent(config[:coding_agent]) unless config[:coding_agent].nil?
@@ -337,6 +338,12 @@ module SwarmSDK
             merged[:parameters] = (merged[:parameters] || {}).merge(value || {})
           when :headers
             merged[:headers] = (merged[:headers] || {}).merge(value || {})
+          when :turn_timeout
+            # Agent-specific turn_timeout overrides all_agents
+            merged[key] = value
+          when :request_timeout
+            # Agent-specific request_timeout overrides all_agents
+            merged[key] = value
           else
             merged[key] = value
           end
@@ -372,8 +379,12 @@ module SwarmSDK
           agent_builder.api_version(all_agents_hash[:api_version])
         end
 
-        if all_agents_hash[:timeout] && !agent_builder.timeout_set?
-          agent_builder.timeout(all_agents_hash[:timeout])
+        if all_agents_hash[:request_timeout] && !agent_builder.request_timeout_set?
+          agent_builder.request_timeout(all_agents_hash[:request_timeout])
+        end
+
+        if all_agents_hash[:turn_timeout] && !agent_builder.turn_timeout_set?
+          agent_builder.turn_timeout(all_agents_hash[:turn_timeout])
         end
 
         if all_agents_hash[:parameters]

@@ -28,7 +28,8 @@ module SwarmSDK
         :all_agents_hooks,
         :scratchpad_mode,
         :nodes,
-        :external_swarms
+        :external_swarms,
+        :execution_timeout
 
       # Initialize parser with YAML content and options
       #
@@ -54,6 +55,7 @@ module SwarmSDK
         @external_swarms = {}
         @nodes = {}
         @scratchpad_mode = :disabled
+        @execution_timeout = nil
       end
 
       def parse
@@ -134,6 +136,7 @@ module SwarmSDK
         @swarm_name = @root_config[:name]
         @swarm_id = @root_config[:id]
         @scratchpad_mode = parse_scratchpad_mode(@root_config[:scratchpad])
+        @execution_timeout = @root_config[:execution_timeout]
 
         load_all_agents_config
         load_hooks_config

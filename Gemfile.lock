@@ -35,7 +35,7 @@ PATH
       ruby_llm_swarm (~> 1.9.5)
       swarm_sdk (~> 2.5.2)
       zeitwerk (~> 2.6)
-    swarm_sdk (2.5.5)
+    swarm_sdk (2.6.0)
       async (~> 2.0)
       async-http-faraday (~> 0.22)
       faraday-follow_redirects (~> 0.4)
@@ -164,7 +164,6 @@ GEM
       mime-types (~> 3.4)
       rack (< 3)
     ffi (1.17.2-arm64-darwin)
-    ffi (1.17.2-x86_64-linux-gnu)
     fiber-annotation (0.2.0)
     fiber-local (1.1.0)
       fiber-storage
@@ -227,11 +226,7 @@ GEM
     nio4r (2.7.4)
     nokogiri (1.18.10-arm64-darwin)
       racc (~> 1.4)
-    nokogiri (1.18.10-x86_64-linux-gnu)
-      racc (~> 1.4)
     onnxruntime (0.10.1-arm64-darwin)
-      ffi
-    onnxruntime (0.10.1-x86_64-linux)
       ffi
     openssl (3.3.2)
     ostruct (0.6.3)
@@ -383,7 +378,6 @@ GEM
     thor (1.4.0)
     tilt (2.6.1)
     tokenizers (0.6.2-arm64-darwin)
-    tokenizers (0.6.2-x86_64-linux)
     traces (0.18.2)
     tsort (0.2.0)
     ttfunk (1.8.0)
@@ -424,7 +418,6 @@ GEM
 
 PLATFORMS
   arm64-darwin-23
-  x86_64-linux
 
 DEPENDENCIES
   claude_swarm!

@@ -122,7 +122,7 @@ module SwarmSDK
         max_concurrent_tools = definition[:max_concurrent_tools]
         base_url = definition[:base_url]
         api_version = definition[:api_version]
-        timeout = definition[:timeout] || SwarmSDK.config.agent_request_timeout
+        request_timeout = definition[:request_timeout] || SwarmSDK.config.agent_request_timeout
         assume_model_exists = definition[:assume_model_exists]
         system_prompt = definition[:system_prompt]
         parameters = definition[:parameters]
@@ -130,6 +130,9 @@ module SwarmSDK
 
         # Agent identifier (for plugin callbacks)
         @agent_name = agent_name
+
+        # Turn timeout (external timeout for entire ask() call)
+        @turn_timeout = definition[:turn_timeout]
 
         # Context manager for ephemeral messages
         @context_manager = ContextManager.new
@@ -162,7 +165,7 @@ module SwarmSDK
           provider_name: provider_name,
           base_url: base_url,
           api_version: api_version,
-          timeout: timeout,
+          timeout: request_timeout,
           assume_model_exists: assume_model_exists,
           max_concurrent_tools: max_concurrent_tools,
         )
@@ -461,48 +464,11 @@ module SwarmSDK
       # @return [RubyLLM::Message] LLM response
       def ask(prompt, **options)
         @ask_semaphore.acquire do
-          is_first = first_message?
-
-          # Collect system reminders to inject as ephemeral content
-          reminders = collect_system_reminders(prompt, is_first)
-
-          # Trigger user_prompt hook (with clean prompt, not reminders)
-          source = options.delete(:source) || "user"
-          final_prompt = prompt
-          if @hook_executor
-            hook_result = trigger_user_prompt(prompt, source: source)
-
-            if hook_result[:halted]
-              return RubyLLM::Message.new(
-                role: :assistant,
-                content: hook_result[:halt_message],
-                model_id: model_id,
-              )
-            end
-
-            final_prompt = hook_result[:modified_prompt] if hook_result[:modified_prompt]
+          if @turn_timeout
+            execute_with_turn_timeout(prompt, options)
+          else
+            execute_ask(prompt, options)
           end
-
-          # Add CLEAN user message to history (no reminders embedded)
-          @llm_chat.add_message(role: :user, content: final_prompt)
-
-          # Track reminders as ephemeral content for this LLM call only
-          # They'll be injected by around_llm_request hook but not stored
-          reminders.each do |reminder|
-            @context_manager.add_ephemeral_reminder(reminder, messages_array: @llm_chat.messages)
-          end
-
-          # Execute complete() which handles tool loop and ephemeral injection
-          response = execute_with_global_semaphore do
-            catch(:finish_agent) do
-              catch(:finish_swarm) do
-                @llm_chat.complete(**options)
-              end
-            end
-          end
-
-          # Handle finish markers from hooks
-          handle_finish_marker(response)
         end
       end
 
@@ -558,6 +524,103 @@ module SwarmSDK
       end
 
       private
+
+      # Execute ask with turn timeout wrapper
+      def execute_with_turn_timeout(prompt, options)
+        task = Async::Task.current
+
+        # Use barrier to track child tasks spawned during this turn
+        # (includes RubyLLM's async tool execution when max_concurrent_tools is set)
+        barrier = Async::Barrier.new
+
+        begin
+          task.with_timeout(
+            @turn_timeout,
+            TurnTimeoutError,
+            "Agent turn timed out after #{@turn_timeout}s",
+          ) do
+            # Execute inside barrier to track child tasks
+            barrier.async do
+              execute_ask(prompt, options)
+            end.wait
+          end
+        rescue TurnTimeoutError
+          # Stop all child tasks
+          barrier.stop
+
+          emit_turn_timeout_event
+
+          # Return error message as response so caller can handle gracefully
+          # Format like other tool/delegation errors for natural flow
+          # This message goes to the swarm/caller, NOT added to agent's conversation history
+          RubyLLM::Message.new(
+            role: :assistant,
+            content: "Error: Request timed out after #{@turn_timeout}s. The agent did not complete its response within the time limit. Please try a simpler request or increase the turn timeout.",
+            model_id: model_id,
+          )
+        ensure
+          # Cleanup barrier if not already stopped
+          barrier.stop unless barrier.empty?
+        end
+      end
+
+      # Emit turn timeout event
+      def emit_turn_timeout_event
+        LogStream.emit(
+          type: "turn_timeout",
+          agent: @agent_name,
+          swarm_id: @agent_context&.swarm_id,
+          parent_swarm_id: @agent_context&.parent_swarm_id,
+          limit: @turn_timeout,
+          message: "Agent turn timed out after #{@turn_timeout}s",
+        )
+      end
+
+      # Execute ask without timeout (original ask implementation)
+      def execute_ask(prompt, options)
+        is_first = first_message?
+
+        # Collect system reminders to inject as ephemeral content
+        reminders = collect_system_reminders(prompt, is_first)
+
+        # Trigger user_prompt hook (with clean prompt, not reminders)
+        source = options.delete(:source) || "user"
+        final_prompt = prompt
+        if @hook_executor
+          hook_result = trigger_user_prompt(prompt, source: source)
+
+          if hook_result[:halted]
+            return RubyLLM::Message.new(
+              role: :assistant,
+              content: hook_result[:halt_message],
+              model_id: model_id,
+            )
+          end
+
+          final_prompt = hook_result[:modified_prompt] if hook_result[:modified_prompt]
+        end
+
+        # Add CLEAN user message to history (no reminders embedded)
+        @llm_chat.add_message(role: :user, content: final_prompt)
+
+        # Track reminders as ephemeral content for this LLM call only
+        # They'll be injected by around_llm_request hook but not stored
+        reminders.each do |reminder|
+          @context_manager.add_ephemeral_reminder(reminder, messages_array: @llm_chat.messages)
+        end
+
+        # Execute complete() which handles tool loop and ephemeral injection
+        response = execute_with_global_semaphore do
+          catch(:finish_agent) do
+            catch(:finish_swarm) do
+              @llm_chat.complete(**options)
+            end
+          end
+        end
+
+        # Handle finish markers from hooks
+        handle_finish_marker(response)
+      end
 
       # --- Tool Execution Hook ---
 

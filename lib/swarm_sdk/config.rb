@@ -81,6 +81,8 @@ module SwarmSDK
       chars_per_token_prose: ["SWARM_SDK_CHARS_PER_TOKEN_PROSE", -> { Defaults::TokenEstimation::CHARS_PER_TOKEN_PROSE }],
       chars_per_token_code: ["SWARM_SDK_CHARS_PER_TOKEN_CODE", -> { Defaults::TokenEstimation::CHARS_PER_TOKEN_CODE }],
       mcp_log_level: ["SWARM_SDK_MCP_LOG_LEVEL", -> { Defaults::Logging::MCP_LOG_LEVEL }],
+      default_execution_timeout: ["SWARM_SDK_DEFAULT_EXECUTION_TIMEOUT", -> { Defaults::Timeouts::EXECUTION_TIMEOUT_SECONDS }],
+      default_turn_timeout: ["SWARM_SDK_DEFAULT_TURN_TIMEOUT", -> { Defaults::Timeouts::TURN_TIMEOUT_SECONDS }],
     }.freeze
 
     # WebFetch and control settings

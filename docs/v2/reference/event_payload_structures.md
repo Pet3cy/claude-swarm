@@ -687,6 +687,66 @@ Emitted after receiving HTTP response from LLM API provider (only when logging i
 
 ---
 
+### 18. execution_timeout
+
+Emitted when swarm execution exceeds `execution_timeout` configuration.
+
+**Location**: `lib/swarm_sdk/swarm/executor.rb:229-237`
+
+```ruby
+{
+  type: "execution_timeout",
+  timestamp: "2025-01-15T10:45:30Z",
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
+  limit: 3600,                                 # Timeout limit in seconds
+  message: "Swarm execution timed out after 3600s"
+}
+```
+
+**Field Locations**:
+- Root level: `type`, `timestamp`, `swarm_id`, `parent_swarm_id`, `limit`, `message`
+
+**Notes**:
+- Emitted just before `ExecutionTimeoutError` is returned in Result
+- The swarm's `execute()` call returns a Result with `error: ExecutionTimeoutError` and `metadata: { timeout: true }`
+- Cleanup (`ensure` blocks) always runs after timeout
+- Observers may still be processing (they have their own timeouts)
+
+---
+
+### 19. turn_timeout
+
+Emitted when an agent turn exceeds `turn_timeout` configuration.
+
+**Location**: `lib/swarm_sdk/agent/chat.rb:552-561`
+
+```ruby
+{
+  type: "turn_timeout",
+  timestamp: "2025-01-15T10:35:12Z",
+  agent: :backend,                             # Agent that timed out
+  swarm_id: "main",                            # Swarm ID
+  parent_swarm_id: nil,                        # Parent swarm ID (nil for root)
+  limit: 900,                                  # Timeout limit in seconds
+  message: "Agent turn timed out after 900s"
+}
+```
+
+**Field Locations**:
+- Root level: `type`, `timestamp`, `agent`, `swarm_id`, `parent_swarm_id`, `limit`, `message`
+
+**Notes**:
+- Emitted when `agent.ask()` exceeds turn_timeout
+- Agent returns error message (not exception): "Error: Request timed out after Xs. The agent did not complete its response within the time limit. Please try a simpler request or increase the turn timeout."
+- Error message formatted like other tool/delegation errors for natural flow
+- The timeout message is NOT added to agent's conversation history
+- Allows delegating agents to handle timeout gracefully and continue or retry
+- Uses `Async::Barrier` to stop ALL child tasks (tool executions) immediately
+- Swarm hooks can decide whether to stop or continue after turn timeout
+
+---
+
 ## Summary: Field Location Guide
 
 ### Always at Root Level
@@ -708,6 +768,8 @@ Emitted after receiving HTTP response from LLM API provider (only when logging i
 | `tool_result` | tool_call_id, tool, result | metadata.* |
 | `llm_api_request` | provider | body.* |
 | `llm_api_response` | provider, duration_seconds, usage, model, finish_reason | body.*, usage.* |
+| `execution_timeout` | limit, message | None |
+| `turn_timeout` | limit, message | None |
 
 ### Important Notes
 

@@ -49,6 +49,12 @@ module SwarmSDK
         @lead_agent = nil
         @swarm_hooks = []
         @observer_configs = []
+        @execution_timeout = nil
+      end
+
+      # Set execution timeout (seconds)
+      def execution_timeout(seconds)
+        @execution_timeout = seconds
       end
 
       # Set lead agent
@@ -142,6 +148,7 @@ module SwarmSDK
           swarm_id: @swarm_id,
           scratchpad_mode: @scratchpad,
           allow_filesystem_tools: @allow_filesystem_tools,
+          execution_timeout: @execution_timeout,
         )
 
         # Setup swarm registry if external swarms are registered

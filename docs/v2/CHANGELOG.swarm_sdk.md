@@ -5,6 +5,39 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2025-12-04
+
+### Added
+
+- **Execution Timeouts**: External timeout enforcement using Async's `task.with_timeout()` with `Async::Barrier` for child task management
+  - **`execution_timeout`** (swarm-level): Maximum wall-clock time for entire `swarm.execute()` call
+  - **`turn_timeout`** (agent-level): Maximum time for single `agent.ask()` call (LLM + all tools)
+  - **Default**: Both default to `1800` seconds (30 minutes)
+  - **Configurable globally**: `SwarmSDK.config.default_execution_timeout`, `SwarmSDK.config.default_turn_timeout`
+  - **Per-swarm/agent overrides**: Via DSL and YAML configuration
+  - **Validation**: Zero and negative values rejected with `ConfigurationError`
+  - **Interrupts immediately**: Uses `Async::Barrier` to stop ALL child tasks (tool executions, delegations) when timeout fires
+  - **Why barrier needed**: SwarmSDK uses `max_concurrent_tools: 10` by default, making RubyLLM spawn child tasks for tool execution. Without `barrier.stop`, child tasks continue after timeout.
+  - **Cleanup guaranteed**: `ensure` blocks always run after timeout, barrier cleanup ensures no zombie tasks
+  - **New exception classes**: `TimeoutError`, `ExecutionTimeoutError`, `TurnTimeoutError`
+  - **New events**: `execution_timeout` and `turn_timeout` for monitoring
+  - **Turn timeout behavior**: Returns error message (not exception) so delegating agents can handle gracefully: "Error: Request timed out after Xs..."
+  - **Files**: `lib/swarm_sdk.rb`, `lib/swarm_sdk/swarm/executor.rb`, `lib/swarm_sdk/agent/chat.rb`
+  - **Documentation**: `plans/023-execution-timeouts.md`, `decisions/2025-12-02-002-external-timeout-enforcement.md`
+
+### Changed - BREAKING
+
+- **`timeout` configuration renamed to `request_timeout`**: Clarifies scope (LLM HTTP request only)
+  - **Ruby DSL**: `timeout()` → `request_timeout()`
+  - **Ruby DSL**: `timeout_set?()` → `request_timeout_set?()`
+  - **YAML**: `timeout:` → `request_timeout:`
+  - **Agent::Definition**: `.timeout` → `.request_timeout`
+  - **Why**: The old name was ambiguous - it only controlled HTTP request timeout, not the entire agent turn
+  - **Migration**: Simple search and replace (`timeout` → `request_timeout` in agent configs)
+  - **Note**: `SwarmSDK.config.agent_request_timeout` unchanged (already used correct name)
+  - **Files**: All builder classes, `Agent::Definition`, YAML parser/translator
+  - **Tests**: Updated 14 tests across 9 test files
+
 ## [2.5.5] - 2025-12-03
 
 ### Changed - BREAKING

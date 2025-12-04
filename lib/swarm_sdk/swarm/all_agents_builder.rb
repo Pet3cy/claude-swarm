@@ -29,7 +29,8 @@ module SwarmSDK
         @provider = nil
         @base_url = nil
         @api_version = nil
-        @timeout = nil
+        @request_timeout = nil
+        @turn_timeout = nil
         @parameters = nil
         @headers = nil
         @coding_agent = nil
@@ -56,9 +57,14 @@ module SwarmSDK
         @api_version = version
       end
 
-      # Set timeout for all agents
-      def timeout(seconds)
-        @timeout = seconds
+      # Set request timeout for all agents
+      def request_timeout(seconds)
+        @request_timeout = seconds
+      end
+
+      # Set turn timeout for all agents
+      def turn_timeout(seconds)
+        @turn_timeout = seconds
       end
 
       # Set parameters for all agents
@@ -153,7 +159,8 @@ module SwarmSDK
           provider: @provider,
           base_url: @base_url,
           api_version: @api_version,
-          timeout: @timeout,
+          request_timeout: @request_timeout,
+          turn_timeout: @turn_timeout,
           parameters: @parameters,
           headers: @headers,
           coding_agent: @coding_agent,

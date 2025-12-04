@@ -4,6 +4,125 @@ This guide covers all breaking changes and migration steps for upgrading between
 
 ---
 
+## Migrating to v2.6.0
+
+### Overview
+
+SwarmSDK v2.6.0 introduces execution timeouts with external enforcement via Async, and renames the `timeout` configuration to `request_timeout` for clarity.
+
+### Breaking Changes
+
+#### 1. `timeout` Configuration Renamed to `request_timeout`
+
+**What Changed:**
+- Agent-level `timeout` configuration renamed to `request_timeout`
+- Clarifies that it controls only the LLM HTTP request timeout (Faraday level), not the entire agent turn
+- Two new timeout configurations added: `execution_timeout` (swarm-level) and `turn_timeout` (agent-level)
+
+**Why:** The old `timeout` name was ambiguous - it only controlled HTTP request timeout, not the entire agent execution. The new names make the scope explicit.
+
+**Before (v2.5.x):**
+```ruby
+# Ruby DSL
+agent :backend do
+  timeout 300
+end
+
+all_agents do
+  timeout 180
+end
+```
+
+```yaml
+# YAML
+all_agents:
+  timeout: 300
+
+agents:
+  backend:
+    timeout: 600
+```
+
+**After (v2.6.0):**
+```ruby
+# Ruby DSL
+agent :backend do
+  request_timeout 300   # HTTP request timeout (Faraday level)
+  turn_timeout 900      # NEW: Entire agent turn timeout
+end
+
+all_agents do
+  request_timeout 180
+  turn_timeout 900
+end
+
+# NEW: Swarm-level execution timeout
+execution_timeout 3600  # Max time for entire swarm.execute()
+```
+
+```yaml
+# YAML
+swarm:
+  execution_timeout: 3600  # NEW: Swarm-level timeout
+
+  all_agents:
+    request_timeout: 300
+    turn_timeout: 900      # NEW: Agent turn timeout
+
+  agents:
+    backend:
+      request_timeout: 600
+      turn_timeout: 1200
+```
+
+**Migration Steps:**
+
+1. **Search and replace in Ruby DSL:**
+   - Replace `timeout(` with `request_timeout(`
+   - Replace `timeout ` with `request_timeout `
+
+2. **Search and replace in YAML:**
+   - Replace `timeout:` with `request_timeout:`
+
+3. **Add new timeouts (optional):**
+   - Add `execution_timeout` at swarm level if you want to cap total execution time
+   - Add `turn_timeout` at agent level if you want to cap agent turns separately from HTTP requests
+
+4. **Update tests:**
+   - Replace `definition.timeout` with `definition.request_timeout`
+   - Replace `timeout_set?` with `request_timeout_set?`
+
+**Note:** The global config `SwarmSDK.config.agent_request_timeout` already used the correct name and does NOT need to be changed.
+
+#### 2. New Timeout Configurations
+
+**Added:**
+- `execution_timeout` (swarm-level): Maximum wall-clock time for entire `swarm.execute()` call
+- `turn_timeout` (agent-level): Maximum time for single `agent.ask()` call including all tool executions
+
+**Defaults:**
+- Both new timeouts default to `1800` seconds (30 minutes)
+- Set to `nil` to disable timeout enforcement
+- Zero and negative values are validated and rejected
+
+**Global Configuration:**
+```ruby
+SwarmSDK.configure do |config|
+  config.default_execution_timeout = 3600  # 1 hour
+  config.default_turn_timeout = 900        # 15 minutes
+  # Or set to nil to disable
+  config.default_execution_timeout = nil
+end
+```
+
+**Behavior:**
+- **Execution timeout**: Uses Async's `task.with_timeout()` to wrap entire swarm execution
+- **Turn timeout**: Wraps each `agent.ask()` call with external timeout enforcement
+- **Cleanup guaranteed**: `ensure` blocks always run after timeout
+- **New events**: `execution_timeout` and `turn_timeout` events emitted for monitoring
+
+---
+
 ## Migrating to v2.4.0
 
 ### Overview

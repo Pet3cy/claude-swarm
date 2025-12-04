@@ -49,7 +49,8 @@ module SwarmSDK
         @directory = "."
         @parameters = {}
         @headers = {}
-        @timeout = nil
+        @request_timeout = nil
+        @turn_timeout = nil
         @mcp_servers = []
         @disable_default_tools = nil # nil = include all default tools
         @bypass_permissions = false
@@ -112,11 +113,18 @@ module SwarmSDK
         @headers = header_hash
       end
 
-      # Set/get timeout
-      def timeout(seconds = :__not_provided__)
-        return @timeout if seconds == :__not_provided__
+      # Set/get request timeout
+      def request_timeout(seconds = :__not_provided__)
+        return @request_timeout if seconds == :__not_provided__
 
-        @timeout = seconds
+        @request_timeout = seconds
+      end
+
+      # Set/get turn timeout
+      def turn_timeout(seconds = :__not_provided__)
+        return @turn_timeout if seconds == :__not_provided__
+
+        @turn_timeout = seconds
       end
 
       # Add an MCP server configuration
@@ -386,13 +394,22 @@ module SwarmSDK
         !@api_version.nil?
       end
 
-      # Check if timeout has been explicitly set
+      # Check if request_timeout has been explicitly set
       #
-      # Used by Swarm::Builder to determine if all_agents timeout should apply.
+      # Used by Swarm::Builder to determine if all_agents request_timeout should apply.
       #
-      # @return [Boolean] true if timeout was explicitly set
-      def timeout_set?
-        !@timeout.nil?
+      # @return [Boolean] true if request_timeout was explicitly set
+      def request_timeout_set?
+        !@request_timeout.nil?
+      end
+
+      # Check if turn_timeout has been explicitly set
+      #
+      # Used by Swarm::Builder to determine if all_agents turn_timeout should apply.
+      #
+      # @return [Boolean] true if turn_timeout was explicitly set
+      def turn_timeout_set?
+        !@turn_timeout.nil?
       end
 
       # Check if coding_agent has been explicitly set
@@ -448,7 +465,8 @@ module SwarmSDK
         agent_config[:context_window] = @context_window if @context_window
         agent_config[:parameters] = @parameters if @parameters.any?
         agent_config[:headers] = @headers if @headers.any?
-        agent_config[:timeout] = @timeout if @timeout
+        agent_config[:request_timeout] = @request_timeout if @request_timeout
+        agent_config[:turn_timeout] = @turn_timeout if @turn_timeout
         agent_config[:mcp_servers] = @mcp_servers if @mcp_servers.any?
         agent_config[:disable_default_tools] = @disable_default_tools unless @disable_default_tools.nil?
         agent_config[:bypass_permissions] = @bypass_permissions
