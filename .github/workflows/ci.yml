@@ -5,6 +5,13 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      run_all_tests:
+        description: 'Run all test jobs (skip change detection)'
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   detect-changes:
@@ -46,7 +53,7 @@ jobs:
 
   test-claude-swarm:
     needs: detect-changes
-    if: needs.detect-changes.outputs.claude_swarm_changed == 'true'
+    if: needs.detect-changes.outputs.claude_swarm_changed == 'true' || github.event.inputs.run_all_tests == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -94,7 +101,7 @@ jobs:
 
   test-swarm-sdk:
     needs: detect-changes
-    if: needs.detect-changes.outputs.swarm_sdk_changed == 'true'
+    if: needs.detect-changes.outputs.swarm_sdk_changed == 'true' || github.event.inputs.run_all_tests == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -140,7 +147,7 @@ jobs:
 
   test-swarm-memory:
     needs: detect-changes
-    if: needs.detect-changes.outputs.swarm_memory_changed == 'true'
+    if: needs.detect-changes.outputs.swarm_memory_changed == 'true' || github.event.inputs.run_all_tests == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -185,7 +192,7 @@ jobs:
 
   test-swarm-cli:
     needs: detect-changes
-    if: needs.detect-changes.outputs.swarm_cli_changed == 'true'
+    if: needs.detect-changes.outputs.swarm_cli_changed == 'true' || github.event.inputs.run_all_tests == 'true'
     runs-on: ubuntu-latest
     strategy:
       matrix:
