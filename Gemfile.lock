@@ -19,7 +19,7 @@ PATH
       reline (~> 0.6.3)
       reverse_markdown (~> 3.0.0)
       roo (~> 3.0.0)
-      swarm_sdk (~> 2.5.5)
+      swarm_sdk (~> 2.6)
       tty-box
       tty-cursor
       tty-link
@@ -33,7 +33,7 @@ PATH
       informers (~> 1.2.1)
       rice (~> 4.6.0)
       ruby_llm_swarm (~> 1.9.5)
-      swarm_sdk (~> 2.5.2)
+      swarm_sdk (~> 2.6)
       zeitwerk (~> 2.6)
     swarm_sdk (2.6.0)
       async (~> 2.0)
@@ -52,7 +52,7 @@ GEM
       public_suffix (>= 2.0.2, < 8.0)
     afm (1.0.0)
     ast (2.4.3)
-    async (2.34.0)
+    async (2.35.0)
       console (~> 1.29)
       fiber-annotation
       io-event (~> 1.11)
@@ -164,6 +164,7 @@ GEM
       mime-types (~> 3.4)
       rack (< 3)
     ffi (1.17.2-arm64-darwin)
+    ffi (1.17.2-x86_64-linux-gnu)
     fiber-annotation (0.2.0)
     fiber-local (1.1.0)
       fiber-storage
@@ -188,14 +189,14 @@ GEM
       onnxruntime (>= 0.9)
       tokenizers (>= 0.5.3)
     io-console (0.8.1)
-    io-endpoint (0.15.2)
+    io-endpoint (0.16.0)
     io-event (1.14.2)
-    io-stream (0.11.0)
+    io-stream (0.11.1)
     irb (1.15.2)
       pp (>= 0.6.0)
       rdoc (>= 4.0.0)
       reline (>= 0.4.2)
-    json (2.16.0)
+    json (2.17.1)
     json-schema (5.2.2)
       addressable (~> 2.8)
       bigdecimal (~> 3.1)
@@ -226,7 +227,11 @@ GEM
     nio4r (2.7.4)
     nokogiri (1.18.10-arm64-darwin)
       racc (~> 1.4)
+    nokogiri (1.18.10-x86_64-linux-gnu)
+      racc (~> 1.4)
     onnxruntime (0.10.1-arm64-darwin)
+      ffi
+    onnxruntime (0.10.1-x86_64-linux)
       ffi
     openssl (3.3.2)
     ostruct (0.6.3)
@@ -261,7 +266,7 @@ GEM
     puma (7.0.4)
       nio4r (~> 2.0)
     racc (1.8.1)
-    rack (2.2.18)
+    rack (2.2.21)
     rack-protection (3.2.0)
       base64 (>= 0.1.0)
       rack (~> 2.2, >= 2.2.4)
@@ -345,7 +350,7 @@ GEM
       httpx (~> 1.4)
       json-schema (~> 5.0)
       zeitwerk (~> 2)
-    rubyzip (3.1.1)
+    rubyzip (3.2.2)
     selenium-webdriver (4.38.0)
       base64 (~> 0.2)
       logger (~> 1.4)
@@ -378,6 +383,7 @@ GEM
     thor (1.4.0)
     tilt (2.6.1)
     tokenizers (0.6.2-arm64-darwin)
+    tokenizers (0.6.2-x86_64-linux)
     traces (0.18.2)
     tsort (0.2.0)
     ttfunk (1.8.0)
@@ -418,6 +424,7 @@ GEM
 
 PLATFORMS
   arm64-darwin-23
+  x86_64-linux
 
 DEPENDENCIES
   claude_swarm!
