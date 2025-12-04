@@ -121,6 +121,8 @@ module SwarmMemory
         Tools::MemoryWrite.new(storage: storage, agent_name: agent_name)
       when :MemoryRead
         Tools::MemoryRead.new(storage: storage, agent_name: agent_name)
+      when :MemorySearch
+        Tools::MemorySearch.new(storage: storage, agent_name: agent_name)
       when :MemoryEdit
         Tools::MemoryEdit.new(storage: storage, agent_name: agent_name)
       when :MemoryDelete

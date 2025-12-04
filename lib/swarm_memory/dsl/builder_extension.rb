@@ -9,21 +9,21 @@ module SwarmMemory
     module BuilderExtension
       # Configure persistent memory for this agent
       #
-      # @example Interactive mode (default) - Learn and retrieve
+      # @example Read-write mode (default) - Learn and retrieve
       #   memory do
       #     directory ".swarm/agent-memory"
       #   end
       #
-      # @example Retrieval mode - Read-only Q&A
+      # @example Read-only mode - Q&A without learning
       #   memory do
       #     directory "team-knowledge/"
-      #     mode :retrieval
+      #     mode :read_only
       #   end
       #
-      # @example Researcher mode - Knowledge extraction
+      # @example Full access mode - Knowledge management with Delete and Defrag
       #   memory do
       #     directory "team-knowledge/"
-      #     mode :researcher
+      #     mode :full_access
       #   end
       def memory(&block)
         @memory_config = SwarmMemory::DSL::MemoryConfig.new

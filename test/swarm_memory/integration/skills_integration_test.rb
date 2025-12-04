@@ -40,7 +40,7 @@ class SkillsIntegrationTest < Minitest::Test
         memory do
           adapter(:filesystem)
           directory(memory_dir)
-          mode(:researcher) # All tools available
+          mode(:full_access) # All tools available
         end
       end
     end
@@ -113,7 +113,7 @@ class SkillsIntegrationTest < Minitest::Test
 
         memory do
           directory(memory_dir)
-          mode(:researcher) # All tools available
+          mode(:full_access) # All tools available
         end
       end
     end

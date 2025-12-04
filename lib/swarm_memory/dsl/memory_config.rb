@@ -28,7 +28,7 @@ module SwarmMemory
       def initialize
         @adapter_type = :filesystem # Default adapter
         @adapter_options = {} # Options passed to adapter constructor
-        @mode = :assistant # Default mode
+        @mode = :read_write # Default mode
       end
 
       # DSL method to set/get adapter type
@@ -72,9 +72,9 @@ module SwarmMemory
       # DSL method to set/get mode
       #
       # Modes:
-      # - :assistant (default) - Read + Write, balanced for learning and retrieval
-      # - :retrieval - Read-only, optimized for Q&A
-      # - :researcher - All tools, optimized for knowledge extraction
+      # - :read_write (default) - Read + Write + Edit, balanced for learning and retrieval
+      # - :read_only - Read-only, optimized for Q&A
+      # - :full_access - All tools including Delete and Defrag, optimized for knowledge management
       #
       # @param value [Symbol, nil] Memory mode
       # @return [Symbol] Current mode

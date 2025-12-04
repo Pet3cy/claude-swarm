@@ -76,7 +76,7 @@ module SwarmMemory
           memory: {
             directory: "/tmp/memory",
             adapter: :filesystem,
-            mode: :researcher,
+            mode: :full_access,
           },
         }
 
@@ -84,7 +84,7 @@ module SwarmMemory
 
         assert_equal("/tmp/memory", builder.memory_config[:directory])
         assert_equal(:filesystem, builder.memory_config[:adapter])
-        assert_equal(:researcher, builder.memory_config[:mode])
+        assert_equal(:full_access, builder.memory_config[:mode])
       end
 
       def test_translate_yaml_config_with_partial_config
@@ -419,7 +419,7 @@ module SwarmMemory
       # serialize_config tests
 
       def test_serialize_config_with_memory
-        memory_config = { directory: "/tmp/memory", mode: :researcher }
+        memory_config = { directory: "/tmp/memory", mode: :full_access }
         agent_def = create_agent_definition(memory: memory_config)
 
         result = @plugin.serialize_config(agent_definition: agent_def)

@@ -101,6 +101,34 @@ module SwarmMemory
         raise NotImplementedError, "Subclass must implement #size"
       end
 
+      # Semantic search by embedding vector
+      #
+      # Searches all entries with embeddings and returns those similar to the query.
+      # Results are sorted by cosine similarity in descending order.
+      #
+      # @param embedding [Array<Float>] Query embedding vector
+      # @param top_k [Integer] Number of results to return
+      # @param threshold [Float] Minimum similarity score (0.0-1.0)
+      # @return [Array<Hash>] Results with similarity scores
+      #
+      # @example
+      #   results = adapter.semantic_search(
+      #     embedding: query_embedding,
+      #     top_k: 5,
+      #     threshold: 0.65
+      #   )
+      #
+      # Each result hash must contain:
+      #   - :path (String) - logical file path
+      #   - :similarity (Float) - cosine similarity score 0.0-1.0
+      #   - :title (String) - entry title
+      #   - :size (Integer) - content size in bytes
+      #   - :updated_at (Time) - last update timestamp
+      #   - :metadata (Hash) - nested hash with type, tags, domain, etc.
+      def semantic_search(embedding:, top_k: 10, threshold: 0.0)
+        raise NotImplementedError, "Subclass must implement #semantic_search"
+      end
+
       protected
 
       # Format bytes to human-readable size

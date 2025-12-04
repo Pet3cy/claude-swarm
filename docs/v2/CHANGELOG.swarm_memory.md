@@ -327,14 +327,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 #### Memory Modes System
 
 - **Three Operational Modes** - Mode-specific prompts and tools
-  - **Retrieval Mode** - Read-only (MemoryRead, MemoryGlob, MemoryGrep)
+  - **Read-Only Mode** - Read-only (MemoryRead, MemoryGlob, MemoryGrep)
     - 88-line prompt focused on search strategies
     - Q&A agents accessing knowledge without modification
-  - **Assistant Mode** - Read + Write + Edit + LoadSkill
+  - **Read-Write Mode** - Read + Write + Edit + LoadSkill
     - 139-line prompt with writing guidelines and quality standards
     - Learning assistants that correct/update knowledge
     - Dynamic tool adaptation via LoadSkill
-  - **Researcher Mode** - Full access (all 9 tools)
+  - **Full Access Mode** - Full access (all 9 tools)
     - 201-line prompt with optimization strategies
     - Knowledge extraction, deep optimization, graph building
     - Includes MemoryMultiEdit, MemoryDelete, MemoryDefrag

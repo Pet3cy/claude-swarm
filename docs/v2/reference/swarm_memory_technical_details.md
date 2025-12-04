@@ -1325,7 +1325,7 @@ def on_agent_initialized(agent_name:, agent:, context:)
     agent.remove_tool(tool_name) unless allowed_tools.include?(tool_name)
   end
 
-  # Register LoadSkill (unless retrieval mode)
+  # Register LoadSkill (unless read_only mode)
   unless mode == :retrieval
     load_skill = create_load_skill_tool(context)
     agent.with_tool(load_skill)

@@ -146,7 +146,7 @@ module SwarmSDK
       #
       # @example
       #   agent_definition.plugin_config(:memory)
-      #   # => { directory: "tmp/memory", mode: :researcher }
+      #   # => { directory: "tmp/memory", mode: :full_access }
       def plugin_config(plugin_name)
         @plugin_configs[plugin_name.to_sym] || @plugin_configs[plugin_name.to_s]
       end

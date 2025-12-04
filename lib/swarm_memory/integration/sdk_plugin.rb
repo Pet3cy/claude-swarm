@@ -20,7 +20,7 @@ module SwarmMemory
         # Needed for semantic skill discovery in on_user_message
         @storages = {}
         # Track memory mode for each agent: { agent_name => mode }
-        # Modes: :assistant (default), :retrieval, :researcher
+        # Modes: :read_write (default), :read_only, :full_access
         @modes = {}
         # Track threshold configuration for each agent: { agent_name => config }
         # Enables per-adapter threshold tuning with ENV fallback
@@ -50,6 +50,7 @@ module SwarmMemory
           :MemoryRead,
           :MemoryGlob,
           :MemoryGrep,
+          :MemorySearch,
           :MemoryWrite,
           :MemoryEdit,
           :MemoryDelete,
@@ -63,26 +64,27 @@ module SwarmMemory
       # @return [Array<Symbol>] Tool names for this mode
       def tools_for_mode(mode)
         case mode
-        when :retrieval
+        when :read_only
           # Read-only tools for Q&A agents
-          [:MemoryRead, :MemoryGlob, :MemoryGrep]
-        when :assistant
-          # Read + Write + Edit for learning assistants (need edit for corrections)
-          [:MemoryRead, :MemoryGlob, :MemoryGrep, :MemoryWrite, :MemoryEdit]
-        when :researcher
-          # All tools for knowledge extraction
+          [:MemoryRead, :MemoryGlob, :MemoryGrep, :MemorySearch]
+        when :read_write
+          # Read + Write + Edit for learning agents (need edit for corrections)
+          [:MemoryRead, :MemoryGlob, :MemoryGrep, :MemorySearch, :MemoryWrite, :MemoryEdit]
+        when :full_access
+          # All tools for knowledge extraction and management
           [
             :MemoryRead,
             :MemoryGlob,
             :MemoryGrep,
+            :MemorySearch,
             :MemoryWrite,
             :MemoryEdit,
             :MemoryDelete,
             :MemoryDefrag,
           ]
         else
-          # Default to assistant
-          [:MemoryRead, :MemoryGlob, :MemoryGrep, :MemoryWrite, :MemoryEdit]
+          # Default to read_write
+          [:MemoryRead, :MemoryGlob, :MemoryGrep, :MemorySearch, :MemoryWrite, :MemoryEdit]
         end
       end
 
@@ -180,16 +182,16 @@ module SwarmMemory
         elsif memory_config.respond_to?(:mode)
           memory_config.mode # Other object with mode method
         elsif memory_config.is_a?(Hash)
-          (memory_config[:mode] || memory_config["mode"] || :assistant).to_sym
+          (memory_config[:mode] || memory_config["mode"] || :read_write).to_sym
         else
-          :assistant # Default mode
+          :read_write # Default mode
         end
 
         # Select prompt template based on mode
         prompt_filename = case mode
-        when :retrieval then "memory_retrieval.md.erb"
-        when :researcher then "memory_researcher.md.erb"
-        else "memory_assistant.md.erb" # Default
+        when :read_only then "memory_read_only.md.erb"
+        when :full_access then "memory_full_access.md.erb"
+        else "memory_read_write.md.erb" # Default
         end
 
         memory_prompt_path = File.expand_path("../prompts/#{prompt_filename}", __dir__)
@@ -209,8 +211,8 @@ module SwarmMemory
       def immutable_tools_for_mode(mode)
         base_tools = tools_for_mode(mode)
 
-        # LoadSkill only for assistant and researcher modes (not retrieval)
-        if mode == :retrieval
+        # LoadSkill only for read_write and full_access modes (not read_only)
+        if mode == :read_only
           base_tools
         else
           base_tools + [:LoadSkill]
@@ -390,8 +392,8 @@ module SwarmMemory
           agent.remove_tool(tool_name)
         end
 
-        # Create and register LoadSkill tool (NOT for retrieval mode - read-only)
-        unless mode == :retrieval
+        # Create and register LoadSkill tool (NOT for read_only mode)
+        unless mode == :read_only
           load_skill_tool = SwarmMemory.create_tool(
             :LoadSkill,
             storage: storage,

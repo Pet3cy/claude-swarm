@@ -54,6 +54,16 @@ module SwarmMemoryTestHelper
     SwarmMemory::Core::Storage.new(adapter: adapter)
   end
 
+  # Create a temporary storage with embedder for semantic search testing
+  #
+  # @return [SwarmMemory::Core::Storage] Temporary storage with semantic index
+  def create_temp_storage_with_embedder
+    temp_dir = File.join(Dir.tmpdir, "test-memory-#{SecureRandom.hex(8)}")
+    adapter = SwarmMemory::Adapters::FilesystemAdapter.new(directory: temp_dir)
+    embedder = SwarmMemory::Embeddings::InformersEmbedder.new # Uses mocked version
+    SwarmMemory::Core::Storage.new(adapter: adapter, embedder: embedder)
+  end
+
   # Clean up temporary storage directory
   #
   # @param storage [SwarmMemory::Core::Storage] Storage to cleanup
