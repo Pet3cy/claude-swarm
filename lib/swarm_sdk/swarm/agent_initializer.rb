@@ -88,8 +88,9 @@ module SwarmSDK
       # @param delegate_chat [Agent::Chat] The delegate's chat instance
       # @param agent_name [Symbol] Name of the delegating agent
       # @param delegating_chat [Agent::Chat, nil] The chat instance of the agent doing the delegating
+      # @param custom_tool_name [String, nil] Optional custom tool name (overrides auto-generated name)
       # @return [Tools::Delegate] Delegation tool
-      def create_delegation_tool(name:, description:, delegate_chat:, agent_name:, delegating_chat: nil)
+      def create_delegation_tool(name:, description:, delegate_chat:, agent_name:, delegating_chat: nil, custom_tool_name: nil)
         Tools::Delegate.new(
           delegate_name: name,
           delegate_description: description,
@@ -97,6 +98,7 @@ module SwarmSDK
           agent_name: agent_name,
           swarm: @swarm,
           delegating_chat: delegating_chat,
+          custom_tool_name: custom_tool_name,
         )
       end
 
@@ -140,8 +142,8 @@ module SwarmSDK
 
         # Sub-pass 2a: Create delegation instances for isolated agents
         @swarm.agent_definitions.each do |delegator_name, delegator_def|
-          delegator_def.delegates_to.each do |delegate_base_name|
-            delegate_base_name = delegate_base_name.to_sym
+          delegator_def.delegation_configs.each do |delegation_config|
+            delegate_base_name = delegation_config[:agent]
 
             unless @swarm.agent_definitions.key?(delegate_base_name)
               raise ConfigurationError,
@@ -177,11 +179,11 @@ module SwarmSDK
           # Skip if delegator doesn't exist as primary (wasn't created in pass_1)
           next unless delegator_chat
 
-          delegator_def.delegates_to.each do |delegate_name|
+          delegator_def.delegation_configs.each do |delegation_config|
             wire_delegation(
               delegator_name: delegator_name,
               delegator_chat: delegator_chat,
-              delegate_name: delegate_name,
+              delegation_config: delegation_config,
               tool_configurator: tool_configurator,
               create_nested_instances: false,
             )
@@ -195,11 +197,11 @@ module SwarmSDK
           delegate_definition = @swarm.agent_definitions[base_name]
 
           # Register delegation tools for THIS instance's delegates_to
-          delegate_definition.delegates_to.each do |nested_delegate_name|
+          delegate_definition.delegation_configs.each do |delegation_config|
             wire_delegation(
               delegator_name: instance_name.to_sym,
               delegator_chat: delegation_chat,
-              delegate_name: nested_delegate_name,
+              delegation_config: delegation_config,
               tool_configurator: tool_configurator,
               create_nested_instances: true,
             )
@@ -215,22 +217,24 @@ module SwarmSDK
       #
       # @param delegator_name [Symbol, String] Name of the agent doing the delegating
       # @param delegator_chat [Agent::Chat] Chat instance of the delegator
-      # @param delegate_name [Symbol, String] Name of the delegate target
+      # @param delegation_config [Hash] Delegation configuration with :agent and :tool_name keys
       # @param tool_configurator [ToolConfigurator] Tool configuration helper
       # @param create_nested_instances [Boolean] Whether to create new instances for nested delegation
       # @return [void]
-      def wire_delegation(delegator_name:, delegator_chat:, delegate_name:, tool_configurator:, create_nested_instances:)
-        delegate_name_str = delegate_name.to_s
-        delegate_name_sym = delegate_name.to_sym
+      def wire_delegation(delegator_name:, delegator_chat:, delegation_config:, tool_configurator:, create_nested_instances:)
+        delegate_name_sym = delegation_config[:agent]
+        delegate_name_str = delegate_name_sym.to_s
+        custom_tool_name = delegation_config[:tool_name]
 
         # Check if target is a registered swarm
         if @swarm.swarm_registry&.registered?(delegate_name_str)
-          wire_swarm_delegation(delegator_name, delegator_chat, delegate_name_str)
+          wire_swarm_delegation(delegator_name, delegator_chat, delegate_name_str, custom_tool_name)
         elsif @swarm.agent_definitions.key?(delegate_name_sym)
           wire_agent_delegation(
             delegator_name: delegator_name,
             delegator_chat: delegator_chat,
             delegate_name_sym: delegate_name_sym,
+            custom_tool_name: custom_tool_name,
             tool_configurator: tool_configurator,
             create_nested_instances: create_nested_instances,
           )
@@ -245,14 +249,16 @@ module SwarmSDK
       # @param delegator_name [Symbol, String] Name of the delegating agent
       # @param delegator_chat [Agent::Chat] Chat instance of the delegator
       # @param swarm_name [String] Name of the registered swarm
+      # @param custom_tool_name [String, nil] Optional custom tool name
       # @return [void]
-      def wire_swarm_delegation(delegator_name, delegator_chat, swarm_name)
+      def wire_swarm_delegation(delegator_name, delegator_chat, swarm_name, custom_tool_name)
         tool = create_delegation_tool(
           name: swarm_name,
           description: "External swarm: #{swarm_name}",
           delegate_chat: nil, # Swarm delegation - no direct chat
           agent_name: delegator_name,
           delegating_chat: delegator_chat,
+          custom_tool_name: custom_tool_name,
         )
 
         delegator_chat.add_tool(tool)
@@ -266,10 +272,11 @@ module SwarmSDK
       # @param delegator_name [Symbol, String] Name of the delegating agent
       # @param delegator_chat [Agent::Chat] Chat instance of the delegator
       # @param delegate_name_sym [Symbol] Name of the delegate agent
+      # @param custom_tool_name [String, nil] Optional custom tool name
       # @param tool_configurator [ToolConfigurator] Tool configuration helper
       # @param create_nested_instances [Boolean] Whether to create new instances if not found
       # @return [void]
-      def wire_agent_delegation(delegator_name:, delegator_chat:, delegate_name_sym:, tool_configurator:, create_nested_instances:)
+      def wire_agent_delegation(delegator_name:, delegator_chat:, delegate_name_sym:, custom_tool_name:, tool_configurator:, create_nested_instances:)
         delegate_definition = @swarm.agent_definitions[delegate_name_sym]
 
         # Determine which chat instance to use
@@ -301,6 +308,7 @@ module SwarmSDK
           delegate_chat: target_chat,
           agent_name: delegator_name,
           delegating_chat: delegator_chat,
+          custom_tool_name: custom_tool_name,
         )
 
         delegator_chat.add_tool(tool)
@@ -326,8 +334,10 @@ module SwarmSDK
 
       # Setup context for an agent (primary or delegation instance)
       def setup_agent_context(agent_name, agent_definition, chat, is_delegation: false)
-        delegate_tool_names = agent_definition.delegates_to.map do |delegate_name|
-          Tools::Delegate.tool_name_for(delegate_name)
+        # Generate actual tool names (custom or auto-generated) for context tracking
+        delegate_tool_names = agent_definition.delegation_configs.map do |delegation_config|
+          # Use custom name if provided, otherwise auto-generate
+          delegation_config[:tool_name] || Tools::Delegate.tool_name_for(delegation_config[:agent])
         end
 
         context = Agent::Context.new(

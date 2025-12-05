@@ -250,8 +250,39 @@ module SwarmSDK
       end
 
       # Set delegation targets
-      def delegates_to(*agent_names)
-        @delegates_to.concat(agent_names)
+      #
+      # Supports multiple formats for flexibility:
+      #
+      # @example Simple array (backwards compatible)
+      #   delegates_to :frontend, :backend, :qa
+      #
+      # @example Hash with custom tool names
+      #   delegates_to frontend: "AskFrontend",
+      #                backend: "GetBackendHelp",
+      #                qa: "RequestReview"
+      #
+      # @example Mixed - some auto, some custom
+      #   delegates_to :frontend,
+      #                backend: "GetBackendHelp",
+      #                :qa
+      #
+      # @param agent_names_and_options [Array<Symbol, Hash>] Agent names and/or hash with custom tool names
+      # @return [void]
+      def delegates_to(*agent_names_and_options)
+        agent_names_and_options.each do |item|
+          case item
+          when Symbol, String
+            # Simple format: :frontend
+            @delegates_to << { agent: item.to_sym, tool_name: nil }
+          when Hash
+            # Hash format: { frontend: "AskFrontend", backend: nil }
+            item.each do |agent, tool_name|
+              @delegates_to << { agent: agent.to_sym, tool_name: tool_name }
+            end
+          else
+            raise ConfigurationError, "delegates_to accepts Symbols or Hashes, got #{item.class}"
+          end
+        end
       end
 
       # Add a hook (Ruby block OR shell command)

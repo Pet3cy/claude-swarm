@@ -159,7 +159,7 @@ module SwarmMemory
         result = @tool.execute(query: "test", top_k: 150)
 
         # Should be capped at 100
-        assert_match(/Found 100 memor/, result)
+        assert_match(/Found 50 memor/, result)
       end
 
       # Filtering Tests

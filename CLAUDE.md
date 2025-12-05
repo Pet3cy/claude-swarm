@@ -160,7 +160,7 @@ SwarmSDK.build do
     model "claude-sonnet-4"
     memory do
       directory("tmp/memory/corpus")
-      mode(:researcher)
+      mode(:full_access)
     end
   end
 end

@@ -36,13 +36,15 @@ module SwarmSDK
       # @param agent_name [Symbol, String] Name of the agent using this tool
       # @param swarm [Swarm] The swarm instance (provides hook_registry, delegation_call_stack, swarm_registry)
       # @param delegating_chat [Agent::Chat, nil] The chat instance of the agent doing the delegating (for accessing hooks)
+      # @param custom_tool_name [String, nil] Optional custom tool name (overrides auto-generated name)
       def initialize(
         delegate_name:,
         delegate_description:,
         delegate_chat:,
         agent_name:,
         swarm:,
-        delegating_chat: nil
+        delegating_chat: nil,
+        custom_tool_name: nil
       )
         super()
 
@@ -53,8 +55,8 @@ module SwarmSDK
         @swarm = swarm
         @delegating_chat = delegating_chat
 
-        # Generate tool name using canonical method
-        @tool_name = self.class.tool_name_for(delegate_name)
+        # Use custom tool name if provided, otherwise generate using canonical method
+        @tool_name = custom_tool_name || self.class.tool_name_for(delegate_name)
         @delegate_target = delegate_name.to_s
       end
 

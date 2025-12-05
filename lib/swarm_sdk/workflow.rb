@@ -377,7 +377,9 @@ module SwarmSDK
           end
 
           # Validate delegation targets exist
-          config[:delegates_to].each do |delegate|
+          # Extract agent names from delegation config (supports both array and hash formats)
+          delegate_names = extract_delegate_agent_names(config[:delegates_to])
+          delegate_names.each do |delegate|
             unless @agent_definitions.key?(delegate)
               raise ConfigurationError,
                 "Node '#{node_name}' agent '#{agent_name}' delegates to undefined agent '#{delegate}'"
@@ -548,6 +550,39 @@ module SwarmSDK
       else
         raise ArgumentError,
           "Invalid scratchpad mode: #{value.inspect}. Use :enabled, :per_node, or :disabled"
+      end
+    end
+
+    # Extract agent names from delegation configuration
+    #
+    # Handles multiple formats:
+    # - Array of symbols: [:frontend, :backend]
+    # - Hash: {frontend: "Custom", backend: nil}
+    # - Array of hashes: [{agent: :frontend, tool_name: "Custom"}]
+    #
+    # @param delegation_config [Array, Hash, nil] Delegation configuration
+    # @return [Array<Symbol>] Array of agent name symbols
+    def extract_delegate_agent_names(delegation_config)
+      return [] if delegation_config.nil?
+      return [] if delegation_config.respond_to?(:empty?) && delegation_config.empty?
+
+      case delegation_config
+      when Array
+        delegation_config.map do |item|
+          case item
+          when Symbol, String
+            item.to_sym
+          when Hash
+            # Extract agent name from normalized format
+            agent_name = item[:agent] || item["agent"]
+            agent_name&.to_sym
+          end
+        end.compact # Remove nils from malformed hashes
+      when Hash
+        # Hash format: keys are agent names
+        delegation_config.keys.map(&:to_sym)
+      else
+        []
       end
     end
   end

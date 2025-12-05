@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Memory operations respect agent `turn_timeout` limits
   - No functional changes to SwarmMemory itself
 
+## Added
+- **MemorySearch Tool**: New semantic search tool for finding conceptually related memories using AI embeddings
+  - Search by natural language queries instead of exact keywords
+  - Hybrid search combining embeddings and tag matching for optimal results
+  - Filter by type (concept, fact, skill, experience) and domain
+  - Supports single and multiple type filtering with post-filtering for arrays
+  - Available in all memory modes: retrieval, assistant, and researcher
+  - See `lib/swarm_memory/tools/memory_search.rb` and plan at `plans/2025-12-03-memory-search-tool.md`
+
 ## [2.2.4]
 
 ### Changed

@@ -61,7 +61,7 @@ module SwarmMemory
         required: false
 
       # Maximum results to prevent context overflow
-      MAX_RESULTS = 100
+      MAX_RESULTS = 50
 
       # Initialize with storage instance
       #

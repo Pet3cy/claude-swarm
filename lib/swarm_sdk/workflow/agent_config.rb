@@ -37,10 +37,26 @@ module SwarmSDK
 
       # Set delegation targets for this agent
       #
-      # @param agent_names [Array<Symbol>] Names of agents to delegate to
+      # Supports multiple formats for flexibility:
+      # - Array: delegates_to(:frontend, :backend)
+      # - Hash: delegates_to(frontend: "AskFrontend", backend: "GetBackend")
+      #
+      # @param agent_names_and_options [Array<Symbol, Hash>] Names and/or hash with custom tool names
       # @return [self] For method chaining
-      def delegates_to(*agent_names)
-        @delegates_to = agent_names.map(&:to_sym)
+      def delegates_to(*agent_names_and_options)
+        # Parse delegation configs (same logic as Agent::Builder)
+        @delegates_to = []
+        agent_names_and_options.each do |item|
+          case item
+          when Symbol, String
+            @delegates_to << { agent: item.to_sym, tool_name: nil }
+          when Hash
+            item.each do |agent, tool_name|
+              @delegates_to << { agent: agent.to_sym, tool_name: tool_name }
+            end
+          end
+        end
+
         update_registration
         self
       end

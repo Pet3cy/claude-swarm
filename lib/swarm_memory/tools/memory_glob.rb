@@ -43,14 +43,6 @@ module SwarmMemory
         MemoryGlob(pattern: "fact/*")
         Result: fact/api.md (only direct children, not nested)
 
-        # Find ALL facts recursively
-        MemoryGlob(pattern: "fact/**")
-        Result: fact/api.md, fact/people/john.md, fact/people/jane.md, ...
-
-        # Find all skills recursively
-        MemoryGlob(pattern: "skill/**")
-        Result: skill/debugging/api-errors.md, skill/meta/deep-learning.md, ...
-
         # Find all concepts in a domain
         MemoryGlob(pattern: "concept/ruby/**")
         Result: concept/ruby/classes.md, concept/ruby/modules.md, ...
@@ -66,10 +58,6 @@ module SwarmMemory
         # Find debugging skills recursively
         MemoryGlob(pattern: "skill/debugging/**")
         Result: skill/debugging/api-errors.md, skill/debugging/performance.md, ...
-
-        # Find all entries (all categories)
-        MemoryGlob(pattern: "**/*")
-        Result: All .md entries across all 4 categories
         ```
 
         **Understanding * vs **:**
@@ -92,15 +80,16 @@ module SwarmMemory
         **Tips:**
         - Start with broad patterns and narrow down
         - Use `**` for recursive searching entire hierarchies
+        - NEVER use `**` to search all categories at once, or all memories for a category. Always use specific patterns.
         - Combine with MemoryGrep if you need content-based search
         - Check entry sizes to identify large entries
       DESC
 
       param :pattern,
-        desc: "Glob pattern - target concept/, fact/, skill/, or experience/ only (e.g., 'skill/**', 'concept/ruby/*', 'fact/people/*.md')",
+        desc: "Glob pattern - target concept/, fact/, skill/, or experience/ only (e.g., 'skill/debugging/*ruby*', 'concept/programming-languages/ruby*', 'fact/people/*john*')",
         required: true
 
-      MAX_RESULTS = 500 # Limit results to prevent overwhelming output
+      MAX_RESULTS = 50 # Limit results to prevent overwhelming output
 
       # Initialize with storage instance
       #

@@ -127,6 +127,8 @@ module SwarmMemory
         desc: "Output mode: 'files_with_matches' (default), 'content', or 'count'",
         required: false
 
+      MAX_RESULTS = 50 # Limit results to prevent overwhelming output
+
       # Initialize with storage instance
       #
       # @param storage [Core::Storage] Storage instance
@@ -196,12 +198,39 @@ module SwarmMemory
           return "No matches found for pattern #{search_desc}"
         end
 
+        # Limit results and track if truncated
+        original_count = paths.size
+        truncated = original_count > MAX_RESULTS
+        paths = paths.take(MAX_RESULTS) if truncated
+
         result = []
-        result << "Memory entries matching #{search_desc} (#{paths.size} #{paths.size == 1 ? "entry" : "entries"}):"
+        result << if truncated
+          "Memory entries matching #{search_desc} (showing #{paths.size} of #{original_count} entries):"
+        else
+          "Memory entries matching #{search_desc} (#{paths.size} #{paths.size == 1 ? "entry" : "entries"}):"
+        end
+
         paths.each do |path|
           result << "- #{format_memory_path_with_title(path)}"
         end
-        result.join("\n")
+
+        output = result.join("\n")
+
+        # Add system reminder if truncated
+        if truncated
+          output += <<~REMINDER
+
+            <system-reminder>
+            Results limited to first #{MAX_RESULTS} matches (sorted by most recently modified).
+            Your search returned #{original_count} total matches. Consider:
+            - Adding a path filter to narrow scope (e.g., path: "fact/api-design/")
+            - Using a more specific regex pattern
+            - Searching within a specific memory category (concept/, fact/, skill/, experience/)
+            </system-reminder>
+          REMINDER
+        end
+
+        output
       end
 
       def format_content(results, pattern, path_filter)
@@ -211,9 +240,21 @@ module SwarmMemory
           return "No matches found for pattern #{search_desc}"
         end
 
+        # Limit results and track if truncated
+        original_count = results.size
+        original_total_matches = results.sum { |r| r[:matches].size }
+        truncated = original_count > MAX_RESULTS
+        results = results.take(MAX_RESULTS) if truncated
+
         total_matches = results.sum { |r| r[:matches].size }
         output = []
-        output << "Memory entries matching #{search_desc} (#{results.size} #{results.size == 1 ? "entry" : "entries"}, #{total_matches} #{total_matches == 1 ? "match" : "matches"}):"
+
+        output << if truncated
+          "Memory entries matching #{search_desc} (showing #{results.size} of #{original_count} entries, #{total_matches} of #{original_total_matches} matches):"
+        else
+          "Memory entries matching #{search_desc} (#{results.size} #{results.size == 1 ? "entry" : "entries"}, #{total_matches} #{total_matches == 1 ? "match" : "matches"}):"
+        end
+
         output << ""
 
         results.each do |result|
@@ -224,7 +265,23 @@ module SwarmMemory
           output << ""
         end
 
-        output.join("\n").rstrip
+        result_text = output.join("\n").rstrip
+
+        # Add system reminder if truncated
+        if truncated
+          result_text += <<~REMINDER
+
+            <system-reminder>
+            Results limited to first #{MAX_RESULTS} entries.
+            Your search returned #{original_count} total entries with #{original_total_matches} matches. Consider:
+            - Adding a path filter to narrow scope (e.g., path: "fact/api-design/")
+            - Using a more specific regex pattern
+            - Searching within a specific memory category or subdomain
+            </system-reminder>
+          REMINDER
+        end
+
+        result_text
       end
 
       def format_count(results, pattern, path_filter)
@@ -234,15 +291,42 @@ module SwarmMemory
           return "No matches found for pattern #{search_desc}"
         end
 
+        # Limit results and track if truncated
+        original_count = results.size
+        original_total_matches = results.sum { |r| r[:count] }
+        truncated = original_count > MAX_RESULTS
+        results = results.take(MAX_RESULTS) if truncated
+
         total_matches = results.sum { |r| r[:count] }
         output = []
-        output << "Memory entries matching #{search_desc} (#{results.size} #{results.size == 1 ? "entry" : "entries"}, #{total_matches} total #{total_matches == 1 ? "match" : "matches"}):"
+
+        output << if truncated
+          "Memory entries matching #{search_desc} (showing #{results.size} of #{original_count} entries, #{total_matches} of #{original_total_matches} total matches):"
+        else
+          "Memory entries matching #{search_desc} (#{results.size} #{results.size == 1 ? "entry" : "entries"}, #{total_matches} total #{total_matches == 1 ? "match" : "matches"}):"
+        end
 
         results.each do |result|
           output << "  memory://#{result[:path]}: #{result[:count]} #{result[:count] == 1 ? "match" : "matches"}"
         end
 
-        output.join("\n")
+        result_text = output.join("\n")
+
+        # Add system reminder if truncated
+        if truncated
+          result_text += <<~REMINDER
+
+            <system-reminder>
+            Results limited to first #{MAX_RESULTS} entries.
+            Your search returned #{original_count} total entries with #{original_total_matches} matches. Consider:
+            - Adding a path filter to narrow scope (e.g., path: "fact/api-design/")
+            - Using a more specific regex pattern
+            - Searching within a specific memory category or subdomain
+            </system-reminder>
+          REMINDER
+        end
+
+        result_text
       end
     end
   end

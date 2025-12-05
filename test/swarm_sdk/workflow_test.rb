@@ -140,12 +140,17 @@ module SwarmSDK
       # Check lead delegates to both helpers
       lead_config = work_node.agent_configs.find { |ac| ac[:agent] == :lead }
 
-      assert_equal([:helper1, :helper2], lead_config[:delegates_to])
+      # delegates_to now stores hash format
+      assert_equal(
+        [{ agent: :helper1, tool_name: nil }, { agent: :helper2, tool_name: nil }],
+        lead_config[:delegates_to],
+      )
 
       # Check helper1 delegates to helper2
       helper1_config = work_node.agent_configs.find { |ac| ac[:agent] == :helper1 }
 
-      assert_equal([:helper2], helper1_config[:delegates_to])
+      # delegates_to now stores hash format
+      assert_equal([{ agent: :helper2, tool_name: nil }], helper1_config[:delegates_to])
 
       # Check helper2 has no delegation
       helper2_config = work_node.agent_configs.find { |ac| ac[:agent] == :helper2 }
@@ -913,7 +918,11 @@ module SwarmSDK
       # Backend should delegate to both
       backend_config = impl_node.agent_configs.find { |ac| ac[:agent] == :backend }
 
-      assert_equal([:tester, :database], backend_config[:delegates_to])
+      # delegates_to now stores hash format
+      assert_equal(
+        [{ agent: :tester, tool_name: nil }, { agent: :database, tool_name: nil }],
+        backend_config[:delegates_to],
+      )
 
       # Auto-added agents should have empty delegation
       tester_config = impl_node.agent_configs.find { |ac| ac[:agent] == :tester }
@@ -971,7 +980,8 @@ module SwarmSDK
       # b should keep its explicit delegation
       b_config = test_node.agent_configs.find { |ac| ac[:agent] == :b }
 
-      assert_equal([:c], b_config[:delegates_to])
+      # delegates_to now stores hash format
+      assert_equal([{ agent: :c, tool_name: nil }], b_config[:delegates_to])
 
       # c should be auto-added with empty delegation
       c_config = test_node.agent_configs.find { |ac| ac[:agent] == :c }
@@ -1365,7 +1375,8 @@ module SwarmSDK
       # Verify both delegation and tools are set
       impl_config = swarm.nodes[:implementation].agent_configs.find { |ac| ac[:agent] == :backend }
 
-      assert_equal([:tester], impl_config[:delegates_to])
+      # delegates_to now stores hash format
+      assert_equal([{ agent: :tester, tool_name: nil }], impl_config[:delegates_to])
       assert_equal([:Read, :Edit, :Write, :Bash], impl_config[:tools])
     end
   end

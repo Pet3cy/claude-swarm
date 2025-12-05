@@ -161,4 +161,107 @@ class MemoryGrepToolTest < Minitest::Test
 
     assert_match(/InputValidationError/, result)
   end
+
+  # Result limiting tests (MAX_RESULTS = 50)
+
+  def test_files_with_matches_truncates_at_max_results
+    # Create 75 entries (exceeds MAX_RESULTS of 50)
+    75.times do |i|
+      @storage.write(
+        file_path: "concept/test#{i}.md",
+        content: "matching content",
+        title: "Test #{i}",
+        metadata: { "type" => "concept" },
+      )
+    end
+
+    result = @tool.execute(pattern: "matching")
+
+    # Should show truncation message
+    assert_match(/showing 50 of 75 entries/, result)
+    assert_match(/Results limited to first 50 matches/, result)
+    assert_match(/Consider:/, result)
+    assert_match(/more specific regex pattern/, result)
+  end
+
+  def test_content_mode_truncates_at_max_results
+    # Create 60 entries (exceeds MAX_RESULTS of 50)
+    60.times do |i|
+      @storage.write(
+        file_path: "fact/entry#{i}.md",
+        content: "Line 1\nmatching line\nLine 3",
+        title: "Entry #{i}",
+        metadata: { "type" => "fact" },
+      )
+    end
+
+    result = @tool.execute(pattern: "matching", output_mode: "content")
+
+    # Should show truncation in header
+    assert_match(/showing 50 of 60 entries/, result)
+    # Should have truncation reminder
+    assert_match(/Results limited to first 50 entries/, result)
+    assert_match(/returned 60 total entries/, result)
+  end
+
+  def test_count_mode_truncates_at_max_results
+    # Create 80 entries (exceeds MAX_RESULTS of 50)
+    80.times do |i|
+      @storage.write(
+        file_path: "skill/task#{i}.md",
+        content: "match match match", # 3 matches per entry
+        title: "Task #{i}",
+        metadata: { "type" => "skill" },
+      )
+    end
+
+    result = @tool.execute(pattern: "match", output_mode: "count")
+
+    # Should show truncation: 50 of 80 entries, 150 of 240 matches (80*3=240)
+    assert_match(/showing 50 of 80 entries/, result)
+    assert_match(/150 of 240 total matches/, result)
+    # Should have truncation reminder
+    assert_match(/Results limited to first 50 entries/, result)
+    assert_match(/returned 80 total entries with 240 matches/, result)
+  end
+
+  def test_no_truncation_when_under_max_results
+    # Create only 10 entries (well under MAX_RESULTS)
+    10.times do |i|
+      @storage.write(
+        file_path: "concept/small#{i}.md",
+        content: "matching content",
+        title: "Small #{i}",
+        metadata: { "type" => "concept" },
+      )
+    end
+
+    result = @tool.execute(pattern: "matching")
+
+    # Should NOT show truncation message
+    refute_match(/showing.*of.*entries/, result)
+    refute_match(/Results limited/, result)
+    # Should show normal count
+    assert_match(/10 entries/, result)
+  end
+
+  def test_truncation_message_suggests_path_filter
+    # Create 60 entries in different paths
+    60.times do |i|
+      @storage.write(
+        file_path: "concept/large#{i}.md",
+        content: "matching",
+        title: "Large #{i}",
+        metadata: { "type" => "concept" },
+      )
+    end
+
+    result = @tool.execute(pattern: "matching")
+
+    # Verify helpful suggestions in reminder
+    assert_match(/path filter to narrow scope/, result)
+    assert_match(%r{path: "fact/api-design/"}, result)
+    assert_match(/more specific regex pattern/, result)
+    assert_match(/specific memory category/, result)
+  end
 end

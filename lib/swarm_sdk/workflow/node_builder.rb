@@ -541,7 +541,10 @@ module SwarmSDK
       # @return [void]
       def auto_add_delegate_agents
         # Collect all agents mentioned in delegates_to
-        all_delegates = @agent_configs.flat_map { |ac| ac[:delegates_to] }.uniq
+        # Extract agent names from all delegation configs (handles hash and array formats)
+        all_delegates = @agent_configs.flat_map do |ac|
+          extract_delegate_agent_names(ac[:delegates_to] || [])
+        end.uniq
 
         # Find delegates that aren't explicitly declared
         declared_agents = @agent_configs.map { |ac| ac[:agent] }
@@ -550,6 +553,39 @@ module SwarmSDK
         # Auto-add missing delegates with empty delegation and default reset_context
         missing_delegates.each do |delegate_name|
           @agent_configs << { agent: delegate_name, delegates_to: [], reset_context: true }
+        end
+      end
+
+      # Extract agent names from delegation configuration
+      #
+      # Handles multiple formats:
+      # - Array of symbols: [:frontend, :backend]
+      # - Hash: {frontend: "Custom", backend: nil}
+      # - Array of hashes: [{agent: :frontend, tool_name: "Custom"}]
+      #
+      # @param delegation_config [Array, Hash, nil] Delegation configuration
+      # @return [Array<Symbol>] Array of agent name symbols
+      def extract_delegate_agent_names(delegation_config)
+        return [] if delegation_config.nil?
+        return [] if delegation_config.respond_to?(:empty?) && delegation_config.empty?
+
+        case delegation_config
+        when Array
+          delegation_config.map do |item|
+            case item
+            when Symbol, String
+              item.to_sym
+            when Hash
+              # Extract agent name from normalized format
+              agent_name = item[:agent] || item["agent"]
+              agent_name&.to_sym
+            end
+          end.compact # Remove nils from malformed hashes
+        when Hash
+          # Hash format: keys are agent names
+          delegation_config.keys.map(&:to_sym)
+        else
+          []
         end
       end
     end

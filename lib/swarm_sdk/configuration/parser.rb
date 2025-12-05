@@ -90,7 +90,28 @@ module SwarmSDK
         return [] unless agent_config
 
         delegates = agent_config[:delegates_to] || []
-        Array(delegates).map(&:to_sym)
+
+        # Handle both array and hash formats for delegates_to
+        case delegates
+        when Array
+          # Array of symbols: [:frontend, :backend]
+          # OR array of hashes: [{agent: :frontend, tool_name: "Custom"}]
+          delegates.map do |item|
+            case item
+            when Symbol, String
+              item.to_sym
+            when Hash
+              # Extract agent name from hash format
+              agent_name = item[:agent] || item["agent"]
+              agent_name&.to_sym
+            end
+          end.compact # Remove nils from malformed hashes
+        when Hash
+          # Hash format: {frontend: "Custom", backend: nil}
+          delegates.keys.map(&:to_sym)
+        else
+          []
+        end
       end
 
       attr_reader :base_dir

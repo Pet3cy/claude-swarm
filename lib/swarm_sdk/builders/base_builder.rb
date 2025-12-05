@@ -276,8 +276,17 @@ module SwarmSDK
           builder.tools(*tool_names)
         end
 
-        # Add delegates_to
-        builder.delegates_to(*config[:delegates_to]) if config[:delegates_to]&.any?
+        # Add delegates_to (handle both array and hash formats)
+        if config[:delegates_to]&.any?
+          delegation_config = config[:delegates_to]
+          if delegation_config.is_a?(Hash)
+            # Hash format: pass as single argument
+            builder.delegates_to(delegation_config)
+          elsif delegation_config.is_a?(Array)
+            # Array format: splat the array
+            builder.delegates_to(*delegation_config)
+          end
+        end
 
         # Add MCP servers
         config[:mcp_servers]&.each do |server|
@@ -333,7 +342,15 @@ module SwarmSDK
           when :tools
             merged[:tools] = Array(merged[:tools]) + Array(value)
           when :delegates_to
-            merged[:delegates_to] = Array(merged[:delegates_to]) + Array(value)
+            # Handle merging delegation configs (can be array or hash)
+            existing = merged[:delegates_to] || []
+            new_value = value || []
+
+            # Convert both to array of delegation configs for merging
+            existing_array = normalize_delegation_array(existing)
+            new_array = normalize_delegation_array(new_value)
+
+            merged[:delegates_to] = existing_array + new_array
           when :parameters
             merged[:parameters] = (merged[:parameters] || {}).merge(value || {})
           when :headers
@@ -355,6 +372,35 @@ module SwarmSDK
         end
 
         merged
+      end
+
+      # Normalize delegation config to array of hashes format
+      #
+      # Converts various delegation formats to normalized array for merging:
+      # - Array of symbols: [:frontend, :backend] → [{agent: :frontend, tool_name: nil}, ...]
+      # - Hash: {frontend: "Custom"} → [{agent: :frontend, tool_name: "Custom"}, ...]
+      # - Array of hashes: [{agent: :frontend, tool_name: "Custom"}] → unchanged
+      #
+      # @param delegation_config [Array, Hash] Delegation configuration
+      # @return [Array<Hash>] Normalized array of {agent:, tool_name:} hashes
+      def normalize_delegation_array(delegation_config)
+        return [] if delegation_config.nil? || (delegation_config.respond_to?(:empty?) && delegation_config.empty?)
+
+        case delegation_config
+        when Array
+          delegation_config.map do |item|
+            case item
+            when Symbol, String
+              { agent: item.to_sym, tool_name: nil }
+            when Hash
+              item.key?(:agent) ? item : item.map { |agent, tool_name| { agent: agent.to_sym, tool_name: tool_name } }
+            end
+          end.flatten
+        when Hash
+          delegation_config.map { |agent, tool_name| { agent: agent.to_sym, tool_name: tool_name } }
+        else
+          []
+        end
       end
 
       # Apply all_agents defaults to an agent builder

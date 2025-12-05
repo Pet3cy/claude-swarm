@@ -168,7 +168,19 @@ module SwarmSDK
             tools(*tool_names)
           end
 
-          delegates_to(*config[:delegates_to]) if config[:delegates_to]&.any?
+          # Handle both array and hash formats for delegates_to
+          if config[:delegates_to]&.any?
+            delegation_config = config[:delegates_to]
+            if delegation_config.is_a?(Hash)
+              # Hash format: { frontend: "Custom", backend: nil }
+              # Pass as single hash argument, not splatted
+              delegates_to(delegation_config)
+            elsif delegation_config.is_a?(Array)
+              # Array format: [:frontend, :backend] OR [{agent: :frontend, tool_name: "Custom"}]
+              # Splat the array
+              delegates_to(*delegation_config)
+            end
+          end
 
           config[:mcp_servers]&.each do |server|
             mcp_server(server[:name], **server.except(:name))
@@ -229,7 +241,16 @@ module SwarmSDK
               tools_override = agent_config[:tools]
 
               agent_cfg = agent(agent_name, reset_context: reset_ctx)
-              agent_cfg = agent_cfg.delegates_to(*delegates) if delegates.any?
+
+              # Handle both array and hash formats for delegates_to
+              if delegates.any?
+                if delegates.is_a?(Hash)
+                  agent_cfg = agent_cfg.delegates_to(delegates)
+                elsif delegates.is_a?(Array)
+                  agent_cfg = agent_cfg.delegates_to(*delegates)
+                end
+              end
+
               agent_cfg.tools(*tools_override) if tools_override
             end
 

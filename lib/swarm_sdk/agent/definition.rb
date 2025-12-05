@@ -24,7 +24,7 @@ module SwarmSDK
         :context_window,
         :directory,
         :tools,
-        :delegates_to,
+        :delegation_configs, # Full delegation config with tool names
         :system_prompt,
         :provider,
         :base_url,
@@ -125,7 +125,8 @@ module SwarmSDK
         # Inject default write restrictions for security
         @tools = inject_default_write_permissions(@tools)
 
-        @delegates_to = Array(config[:delegates_to] || []).map(&:to_sym).uniq
+        # Parse delegation configuration (supports both simple arrays and custom tool names)
+        @delegation_configs = parse_delegation_config(config[:delegates_to])
         @mcp_servers = Array(config[:mcp_servers] || [])
 
         # Parse hooks configuration
@@ -133,6 +134,20 @@ module SwarmSDK
         @hooks = parse_hooks(config[:hooks])
 
         validate!
+      end
+
+      # Get agent names that this agent delegates to (backwards compatible)
+      #
+      # Returns an array of agent name symbols. This maintains backwards compatibility
+      # with existing code that expects delegates_to to be a simple array.
+      #
+      # @return [Array<Symbol>] Delegate agent names
+      #
+      # @example
+      #   agent_definition.delegates_to
+      #   # => [:frontend, :backend, :qa]
+      def delegates_to
+        @delegation_configs.map { |config| config[:agent] }
       end
 
       # Get plugin-specific configuration
@@ -160,7 +175,7 @@ module SwarmSDK
           context_window: @context_window,
           directory: @directory,
           tools: @tools,
-          delegates_to: @delegates_to,
+          delegates_to: @delegation_configs, # Serialize full config
           system_prompt: @system_prompt,
           provider: @provider,
           base_url: @base_url,
@@ -283,6 +298,51 @@ module SwarmSDK
       def parse_directory(directory_config)
         directory_config ||= "."
         File.expand_path(directory_config.to_s)
+      end
+
+      # Parse delegation configuration
+      #
+      # Supports multiple formats for backwards compatibility and new features:
+      # 1. Simple array (backwards compatible): [:frontend, :backend]
+      # 2. Hash with custom tool names: { frontend: "AskFrontend", backend: nil }
+      # 3. Array of hashes: [{ agent: :frontend, tool_name: "AskFrontend" }]
+      #
+      # Returns normalized format: [{agent: :name, tool_name: "Custom" or nil}]
+      #
+      # @param delegation_config [nil, Array, Hash] Delegation configuration
+      # @return [Array<Hash>] Normalized delegation config
+      def parse_delegation_config(delegation_config)
+        return [] if delegation_config.nil?
+        return [] if delegation_config.respond_to?(:empty?) && delegation_config.empty?
+
+        # Handle array format (could be symbols or hashes)
+        if delegation_config.is_a?(Array)
+          delegation_config.flat_map do |item|
+            case item
+            when Symbol, String
+              # Simple format: :frontend → {agent: :frontend, tool_name: nil}
+              [{ agent: item.to_sym, tool_name: nil }]
+            when Hash
+              # Could be already normalized or hash format
+              if item.key?(:agent)
+                # Already normalized: {agent: :frontend, tool_name: "Custom"}
+                [item]
+              else
+                # Hash format in array: {frontend: "AskFrontend"}
+                item.map { |agent, tool_name| { agent: agent.to_sym, tool_name: tool_name } }
+              end
+            else
+              raise ConfigurationError, "Invalid delegation config format: #{item.inspect}"
+            end
+          end.uniq { |config| config[:agent] } # Remove duplicates by agent name
+        elsif delegation_config.is_a?(Hash)
+          # Hash format: {frontend: "AskFrontend", backend: nil}
+          delegation_config.map do |agent, tool_name|
+            { agent: agent.to_sym, tool_name: tool_name }
+          end
+        else
+          raise ConfigurationError, "delegates_to must be an Array or Hash, got #{delegation_config.class}"
+        end
       end
 
       # Extract plugin-specific configuration keys from the config hash
