@@ -145,6 +145,10 @@ module SwarmSDK
 
             config.openai_api_key = api_key if api_key
             config.openai_use_system_role = true
+          when "anthropic"
+            config.anthropic_api_base = base_url
+            api_key = SwarmSDK.config.anthropic_api_key
+            config.anthropic_api_key = api_key if api_key
           when "ollama"
             config.ollama_api_base = base_url
             # Ollama doesn't need an API key

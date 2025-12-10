@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [2.6.2] - 2025-12-10
+
+### Added
+
+- **Anthropic Provider Base URL Configuration**: Custom Anthropic endpoints now properly configured
+  - Added `anthropic_api_base` configuration for custom Anthropic API endpoints
+  - Added `anthropic_api_key` passthrough from `SwarmSDK.config`
+  - Enables use of Anthropic-compatible proxies and custom deployments
+  - **Files**: `lib/swarm_sdk/agent/chat_helpers/llm_configuration.rb`
+
+### Dependencies
+
+- Updated `ruby_llm_swarm` to `~> 1.9.6`
+
 ## [2.6.0] - 2025-12-04
 
 ### Added
