@@ -6,7 +6,8 @@ module SwarmMemory
     #
     # Removes entries that are no longer relevant.
     # Each agent has its own isolated memory storage.
-    class MemoryDelete < RubyLLM::Tool
+    class MemoryDelete < SwarmSDK::Tools::Base
+      removable false # Memory tools are always available
       description <<~DESC
         Delete entries from your memory storage when they're no longer needed.
 

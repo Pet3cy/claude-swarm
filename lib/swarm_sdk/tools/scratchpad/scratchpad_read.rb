@@ -7,7 +7,7 @@ module SwarmSDK
       #
       # Retrieves content stored by any agent using scratchpad_write.
       # All agents in the swarm share the same scratchpad.
-      class ScratchpadRead < RubyLLM::Tool
+      class ScratchpadRead < Base
         define_method(:name) { "ScratchpadRead" }
 
         description <<~DESC

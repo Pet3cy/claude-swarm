@@ -7,7 +7,8 @@ module SwarmMemory
     # Searches content stored in memory using AI embeddings to find
     # conceptually related entries even when exact keywords don't match.
     # Each agent has its own isolated memory storage.
-    class MemorySearch < RubyLLM::Tool
+    class MemorySearch < SwarmSDK::Tools::Base
+      removable false # Memory tools are always available
       description <<~DESC
         Perform semantic search across memory entries using natural language queries.
 

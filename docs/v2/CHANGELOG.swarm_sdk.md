@@ -5,6 +5,66 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2025-12-11
+
+### Added
+
+- **Plan 025: Lazy Tool Activation Architecture** - Revolutionary redesign enabling skills to control ALL tool types
+  - **Tool Registry System**: Per-agent registry with lazy activation before each LLM request
+  - **BaseTool Class**: New base class with `removable` DSL attribute for declarative tool control
+  - **ToolRegistry**: Registry-based tool management with source tracking (builtin, delegation, MCP, plugin)
+  - **MCP Boot Optimization**: Skip tools/list RPC when tools specified (~300-500ms faster per server)
+  - **Symbol Key Support**: `chat.tools[:ToolName]` and `chat.tools["ToolName"]` both work via SymbolKeyHash wrapper
+  - **6-Pass Initialization**: Added Pass 6 for tool activation after all plugins registered
+  - **Files Added**:
+    - `lib/swarm_sdk/tools/base.rb` - Base class with removable DSL
+    - `lib/swarm_sdk/agent/tool_registry.rb` - Per-agent tool registry
+    - `lib/swarm_sdk/tools/mcp_tool_stub.rb` - Lazy MCP schema loading
+    - `test/swarm_sdk/tools/base_test.rb`
+    - `test/swarm_sdk/agent/tool_registry_test.rb`
+    - `test/swarm_sdk/tools/mcp_tool_stub_test.rb`
+
+- **MCP Server `tools:` Parameter**: Optional tool filtering for faster boot and controlled exposure
+  ```yaml
+  mcp_servers:
+    - name: codebase
+      tools: [search_code, list_files]  # Instant boot, lazy schema
+  ```
+
+### Changed
+
+- **ALL SDK Tools**: Now inherit from `SwarmSDK::Tools::Base` instead of `RubyLLM::Tool`
+  - Think, Clock, TodoWrite marked `removable false` (always available)
+  - Read, Write, Edit, Bash, Grep, Glob, WebFetch, Delegate remain removable
+  - Scratchpad tools (ScratchpadWrite/Read/List) remain removable
+
+- **Delegation Tool Names**: Now use proper PascalCase for multi-word agent names
+  - `slack_agent` → `WorkWithSlackAgent` (was `WorkWithSlack_agent`)
+  - `web_scraper` → `WorkWithWebScraper` (was `WorkWithWeb_scraper`)
+  - Single-word names unchanged: `backend` → `WorkWithBackend`
+
+- **Tool Activation**: Moved to `around_llm_request` hook (before each LLM request)
+  - Ensures tools match current skill state
+  - Critical: RubyLLM requires symbol keys for tool lookup
+
+- **ToolConfigurator**: Updated to register tools in registry instead of direct `add_tool()`
+  - Tracks tool source (builtin, delegation, MCP, plugin)
+  - Stores base_instance for skill permission override
+
+- **AgentInitializer**: Updated to 6-pass initialization
+  - Pass 6 activates tools after all plugins have registered
+  - Ensures LoadSkill tool is available when activation happens
+
+### Removed
+
+- **`chat.mark_tools_immutable(*tool_names)`**: Tools now declare `removable false` themselves
+- **`chat.remove_mutable_tools()`**: Use `chat.clear_skill()` instead
+
+### Fixed
+
+- **Symbol Key Compatibility**: Tools now stored with symbol keys as required by RubyLLM
+- **Tool Execution**: Tool instances properly activated before LLM requests
+- **Event Emission**: tool_result events now fire correctly
 
 ## [2.6.2] - 2025-12-10
 

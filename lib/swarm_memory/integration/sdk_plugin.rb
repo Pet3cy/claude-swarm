@@ -201,24 +201,6 @@ module SwarmMemory
         ERB.new(template_content).result(agent_definition.instance_eval { binding })
       end
 
-      # Tools that should be marked immutable (mode-aware)
-      #
-      # Memory tools for the current mode plus LoadSkill (if applicable) are immutable.
-      # This prevents LoadSkill from accidentally removing memory tools.
-      #
-      # @param mode [Symbol] Memory mode
-      # @return [Array<Symbol>] Immutable tool names for this mode
-      def immutable_tools_for_mode(mode)
-        base_tools = tools_for_mode(mode)
-
-        # LoadSkill only for read_write and full_access modes (not read_only)
-        if mode == :read_only
-          base_tools
-        else
-          base_tools + [:LoadSkill]
-        end
-      end
-
       # Check if memory is configured for this agent
       #
       # Delegates adapter-specific validation to the adapter itself.
@@ -332,7 +314,14 @@ module SwarmMemory
 
             # Pass through all custom adapter options
             # Handle both symbol and string keys (YAML may have either)
-            standard_keys = [:directory, :adapter, :mode, "directory", "adapter", "mode"]
+            standard_keys = [
+              :directory,
+              :adapter,
+              :mode,
+              "directory",
+              "adapter",
+              "mode",
+            ]
             custom_keys = memory_config.keys - standard_keys
             custom_keys.each do |key|
               option(key.to_sym, memory_config[key]) # Normalize to symbol
@@ -379,17 +368,16 @@ module SwarmMemory
         @modes[base_name] = mode # ← Changed from agent_name to base_name
         @threshold_configs[base_name] = extract_threshold_config(memory_config)
 
-        # Get mode-specific tools
+        # NOTE: Memory tools are already registered by ToolConfigurator.register_plugin_tools
+        # We need to unregister tools not allowed in this mode (Plan 025)
+
+        all_memory_tools = tools
         allowed_tools = tools_for_mode(mode)
-
-        # Get all registered memory tool names
-        all_memory_tools = tools # Returns all possible memory tools
-
-        # Remove tools not allowed in this mode
         tools_to_remove = all_memory_tools - allowed_tools
 
+        # Unregister tools not allowed in this mode
         tools_to_remove.each do |tool_name|
-          agent.remove_tool(tool_name)
+          agent.tool_registry.unregister(tool_name.to_s)
         end
 
         # Create and register LoadSkill tool (NOT for read_only mode)
@@ -403,11 +391,15 @@ module SwarmMemory
             agent_definition: agent_definition,
           )
 
-          agent.add_tool(load_skill_tool)
+          # Register in tool registry (Plan 025)
+          agent.tool_registry.register(
+            load_skill_tool,
+            source: :plugin,
+            metadata: { plugin_name: :memory, mode: mode },
+          )
         end
 
-        # Mark mode-specific memory tools + LoadSkill as immutable
-        agent.mark_tools_immutable(immutable_tools_for_mode(mode).map(&:to_s))
+        # NOTE: No need to mark tools immutable - they declare removable? themselves (Plan 025)
       end
 
       # Lifecycle: User message

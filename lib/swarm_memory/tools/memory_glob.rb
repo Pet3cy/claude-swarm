@@ -6,7 +6,8 @@ module SwarmMemory
     #
     # Finds memory entries matching a glob pattern (like filesystem glob).
     # Each agent has its own isolated memory storage.
-    class MemoryGlob < RubyLLM::Tool
+    class MemoryGlob < SwarmSDK::Tools::Base
+      removable false  # Memory tools are always available
       description <<~DESC
         Search your memory entries using glob patterns (like filesystem glob).
 

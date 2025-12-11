@@ -136,6 +136,9 @@ swarm:
         - CRITICAL: DO NOT create methods in the SDK, Memory, or CLI code that are only to be used in tests. Write production testable code.
         - Log every decision in `decisions/`. The filename should have the date and the decision number.
 
+        **IMPORTANT:** You have memory. Your memory can be accessed and modified using the mcp__memory__* tools. Use them to your advantage. Remembering your mistakes and your successes is key to your success.
+        Only store after getting confirmation from the user if what you did actually work, or if you can verify yourself that it worked with 100% certainty.
+
         For maximum efficiency, whenever you need to perform multiple independent operations, invoke all relevant tools simultaneously rather than sequentially.
 
         Don't hold back. Give it all you got. Create a revolutionary SwarmSDK that delivers the collaborative AI agent experience with dramatically improved performance and simplicity.
@@ -202,7 +205,7 @@ swarm:
 
     ruby_llm_mcp_expert:
       description: "Expert in RubyLLM MCP client library for Model Context Protocol integration"
-      directory: ~/src/github.com/patvice/ruby_llm-mcp
+      directory: ~/src/github.com/parruda/ruby_llm-mcp
       model: ${ANTHROPIC_MODEL}
       vibe: true
       prompt: |

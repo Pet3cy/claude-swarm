@@ -7,7 +7,7 @@ module SwarmSDK
     # Supports reading entire files or specific line ranges with line numbers.
     # Provides system reminders to guide proper usage.
     # Tracks reads per agent for enforcing read-before-write/edit rules.
-    class Read < RubyLLM::Tool
+    class Read < Base
       include PathResolver
 
       # NOTE: Line length and limit now accessed via SwarmSDK.config

@@ -22,9 +22,22 @@ module SwarmSDK
       # Connects to MCP servers and registers their tools with the agent's chat instance.
       # Supports stdio, SSE, and HTTP (streamable) transports.
       #
+      # ## Boot Optimization (Plan 025)
+      #
+      # - If tools specified: Create stubs without tools/list RPC (fast boot, lazy schema)
+      # - If tools omitted: Call tools/list to discover all tools (discovery mode)
+      #
       # @param chat [AgentChat] The agent's chat instance
       # @param mcp_server_configs [Array<Hash>] MCP server configurations
       # @param agent_name [Symbol] Agent name for tracking clients
+      #
+      # @example Fast boot mode
+      #   mcp_server :codebase, type: :stdio, command: "mcp-server", tools: [:search, :list]
+      #   # Creates tool stubs instantly, no tools/list RPC
+      #
+      # @example Discovery mode
+      #   mcp_server :codebase, type: :stdio, command: "mcp-server"
+      #   # Calls tools/list to discover all available tools
       def register_mcp_servers(chat, mcp_server_configs, agent_name:)
         return if mcp_server_configs.nil? || mcp_server_configs.empty?
 
@@ -37,14 +50,39 @@ module SwarmSDK
           # Store client for cleanup
           @mcp_clients[agent_name] << client
 
-          # Fetch tools from MCP server and register with chat
-          # Tools are already in RubyLLM::Tool format
-          tools = client.tools
-          tools.each { |tool| chat.add_tool(tool) }
+          tools_config = server_config[:tools]
 
-          RubyLLM.logger.debug("SwarmSDK: Registered #{tools.size} tools from MCP server '#{server_config[:name]}' for agent #{agent_name}")
+          if tools_config.nil?
+            # Discovery mode: Fetch all tools from server (calls tools/list)
+            # client.tools returns RubyLLM::Tool instances (already wrapped by internal Coordinator)
+            all_tools = client.tools
+            all_tools.each do |tool|
+              chat.tool_registry.register(
+                tool,
+                source: :mcp,
+                metadata: { server_name: server_config[:name] },
+              )
+            end
+            RubyLLM.logger.debug("SwarmSDK: Discovered and registered #{all_tools.size} tools from MCP server '#{server_config[:name]}'")
+          else
+            # Optimized mode: Create tool stubs without tools/list RPC (Plan 025)
+            # Use client directly (it has internal coordinator)
+            tools_config.each do |tool_name|
+              stub = Tools::McpToolStub.new(
+                client: client,
+                name: tool_name.to_s,
+              )
+              chat.tool_registry.register(
+                stub,
+                source: :mcp,
+                metadata: { server_name: server_config[:name] },
+              )
+            end
+            RubyLLM.logger.debug("SwarmSDK: Registered #{tools_config.size} tool stubs from MCP server '#{server_config[:name]}' (lazy schema)")
+          end
         rescue StandardError => e
-          RubyLLM.logger.error("SwarmSDK: Failed to initialize MCP server '#{server_config[:name]}' for agent #{agent_name}: #{e.message}")
+          RubyLLM.logger.error("SwarmSDK: Failed to initialize MCP server '#{server_config[:name]}' for agent #{agent_name}: #{e.class.name}: #{e.message}")
+          RubyLLM.logger.error("SwarmSDK: Backtrace: #{e.backtrace.first(5).join("\n  ")}")
           raise ConfigurationError, "Failed to initialize MCP server '#{server_config[:name]}': #{e.message}"
         end
       end

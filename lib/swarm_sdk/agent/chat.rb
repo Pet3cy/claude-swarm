@@ -99,7 +99,8 @@ module SwarmSDK
         :context_manager,
         :agent_context,
         :last_todowrite_message_index,
-        :active_skill_path,
+        :tool_registry,
+        :skill_state,
         :provider # Extracted from RubyLLM::Chat for instrumentation (not publicly accessible)
 
       # Setters for snapshot/restore
@@ -153,11 +154,15 @@ module SwarmSDK
         # Context tracker (created after agent_context is set)
         @context_tracker = nil
 
-        # Track immutable tools
-        @immutable_tool_names = Set.new(["Think", "Clock", "TodoWrite"])
+        # Tool registry for lazy tool activation (Phase 3 - Plan 025)
+        @tool_registry = Agent::ToolRegistry.new
 
-        # Track active skill (only used if memory enabled)
-        @active_skill_path = nil
+        # Track loaded skill state (Phase 2 - Plan 025)
+        @skill_state = nil
+
+        # Tool activation dependencies (set by setup_tool_activation after initialization)
+        @tool_configurator = nil
+        @agent_definition = nil
 
         # Create internal RubyLLM::Chat instance
         @llm_chat = create_llm_chat(
@@ -233,11 +238,28 @@ module SwarmSDK
       # Use with caution - prefer has_tool?, tool_names, remove_tool for most cases.
       # This is provided for:
       # - Direct tool execution in tests
-      # - Advanced tool manipulation (remove_mutable_tools)
+      # - Advanced tool manipulation
       #
-      # @return [Hash] Tool name to tool instance mapping
+      # Returns a hash wrapper that supports both string and symbol keys for test convenience.
+      #
+      # @return [Hash] Tool name to tool instance mapping (supports symbol and string keys)
       def tools
-        @llm_chat.tools
+        # Return a fresh wrapper each time (since @llm_chat.tools may change)
+        SymbolKeyHash.new(@llm_chat.tools)
+      end
+
+      # Hash wrapper that supports both string and symbol keys
+      #
+      # This allows tests to use tools[:ToolName] or tools["ToolName"]
+      # while RubyLLM internally uses string keys.
+      class SymbolKeyHash < SimpleDelegator
+        def [](key)
+          __getobj__[key.to_s] || __getobj__[key.to_sym]
+        end
+
+        def key?(key)
+          __getobj__.key?(key.to_s) || __getobj__.key?(key.to_sym)
+        end
       end
 
       # Message introspection
@@ -341,6 +363,18 @@ module SwarmSDK
         inject_llm_instrumentation
       end
 
+      # Setup tool activation dependencies (Plan 025)
+      #
+      # Must be called after tool registration to enable permission wrapping during activation.
+      #
+      # @param tool_configurator [ToolConfigurator] Tool configuration helper
+      # @param agent_definition [Agent::Definition] Agent definition object
+      # @return [void]
+      def setup_tool_activation(tool_configurator:, agent_definition:)
+        @tool_configurator = tool_configurator
+        @agent_definition = agent_definition
+      end
+
       # Emit model lookup warning if one occurred during initialization
       #
       # @param agent_name [Symbol, String] The agent name for logging context
@@ -410,33 +444,33 @@ module SwarmSDK
         end
       end
 
-      # Mark tools as immutable (cannot be removed by dynamic tool swapping)
+      # Load skill state (called by LoadSkill tool)
       #
-      # @param tool_names [Array<String>] Tool names to mark as immutable
-      def mark_tools_immutable(*tool_names)
-        @immutable_tool_names.merge(tool_names.flatten.map(&:to_s))
+      # @param state [Object, nil] Skill state object (from SwarmMemory), or nil to clear
+      # @return [void]
+      def load_skill_state(state)
+        @skill_state = state
       end
 
-      # Remove all mutable tools (keeps immutable tools)
+      # Clear loaded skill (return to all tools)
       #
       # @return [void]
-      def remove_mutable_tools
-        mutable_tool_names = tools.keys.reject { |name| @immutable_tool_names.include?(name.to_s) }
-        mutable_tool_names.each { |name| tools.delete(name) }
-      end
-
-      # Mark skill as loaded (tracking for debugging/logging)
-      #
-      # @param file_path [String] Path to loaded skill
-      def mark_skill_loaded(file_path)
-        @active_skill_path = file_path
+      def clear_skill
+        @skill_state = nil
       end
 
       # Check if a skill is currently loaded
       #
       # @return [Boolean] True if a skill has been loaded
       def skill_loaded?
-        !@active_skill_path.nil?
+        !@skill_state.nil?
+      end
+
+      # Get active skill path (for backward compatibility)
+      #
+      # @return [String, nil] Path to loaded skill
+      def active_skill_path
+        @skill_state&.file_path
       end
 
       # Clear conversation history
@@ -445,6 +479,33 @@ module SwarmSDK
       def clear_conversation
         @llm_chat.reset_messages!
         @context_manager&.clear_ephemeral
+      end
+
+      # Activate tools for the current prompt (Plan 025: Lazy Tool Activation)
+      #
+      # Called before each LLM request to set active toolset based on skill state.
+      # Replaces @llm_chat.tools with active subset from registry.
+      #
+      # This is public so it can be called during initialization to populate tools.
+      #
+      # Logic:
+      # - If no skill loaded: ALL tools from registry
+      # - If skill restricts tools: skill's tools + non-removable tools
+      # - Skill permissions applied during activation (wrapping base_instance)
+      #
+      # @return [void]
+      def activate_tools_for_prompt
+        # Get active tools based on skill state
+        active = @tool_registry.active_tools(
+          skill_state: @skill_state,
+          tool_configurator: @tool_configurator,
+          agent_definition: @agent_definition,
+        )
+
+        # Replace RubyLLM::Chat tools with active subset
+        # CRITICAL: RubyLLM looks up tools by SYMBOL keys, must store with symbols!
+        @llm_chat.tools.clear
+        active.each { |name, instance| @llm_chat.tools[name.to_sym] = instance }
       end
 
       # --- Core Conversation Methods ---
@@ -703,11 +764,16 @@ module SwarmSDK
       # Setup around_llm_request hook for ephemeral message injection
       #
       # This hook intercepts all LLM API calls to:
+      # - Activate tools based on skill state (Plan 025: Lazy Tool Activation)
       # - Inject ephemeral content (system reminders) that shouldn't be persisted
       # - Clear ephemeral content after each LLM call
       # - Add retry logic for transient failures
       def setup_llm_request_hook
         @llm_chat.around_llm_request do |_messages, &send_request|
+          # Activate tools for this LLM request (Plan 025)
+          # This happens before each LLM request to ensure tools match current skill state
+          activate_tools_for_prompt
+
           # Make the actual LLM API call with retry logic
           # NOTE: prepare_for_llm must be called INSIDE the retry block so that
           # ephemeral content is recalculated after orphan tool call pruning

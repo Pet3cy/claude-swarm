@@ -142,6 +142,7 @@ module SwarmMemory
         {
           adapter: @adapter_type,
           mode: @mode,
+          loadskill_preserve_delegation: @loadskill_preserve_delegation,
           **@adapter_options,
         }
       end

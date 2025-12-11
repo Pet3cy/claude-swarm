@@ -6,7 +6,7 @@ module SwarmSDK
     #
     # Fetches content from URLs, converts HTML to markdown, and processes it
     # using an AI model to extract information based on a provided prompt.
-    class WebFetch < RubyLLM::Tool
+    class WebFetch < Base
       def initialize
         super()
         @cache = {}

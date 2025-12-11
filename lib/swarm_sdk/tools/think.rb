@@ -11,7 +11,9 @@ module SwarmSDK
     # This is inspired by research showing that explicitly articulating reasoning steps
     # (chain-of-thought prompting) leads to significantly better outcomes, especially
     # for complex tasks requiring multi-step reasoning or arithmetic.
-    class Think < RubyLLM::Tool
+    class Think < Base
+      removable false # Think is always available
+
       def name
         "Think"
       end

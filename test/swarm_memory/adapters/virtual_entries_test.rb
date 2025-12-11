@@ -121,41 +121,49 @@ end
 
 # Mock classes needed for LoadSkill test
 class MockChat
-  attr_reader :tools, :immutable_tool_names, :active_skill_path
+  attr_reader :tools, :tool_registry, :skill_state
 
   def initialize
-    @tools = []
-    @immutable_tool_names = Set.new(["Think", "Clock", "TodoWrite"])
-    @active_skill_path = nil
+    @tools = {} # Hash to match real Chat behavior
+    @tool_registry = SwarmSDK::Agent::ToolRegistry.new
+    @skill_state = nil
   end
 
-  def mark_tools_immutable(*tool_names)
-    @immutable_tool_names.merge(tool_names.flatten.map(&:to_s))
-  end
-
-  def remove_mutable_tools
-    @tools.select! { |tool| @immutable_tool_names.include?(tool.name) }
-  end
-
-  def add_tool(tool)
-    @tools << tool
-  end
-  alias_method :with_tool, :add_tool
-
-  def mark_skill_loaded(file_path)
-    @active_skill_path = file_path
+  def load_skill_state(state)
+    @skill_state = state
   end
 
   def skill_loaded?
-    !@active_skill_path.nil?
+    !@skill_state.nil?
+  end
+
+  def active_skill_path
+    @skill_state&.file_path
+  end
+
+  def add_tool(tool)
+    @tools[tool.name] = tool # Store by name as key
+  end
+  alias_method :with_tool, :add_tool
+
+  # Mock implementation for Plan 025
+  def activate_tools_for_prompt
+    # Simulate lazy activation based on skill_state
+    active = @tool_registry.active_tools(skill_state: @skill_state)
+    @tools = active
   end
 end
 
 class MockTool
   attr_reader :name
 
-  def initialize(name)
+  def initialize(name, removable: true)
     @name = name
+    @removable = removable
+  end
+
+  def removable?
+    @removable
   end
 end
 
@@ -172,8 +180,16 @@ end
 class MockAgentDefinition
   attr_reader :bypass_permissions, :directory
 
-  def initialize(bypass: false, directory: "/test")
+  def initialize(bypass: false, directory: "/test", memory_config: nil)
     @bypass_permissions = bypass
     @directory = directory
+    @memory_config = memory_config
+  end
+
+  # Required for LoadSkill delegation preservation
+  def plugin_config(plugin_name)
+    return @memory_config if plugin_name == :memory
+
+    nil
   end
 end

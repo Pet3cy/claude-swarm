@@ -7,7 +7,7 @@ module SwarmSDK
     # Creates new files or overwrites existing files.
     # Enforces read-before-write rule for existing files.
     # Includes validation and usage guidelines via system reminders.
-    class Write < RubyLLM::Tool
+    class Write < Base
       include PathResolver
 
       # Factory pattern: declare what parameters this tool needs for instantiation

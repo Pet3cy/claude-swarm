@@ -6,7 +6,7 @@ module SwarmSDK
     #
     # Finds files and directories matching glob patterns, sorted by modification time.
     # Works efficiently with any codebase size.
-    class Glob < RubyLLM::Tool
+    class Glob < Base
       include PathResolver
 
       # Factory pattern: declare what parameters this tool needs for instantiation

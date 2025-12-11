@@ -7,7 +7,7 @@ module SwarmSDK
       #
       # Shows all entries in the shared scratchpad with their metadata.
       # All agents in the swarm share the same scratchpad.
-      class ScratchpadList < RubyLLM::Tool
+      class ScratchpadList < Base
         define_method(:name) { "ScratchpadList" }
 
         description <<~DESC

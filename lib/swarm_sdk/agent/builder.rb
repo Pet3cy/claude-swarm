@@ -129,8 +129,16 @@ module SwarmSDK
 
       # Add an MCP server configuration
       #
-      # @example stdio transport
+      # @param name [Symbol] Server name
+      # @param type [Symbol] Transport type (:stdio, :sse, :http)
+      # @param tools [Array<Symbol>, nil] Tool names to expose (nil = discover all tools)
+      # @param options [Hash] Transport-specific options
+      #
+      # @example stdio transport with discovery
       #   mcp_server :filesystem, type: :stdio, command: "npx", args: ["-y", "@modelcontextprotocol/server-filesystem"]
+      #
+      # @example stdio transport with filtered tools (faster boot)
+      #   mcp_server :codebase, type: :stdio, command: "mcp-server-codebase", tools: [:search_code, :list_files]
       #
       # @example SSE transport
       #   mcp_server :web, type: :sse, url: "https://example.com/mcp", headers: { authorization: "Bearer token" }

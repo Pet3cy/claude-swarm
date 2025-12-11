@@ -6,7 +6,9 @@ module SwarmSDK
     #
     # Returns current temporal information in a consistent format.
     # Agents use this when they need to know what day/time it is.
-    class Clock < RubyLLM::Tool
+    class Clock < Base
+      removable false # Clock is always available
+
       description <<~DESC
         Get current date and time.
 

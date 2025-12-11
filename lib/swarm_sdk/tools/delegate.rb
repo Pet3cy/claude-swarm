@@ -7,7 +7,8 @@ module SwarmSDK
     # Creates agent-specific collaboration tools (e.g., WorkWithBackend)
     # that allow one agent to work with another agent.
     # Supports pre/post delegation hooks for customization.
-    class Delegate < RubyLLM::Tool
+    class Delegate < Base
+      removable true # Delegate tools can be controlled by skills
       # Tool name prefix for delegation tools
       # Change this to customize the tool naming pattern (e.g., "DelegateTaskTo", "AskAgent", etc.)
       TOOL_NAME_PREFIX = "WorkWith"
@@ -19,10 +20,20 @@ module SwarmSDK
         # Used both when creating Delegate instances and when predicting tool names
         # for agent context setup.
         #
+        # Converts names to PascalCase: backend → Backend, slack_agent → SlackAgent
+        #
         # @param delegate_name [String, Symbol] Name of the delegate agent
-        # @return [String] Tool name (e.g., "WorkWithBackend")
+        # @return [String] Tool name (e.g., "WorkWithBackend", "WorkWithSlackAgent")
+        #
+        # @example Simple name
+        #   tool_name_for(:backend) # => "WorkWithBackend"
+        #
+        # @example Name with underscore
+        #   tool_name_for(:slack_agent) # => "WorkWithSlackAgent"
         def tool_name_for(delegate_name)
-          "#{TOOL_NAME_PREFIX}#{delegate_name.to_s.capitalize}"
+          # Convert to PascalCase: split on underscore, capitalize each part, join
+          pascal_case = delegate_name.to_s.split("_").map(&:capitalize).join
+          "#{TOOL_NAME_PREFIX}#{pascal_case}"
         end
       end
 

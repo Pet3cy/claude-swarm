@@ -6,7 +6,7 @@ module SwarmSDK
     #
     # Powerful search capabilities with regex support, context lines, and filtering.
     # Built on ripgrep (rg) for fast, efficient searching.
-    class Grep < RubyLLM::Tool
+    class Grep < Base
       include PathResolver
 
       # Factory pattern: declare what parameters this tool needs for instantiation

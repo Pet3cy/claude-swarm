@@ -6,7 +6,9 @@ module SwarmMemory
     #
     # Retrieves content stored by this agent using memory_write.
     # Each agent has its own isolated memory storage.
-    class MemoryRead < RubyLLM::Tool
+    class MemoryRead < SwarmSDK::Tools::Base
+      removable false # Memory tools are always available
+
       include TitleLookup
 
       description <<~DESC
