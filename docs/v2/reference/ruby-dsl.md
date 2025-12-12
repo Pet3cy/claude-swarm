@@ -1484,6 +1484,87 @@ When using shared mode, SwarmSDK automatically serializes concurrent calls to th
 
 ---
 
+### streaming
+
+Enable or disable LLM response streaming for this agent.
+
+**Signature:**
+```ruby
+streaming(value = true) → self
+```
+
+**Parameters:**
+- `value` (Boolean, optional): Enable (`true`) or disable (`false`) streaming (default: `true`)
+
+**Default:** Inherits from `SwarmSDK.config.streaming` (default: `true`)
+
+**Description:**
+
+Streaming enables real-time content delivery from LLM responses, preventing timeout errors on long responses and allowing UI layers to display content as it arrives.
+
+When enabled, SwarmSDK emits `content_chunk` events during LLM API calls with:
+- Text content chunks (`chunk_type: "content"`)
+- Tool call chunks (`chunk_type: "tool_call"`)
+- Separator events (`chunk_type: "separator"`) when transitioning from thinking to tool calls
+
+**Benefits:**
+- Prevents HTTP timeout errors on long responses (keeps connection alive)
+- Real-time UI updates (stream text as it arrives)
+- Better UX (users see progress immediately)
+
+**When to disable:**
+- Fast models where streaming overhead isn't worth it (e.g., `gpt-4o-mini`)
+- Batch processing where real-time delivery isn't needed
+- Testing with WebMock (doesn't support SSE)
+
+**Example:**
+```ruby
+# Enable streaming (default)
+agent :backend do
+  model "claude-sonnet-4"
+  streaming true  # Prevents timeouts on long responses
+end
+
+# Disable for fast models
+agent :quick_agent do
+  model "gpt-4o-mini"
+  streaming false  # Fast enough without streaming overhead
+end
+```
+
+**Global Configuration:**
+```ruby
+# Disable globally
+SwarmSDK.configure do |config|
+  config.streaming = false
+end
+
+# Environment variable
+ENV["SWARM_SDK_STREAMING"] = "false"
+```
+
+**Event Subscription:**
+```ruby
+LogCollector.subscribe(filter: { type: "content_chunk" }) do |event|
+  case event[:chunk_type]
+  when "content"
+    print event[:content]  # Stream text to console
+  when "separator"
+    puts "\n"  # Visual break before tools
+  when "tool_call"
+    puts "🔧 #{event[:tool_calls].values.first[:name]}"
+  end
+end
+```
+
+**Important Notes:**
+- Streaming is enabled by default to prevent timeouts
+- `ask()` still returns complete `RubyLLM::Message` after streaming
+- Tool call arguments in chunks are partial string fragments (use `tool_call` event for complete data)
+- See `content_chunk` event documentation for complete details
+
+---
+
 ### memory
 
 Configure persistent memory storage for this agent.

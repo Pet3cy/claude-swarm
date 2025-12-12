@@ -61,6 +61,7 @@ module SwarmSDK
         @default_permissions = {} # Set by SwarmBuilder from all_agents
         @memory_config = nil
         @shared_across_delegations = nil # nil = not set (will default to false in Definition)
+        @streaming = nil # nil = not set (will use global config default)
         @context_management_config = nil # Context management DSL hooks
       end
 
@@ -336,6 +337,28 @@ module SwarmSDK
         self
       end
 
+      # Enable or disable streaming for LLM API responses
+      #
+      # @param value [Boolean] If true (default), enables streaming; if false, disables it
+      # @return [self] Returns self for method chaining
+      #
+      # @example Enable streaming (default)
+      #   streaming true
+      #
+      # @example Disable streaming
+      #   streaming false
+      def streaming(value = true)
+        @streaming = value
+        self
+      end
+
+      # Check if streaming has been explicitly set
+      #
+      # @return [Boolean] true if streaming was explicitly set, false otherwise
+      def streaming_set?
+        !@streaming.nil?
+      end
+
       # Configure context management handlers
       #
       # Define custom handlers for context warning thresholds (60%, 80%, 90%).
@@ -515,6 +538,7 @@ module SwarmSDK
         agent_config[:default_permissions] = @default_permissions if @default_permissions.any?
         agent_config[:memory] = @memory_config if @memory_config
         agent_config[:shared_across_delegations] = @shared_across_delegations unless @shared_across_delegations.nil?
+        agent_config[:streaming] = @streaming unless @streaming.nil?
 
         # Convert DSL hooks to HookDefinition format
         agent_config[:hooks] = convert_hooks_to_definitions if @hooks.any?

@@ -41,7 +41,8 @@ module SwarmSDK
         :assume_model_exists,
         :hooks,
         :plugin_configs,
-        :shared_across_delegations
+        :shared_across_delegations,
+        :streaming
 
       attr_accessor :bypass_permissions, :max_concurrent_tools
 
@@ -109,6 +110,9 @@ module SwarmSDK
 
         # Delegation isolation mode (default: false = isolated instances per delegation)
         @shared_across_delegations = config[:shared_across_delegations] || false
+
+        # Streaming configuration (default: true from global config)
+        @streaming = config.fetch(:streaming, SwarmSDK.config.streaming)
 
         # Build system prompt after directory and memory are set
         @system_prompt = build_full_system_prompt(config[:system_prompt])
@@ -192,6 +196,7 @@ module SwarmSDK
           max_concurrent_tools: @max_concurrent_tools,
           hooks: @hooks,
           shared_across_delegations: @shared_across_delegations,
+          streaming: @streaming,
           # Permissions are core SDK functionality (not plugin-specific)
           default_permissions: @default_permissions,
           permissions: @agent_permissions,
@@ -379,6 +384,7 @@ module SwarmSDK
           :default_permissions,
           :permissions,
           :shared_across_delegations,
+          :streaming,
           :directories,
         ]
 

@@ -715,7 +715,94 @@ Emitted when swarm execution exceeds `execution_timeout` configuration.
 
 ---
 
-### 19. turn_timeout
+### 19. content_chunk
+
+Emitted for each chunk during LLM response streaming (when `streaming: true`).
+
+**Location**: `lib/swarm_sdk/agent/chat.rb:1168-1175`
+
+```ruby
+{
+  type: "content_chunk",
+  timestamp: "2025-01-15T10:35:12.123456Z",
+  agent: :backend,
+  execution_id: "exec_main_abc123",        # Auto-injected
+  swarm_id: "main",                         # Auto-injected
+  parent_swarm_id: nil,                     # Auto-injected
+  chunk_type: "content",                    # "content", "separator", or "tool_call"
+  content: "I'll help you",                 # Text content (nil for tool_call/separator)
+  tool_calls: nil,                          # Hash for tool_call chunks, nil otherwise
+  model: "claude-sonnet-4"                  # Model identifier
+}
+```
+
+**Chunk Type Values**:
+
+1. **`"content"`** - Text content chunk
+   ```ruby
+   {
+     chunk_type: "content",
+     content: "I'll help you...",
+     tool_calls: nil
+   }
+   ```
+
+2. **`"separator"`** - Transition marker (content → tool_call)
+   ```ruby
+   {
+     chunk_type: "separator",
+     content: nil,
+     tool_calls: nil
+   }
+   ```
+   - Emitted once when LLM finishes "thinking" text and starts calling tools
+   - Only fires for providers that emit content before tools (Anthropic, DeepSeek, Gemini)
+   - OpenAI jumps directly to tool_calls, no separator emitted
+
+3. **`"tool_call"`** - Tool invocation chunk
+   ```ruby
+   {
+     chunk_type: "tool_call",
+     content: nil,
+     tool_calls: {
+       "call_abc123": {
+         id: "call_abc123",
+         name: "Read",
+         arguments: "{\"file_pa"  # ⚠️ PARTIAL string fragment!
+       }
+     }
+   }
+   ```
+
+**Field Locations**:
+- Root level: `type`, `timestamp`, `agent`, `execution_id`, `swarm_id`, `parent_swarm_id`, `chunk_type`, `content`, `tool_calls`, `model`
+
+**Important Notes**:
+- **Content and tool_calls are mutually exclusive**: Never both present in same chunk
+- **Partial tool call arguments**: `tool_calls.arguments` are raw string fragments during streaming (e.g., `"{\"file_"`), NOT parsed JSON
+- **Use `tool_call` event for complete data**: Emitted after streaming completes with fully parsed arguments
+- **High frequency**: Multiple chunks emitted per second during streaming
+- **Enabled by default**: Configure `streaming: false` to disable per-agent or globally
+- **Automatic fields**: `execution_id`, `swarm_id`, `parent_swarm_id`, `timestamp` auto-injected by LogStream
+
+**Usage Example**:
+```ruby
+LogCollector.subscribe(filter: { type: "content_chunk" }) do |event|
+  case event[:chunk_type]
+  when "content"
+    print event[:content]  # Stream text to UI
+  when "separator"
+    puts "\n"  # Visual break before tools
+  when "tool_call"
+    tool = event[:tool_calls].values.first
+    puts "🔧 #{tool[:name]}"
+  end
+end
+```
+
+---
+
+### 20. turn_timeout
 
 Emitted when an agent turn exceeds `turn_timeout` configuration.
 
@@ -767,7 +854,8 @@ Emitted when an agent turn exceeds `turn_timeout` configuration.
 | `tool_call` | tool_call_id, tool | arguments.*, metadata.* |
 | `tool_result` | tool_call_id, tool, result | metadata.* |
 | `llm_api_request` | provider | body.* |
-| `llm_api_response` | provider, duration_seconds, usage, model, finish_reason | body.*, usage.* |
+| `llm_api_response` | provider, duration_seconds, usage, model, finish_reason, streaming, status | body.*, usage.* |
+| `content_chunk` | chunk_type, content, tool_calls, model | tool_calls.* |
 | `execution_timeout` | limit, message | None |
 | `turn_timeout` | limit, message | None |
 

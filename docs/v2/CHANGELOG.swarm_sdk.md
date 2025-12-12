@@ -9,6 +9,74 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **LLM Response Streaming**: Real-time content delivery with intelligent chunk type detection
+  - **Enabled by default**: `streaming: true` prevents timeout errors on long responses
+  - **Per-agent configuration**: Override via YAML (`streaming: false`) or DSL (`streaming false`)
+  - **Global configuration**: `SwarmSDK.config.streaming = false` or `SWARM_SDK_STREAMING=false`
+  - **New `content_chunk` event**: Emitted for each streaming chunk with enhanced metadata
+    - `chunk_type`: `"content"` (text), `"tool_call"` (tool invocation), or `"separator"` (transition marker)
+    - `content`: Text content (nil for tool_call chunks)
+    - `tool_calls`: Partial tool call data (nil for content chunks) - **arguments are string fragments!**
+    - `model`: Model identifier
+    - Auto-injected: `execution_id`, `swarm_id`, `parent_swarm_id`, `timestamp`
+  - **Transition detection**: Automatic `separator` event when content chunks switch to tool_call chunks
+    - Helps UI distinguish "thinking" text from tool execution
+    - Only fires for providers that emit content before tool calls (Anthropic, DeepSeek, Gemini)
+    - OpenAI jumps directly to tool_calls, no separator emitted
+  - **API compatibility**: `ask()` still returns complete `RubyLLM::Message` after streaming
+  - **Subscription example**:
+    ```ruby
+    LogCollector.subscribe(filter: { type: "content_chunk" }) do |event|
+      case event[:chunk_type]
+      when "content"
+        print event[:content]
+      when "separator"
+        puts "\n" # Visual break between thinking and tools
+      when "tool_call"
+        puts "🔧 #{event[:tool_calls].values.first[:name]}"
+      end
+    end
+    ```
+  - **YAML configuration**:
+    ```yaml
+    agents:
+      backend:
+        model: claude-sonnet-4
+        streaming: true  # Enable (default)
+      fast_agent:
+        model: gpt-4o-mini
+        streaming: false  # Disable for fast models
+    ```
+  - **Files**: `lib/swarm_sdk/agent/chat.rb`, `lib/swarm_sdk/agent/definition.rb`, `lib/swarm_sdk/agent/builder.rb`, `lib/swarm_sdk/config.rb`, `lib/swarm_sdk/configuration/translator.rb`, `lib/swarm_sdk/agent/llm_instrumentation_middleware.rb`
+  - **Tests**: All 1969 tests pass with streaming disabled in test suite (WebMock doesn't support SSE)
+
+### Changed
+
+- **`llm_api_response` event enhanced for streaming**:
+  - New `streaming: true|false` field indicates response type
+  - `status`: HTTP status code now included
+  - `body`: Contains full raw SSE stream for streaming responses (all `data:` lines)
+  - `body`: Contains JSON response for non-streaming responses (unchanged)
+  - Usage/model extracted from last SSE event for streaming responses
+  - Middleware wraps `on_data` callback to capture raw chunks before RubyLLM processes them
+
+### Fixed
+
+- **Ephemeral content cleanup on streaming failure**: Now uses `begin/ensure` block
+  - **Issue**: Ephemeral content (system reminders) could leak if streaming failed and retries exhausted
+  - **Fix**: Moved `clear_ephemeral` to `ensure` block in `setup_llm_request_hook`
+  - **Impact**: Prevents memory leaks and stale content in subsequent requests
+  - **Benefit**: Improves reliability regardless of streaming (general bug fix)
+  - **Location**: `lib/swarm_sdk/agent/chat.rb:789-799`
+
+### Notes
+
+- **Streaming with WebMock**: Tests disable streaming via `SwarmSDK.config.streaming = false` because WebMock returns JSON, not SSE
+- **Chunk type mutually exclusive**: Content and tool_calls never appear in same chunk
+- **Partial tool call arguments**: `chunk.tool_calls` arguments are raw string fragments during streaming - use `tool_call` event (emitted after streaming completes) for complete parsed data
+- **Timeout prevention**: Main benefit of streaming is keeping HTTP connection alive during long responses
+- **Known behavior**: Retry may emit duplicate `content_chunk` events (final Message is always correct)
+
 - **Plan 025: Lazy Tool Activation Architecture** - Revolutionary redesign enabling skills to control ALL tool types
   - **Tool Registry System**: Per-agent registry with lazy activation before each LLM request
   - **BaseTool Class**: New base class with `removable` DSL attribute for declarative tool control

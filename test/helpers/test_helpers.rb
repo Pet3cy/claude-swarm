@@ -285,6 +285,8 @@ module TestHelpers
       config[:model] ||= "gpt-5"
       config[:system_prompt] ||= "Test"
       config[:directory] ||= "."
+      # Disable streaming by default in tests (WebMock doesn't support SSE)
+      config[:streaming] = false unless config.key?(:streaming)
 
       SwarmSDK::Agent::Definition.new(name, config)
     end

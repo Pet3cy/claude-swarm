@@ -33,17 +33,39 @@ module SwarmSDK
       # @return [Faraday::Response] HTTP response
       def call(env)
         start_time = Time.now
+        accumulated_raw_chunks = []
 
         # Emit request event
         emit_request_event(env, start_time)
+
+        # Wrap existing on_data to capture raw SSE chunks for streaming
+        # This allows us to capture the full streaming response for instrumentation
+        # Check if env.request exists and has on_data (only set for streaming requests)
+        if env.request&.on_data
+          original_on_data = env.request.on_data
+          env.request.on_data = proc do |chunk, bytes, response_env|
+            # Capture raw chunk BEFORE RubyLLM processes it
+            accumulated_raw_chunks << chunk
+            # Call original handler (RubyLLM's stream processing)
+            original_on_data.call(chunk, bytes, response_env)
+          end
+        end
 
         # Execute request
         @app.call(env).on_complete do |response_env|
           end_time = Time.now
           duration = end_time - start_time
 
+          # For streaming: use accumulated raw SSE chunks
+          # For non-streaming: use response body
+          raw_body = if accumulated_raw_chunks.any?
+            accumulated_raw_chunks.join
+          else
+            response_env.body
+          end
+
           # Emit response event
-          emit_response_event(response_env, start_time, end_time, duration)
+          emit_response_event(response_env, start_time, end_time, duration, raw_body)
         end
       end
 
@@ -74,22 +96,40 @@ module SwarmSDK
       # @param start_time [Time] Request start time
       # @param end_time [Time] Request end time
       # @param duration [Float] Request duration in seconds
+      # @param raw_body [String, nil] Raw response body (SSE stream for streaming, JSON for non-streaming)
       # @return [void]
-      def emit_response_event(env, start_time, end_time, duration)
+      def emit_response_event(env, start_time, end_time, duration, raw_body)
+        # Detect if this is a streaming response (starts with "data:")
+        streaming = raw_body.is_a?(String) && raw_body.start_with?("data:")
+
         response_data = {
           provider: @provider_name,
-          body: parse_body(env.body),
+          body: parse_body(raw_body),
+          streaming: streaming,
           duration_seconds: duration.round(3),
           timestamp: end_time.utc.iso8601,
+          status: env.status,
         }
 
         # Extract usage information from response body if available
-        if env.body.is_a?(String) && !env.body.empty?
+        if raw_body.is_a?(String) && !raw_body.empty?
           begin
-            parsed = JSON.parse(env.body)
-            response_data[:usage] = extract_usage(parsed) if parsed.is_a?(Hash)
-            response_data[:model] = parsed["model"] if parsed.is_a?(Hash)
-            response_data[:finish_reason] = extract_finish_reason(parsed) if parsed.is_a?(Hash)
+            if streaming
+              # For streaming, parse the LAST SSE event which contains usage
+              # Skip "[DONE]" marker and find the last actual data event
+              last_data_line = raw_body.split("\n").reverse.find { |l| l.start_with?("data:") && !l.include?("[DONE]") }
+              if last_data_line
+                parsed = JSON.parse(last_data_line.sub(/^data:\s*/, ""))
+                response_data[:usage] = extract_usage(parsed) if parsed.is_a?(Hash)
+                response_data[:model] = parsed["model"] if parsed.is_a?(Hash)
+              end
+            else
+              # For non-streaming, parse the full JSON response
+              parsed = JSON.parse(raw_body)
+              response_data[:usage] = extract_usage(parsed) if parsed.is_a?(Hash)
+              response_data[:model] = parsed["model"] if parsed.is_a?(Hash)
+              response_data[:finish_reason] = extract_finish_reason(parsed) if parsed.is_a?(Hash)
+            end
           rescue JSON::ParserError
             # Not JSON, skip usage extraction
           end
