@@ -22,6 +22,7 @@ require "minitest/autorun"
 require "webmock/minitest"
 
 require_relative "fixtures/swarm_configs"
+require_relative "fixtures/sse_responses"
 require_relative "helpers/test_helpers"
 require_relative "helpers/llm_mock_helper"
 

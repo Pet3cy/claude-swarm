@@ -446,6 +446,10 @@ module SwarmSDK
         if !all_agents_hash[:coding_agent].nil? && !agent_builder.coding_agent_set?
           agent_builder.coding_agent(all_agents_hash[:coding_agent])
         end
+
+        if !all_agents_hash[:streaming].nil? && !agent_builder.streaming_set?
+          agent_builder.streaming(all_agents_hash[:streaming])
+        end
       end
 
       # Validate all_agents filesystem tools
