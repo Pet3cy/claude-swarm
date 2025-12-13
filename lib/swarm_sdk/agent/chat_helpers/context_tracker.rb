@@ -334,6 +334,10 @@ module SwarmSDK
             # Also modify the original message for Result.content
             message.content = content_with_citations
 
+            # Emit citations chunk if streaming is enabled
+            if @chat.streaming_enabled?
+              emit_citations_chunk(formatted_citations, message.model_id)
+            end
           end
 
           # Use override if set (e.g., "finish_agent"), otherwise default to "stop"

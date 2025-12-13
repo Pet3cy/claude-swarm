@@ -5,6 +5,16 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.2] - 2025-12-13
+
+### Fixed
+
+- **Citation chunk emission during streaming**: Fixed citation chunks not being emitted during streaming responses
+  - Issue: `emit_citations_chunk()` call was accidentally removed during code cleanup
+  - Fix: Restored citation chunk emission in `trigger_agent_stop()` when streaming enabled
+  - Impact: Citation chunks with `chunk_type: "citations"` now correctly emitted after content streaming
+  - Location: `lib/swarm_sdk/agent/chat_helpers/context_tracker.rb:337-340`
+
 ## [2.7.1] - 2025-12-13
 
 ### Added
