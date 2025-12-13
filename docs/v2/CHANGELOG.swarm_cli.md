@@ -5,6 +5,24 @@ All notable changes to SwarmCLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.12] - 2025-12-12
+
+### Changed
+
+- **Dependencies**: Updated to `swarm_sdk ~> 2.7.1` for streaming functionality
+  - Compatible with new `streaming` configuration option
+  - Compatible with new `content_chunk` events (formatters handle gracefully)
+  - HumanFormatter silently ignores `content_chunk` events (no else clause in case statement)
+  - JsonFormatter passes all `content_chunk` events through to JSON output
+  - Ready for future real-time streaming display enhancements
+
+### Notes
+
+- **Future Enhancement**: Real-time streaming display in interactive mode
+  - Current behavior: Formatters handle `content_chunk` events gracefully (ignore or pass through)
+  - Future: HumanFormatter could display chunks in real-time with spinner coordination
+  - No breaking changes - current behavior is forward-compatible
+
 ## [2.1.11] - 2025-12-04
 
 ### Changed

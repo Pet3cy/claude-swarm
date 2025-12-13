@@ -5,6 +5,36 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2025-12-12
+
+### Added
+
+- **Comprehensive Streaming Test Suite**: 41 new tests validating streaming functionality with real SSE mocking
+  - **SSE Response Fixtures** (`test/fixtures/sse_responses.rb`): Realistic Server-Sent Events fixtures
+    - `openai_stream()` - OpenAI-style SSE generation with deltas
+    - `simple_content_stream()` - Easy content-only streaming helper
+    - `tool_call_stream()` - Tool call streaming with partial JSON arguments
+    - `content_then_tool_stream()` - Mixed content→tool_call transitions
+  - **Real SSE Mocking**: Discovered WebMock DOES support SSE streaming with proper format
+    - `stub_streaming_llm()` helper in LLMMockHelper
+    - Returns SSE format with `Content-Type: text/event-stream` headers
+    - RubyLLM streaming callbacks actually fire in tests!
+  - **Test Coverage**:
+    - Configuration tests: global, per-agent, ENV vars, YAML inheritance (11 tests)
+    - Event emission: content_chunk events with real SSE (6 tests)
+    - Integration: delegation, ephemeral cleanup, middleware (15 tests)
+    - YAML configuration: all_agents config, agent override (3 tests)
+    - Edge cases: event filtering, snapshot compatibility (6 tests)
+  - **All 2010 tests passing** with streaming enabled by default in production
+  - **Test infrastructure**: `after_setup` hook auto-disables streaming for WebMock compatibility
+
+### Fixed
+
+- **all_agents streaming inheritance**: Fixed streaming not being applied from all_agents block
+  - Added `streaming()` method to `AllAgentsBuilder`
+  - Added streaming merge logic in `BaseBuilder#apply_all_agents_defaults`
+  - YAML `all_agents: streaming: true` now correctly propagates to agents
+
 ## [2.7.0] - 2025-12-11
 
 ### Added

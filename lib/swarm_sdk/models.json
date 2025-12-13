@@ -62,68 +62,6 @@
     "metadata": {}
   },
   {
-    "id": "claude-opus-4-1",
-    "name": "Claude Opus 4.1",
-    "provider": "anthropic",
-    "family": "claude-opus-4-1",
-    "created_at": null,
-    "context_window": 200000,
-    "max_output_tokens": 32000,
-    "knowledge_cutoff": null,
-    "modalities": {
-      "input": [
-        "image",
-        "text"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "capabilities": [
-      "function_calling"
-    ],
-    "pricing": {
-      "text_tokens": {
-        "standard": {
-          "input_per_million": 15.0,
-          "output_per_million": 75.0
-        }
-      }
-    },
-    "metadata": {}
-  },
-  {
-    "id": "claude-opus-4-1-20250805",
-    "name": "Claude Opus 4.1",
-    "provider": "anthropic",
-    "family": "claude-opus-4-1",
-    "created_at": null,
-    "context_window": 200000,
-    "max_output_tokens": 32000,
-    "knowledge_cutoff": null,
-    "modalities": {
-      "input": [
-        "image",
-        "text"
-      ],
-      "output": [
-        "text"
-      ]
-    },
-    "capabilities": [
-      "function_calling"
-    ],
-    "pricing": {
-      "text_tokens": {
-        "standard": {
-          "input_per_million": 15.0,
-          "output_per_million": 75.0
-        }
-      }
-    },
-    "metadata": {}
-  },
-  {
     "id": "claude-opus-4-5",
     "name": "Claude Opus 4.5",
     "provider": "anthropic",
@@ -538,40 +476,6 @@
     "metadata": {}
   },
   {
-    "id": "gemini-2.0-flash-live-001",
-    "name": "Gemini 2.0 Flash Live",
-    "provider": "gemini",
-    "family": "gemini-2.0-flash-live-001",
-    "created_at": null,
-    "context_window": 1048576,
-    "max_output_tokens": 8192,
-    "knowledge_cutoff": null,
-    "modalities": {
-      "input": [
-        "audio",
-        "text"
-      ],
-      "output": [
-        "audio",
-        "text"
-      ]
-    },
-    "capabilities": [
-      "function_calling",
-      "structured_output"
-    ],
-    "pricing": {
-      "text_tokens": {
-        "standard": {
-          "input_per_million": 0.1,
-          "cached_input_per_million": 0.025,
-          "output_per_million": 0.4
-        }
-      }
-    },
-    "metadata": {}
-  },
-  {
     "id": "gemini-2.0-flash-preview-image-generation",
     "name": "Gemini 2.0 Flash Preview Image Generation",
     "provider": "gemini",
@@ -766,9 +670,9 @@
   },
   {
     "id": "gemini-2.5-flash-lite-preview-09-2025",
-    "name": "Gemini 2.5 Flash-Lite Preview",
+    "name": "Gemini 2.5 Flash-Lite",
     "provider": "gemini",
-    "family": "gemini-2.5-flash-lite-preview-09-2025",
+    "family": "gemini-2.5-flash-lite",
     "created_at": null,
     "context_window": 1048576,
     "max_output_tokens": 65536,
@@ -807,7 +711,40 @@
     "id": "gemini-2.5-flash-native-audio-preview-09-2025",
     "name": "Gemini 2.5 Flash Native Audio Preview",
     "provider": "gemini",
-    "family": "gemini-2.5-flash-native-audio-preview-09-2025",
+    "family": "gemini-2.5-flash-native-audio-preview",
+    "created_at": null,
+    "context_window": 131072,
+    "max_output_tokens": 8192,
+    "knowledge_cutoff": null,
+    "modalities": {
+      "input": [
+        "audio",
+        "text"
+      ],
+      "output": [
+        "audio",
+        "text"
+      ]
+    },
+    "capabilities": [
+      "function_calling"
+    ],
+    "pricing": {
+      "text_tokens": {
+        "standard": {
+          "input_per_million": 0.3,
+          "cached_input_per_million": 0.03,
+          "output_per_million": 2.5
+        }
+      }
+    },
+    "metadata": {}
+  },
+  {
+    "id": "gemini-2.5-flash-native-audio-preview-12-2025",
+    "name": "Gemini 2.5 Flash Native Audio Preview",
+    "provider": "gemini",
+    "family": "gemini-2.5-flash-native-audio-preview",
     "created_at": null,
     "context_window": 131072,
     "max_output_tokens": 8192,
@@ -838,9 +775,9 @@
   },
   {
     "id": "gemini-2.5-flash-preview-09-2025",
-    "name": "Gemini 2.5 Flash Preview",
+    "name": "Gemini 2.5 Flash",
     "provider": "gemini",
-    "family": "gemini-2.5-flash-preview-09-2025",
+    "family": "gemini-2.5-flash",
     "created_at": null,
     "context_window": 1048576,
     "max_output_tokens": 65536,
@@ -945,28 +882,38 @@
   },
   {
     "id": "gemini-2.5-pro-preview-tts",
-    "name": "Gemini 2.5 Pro Preview TTS",
+    "name": "Gemini 2.5 Pro",
     "provider": "gemini",
-    "family": "gemini-2.5-pro-preview-tts",
+    "family": "gemini-2.5-pro",
     "created_at": null,
-    "context_window": 8192,
-    "max_output_tokens": 16384,
+    "context_window": 1048576,
+    "max_output_tokens": 65536,
     "knowledge_cutoff": null,
     "modalities": {
       "input": [
+        "audio",
+        "image",
         "text"
       ],
       "output": [
-        "audio"
+        "text"
       ]
     },
-    "capabilities": [],
+    "capabilities": [
+      "batch",
+      "function_calling",
+      "structured_output"
+    ],
     "pricing": {
       "text_tokens": {
         "standard": {
           "input_per_million": 1.25,
           "cached_input_per_million": 0.125,
           "output_per_million": 10.0
+        },
+        "batch": {
+          "input_per_million": 0.625,
+          "output_per_million": 5.0
         }
       }
     },
@@ -1049,39 +996,6 @@
     "metadata": {}
   },
   {
-    "id": "gemini-live-2.5-flash-preview",
-    "name": "Gemini 2.5 Flash Native Audio Preview",
-    "provider": "gemini",
-    "family": "gemini-2.5-flash-native-audio-preview-09-2025",
-    "created_at": null,
-    "context_window": 131072,
-    "max_output_tokens": 8192,
-    "knowledge_cutoff": null,
-    "modalities": {
-      "input": [
-        "audio",
-        "text"
-      ],
-      "output": [
-        "audio",
-        "text"
-      ]
-    },
-    "capabilities": [
-      "function_calling"
-    ],
-    "pricing": {
-      "text_tokens": {
-        "standard": {
-          "input_per_million": 0.3,
-          "cached_input_per_million": 0.03,
-          "output_per_million": 2.5
-        }
-      }
-    },
-    "metadata": {}
-  },
-  {
     "id": "babbage-002",
     "name": "babbage-002",
     "provider": "openai",
@@ -1135,40 +1049,6 @@
         "standard": {
           "input_per_million": 5.0,
           "output_per_million": 15.0
-        }
-      }
-    },
-    "metadata": {}
-  },
-  {
-    "id": "codex-mini-latest",
-    "name": "codex-mini-latest",
-    "provider": "openai",
-    "family": "codex-mini-latest",
-    "created_at": null,
-    "context_window": 200000,
-    "max_output_tokens": 100000,
-    "knowledge_cutoff": null,
-    "modalities": {
-      "input": [
-        "image",
-        "text"
-      ],
-      "output": [
-        "embeddings",
-        "text"
-      ]
-    },
-    "capabilities": [
-      "function_calling",
-      "structured_output"
-    ],
-    "pricing": {
-      "text_tokens": {
-        "standard": {
-          "input_per_million": 1.5,
-          "cached_input_per_million": 0.375,
-          "output_per_million": 6.0
         }
       }
     },
@@ -1249,28 +1129,6 @@
     "metadata": {}
   },
   {
-    "id": "dall-e-2",
-    "name": "DALL·E 2",
-    "provider": "openai",
-    "family": "dall-e-2",
-    "created_at": null,
-    "context_window": null,
-    "max_output_tokens": null,
-    "knowledge_cutoff": null,
-    "modalities": {
-      "input": [
-        "text"
-      ],
-      "output": [
-        "embeddings",
-        "image"
-      ]
-    },
-    "capabilities": [],
-    "pricing": {},
-    "metadata": {}
-  },
-  {
     "id": "dall-e-3",
     "name": "DALL·E 3",
     "provider": "openai",
@@ -1290,35 +1148,6 @@
     },
     "capabilities": [],
     "pricing": {},
-    "metadata": {}
-  },
-  {
-    "id": "davinci-002",
-    "name": "davinci-002",
-    "provider": "openai",
-    "family": "davinci-002",
-    "created_at": null,
-    "context_window": null,
-    "max_output_tokens": 16384,
-    "knowledge_cutoff": null,
-    "modalities": {
-      "input": [
-        "text"
-      ],
-      "output": [
-        "embeddings",
-        "text"
-      ]
-    },
-    "capabilities": [],
-    "pricing": {
-      "text_tokens": {
-        "standard": {
-          "input_per_million": 2.0,
-          "output_per_million": 2.0
-        }
-      }
-    },
     "metadata": {}
   },
   {
@@ -2245,7 +2074,9 @@
         "text"
       ]
     },
-    "capabilities": [],
+    "capabilities": [
+      "structured_output"
+    ],
     "pricing": {
       "text_tokens": {
         "standard": {
@@ -2400,7 +2231,9 @@
         "text"
       ]
     },
-    "capabilities": [],
+    "capabilities": [
+      "structured_output"
+    ],
     "pricing": {
       "text_tokens": {
         "standard": {
@@ -2430,7 +2263,9 @@
         "text"
       ]
     },
-    "capabilities": [],
+    "capabilities": [
+      "structured_output"
+    ],
     "pricing": {
       "text_tokens": {
         "standard": {
@@ -2956,10 +2791,10 @@
     "metadata": {}
   },
   {
-    "id": "gpt-5.1-codex-mini",
-    "name": "GPT-5.1 Codex mini",
+    "id": "gpt-5.1-codex-max",
+    "name": "GPT-5.1-Codex-Max",
     "provider": "openai",
-    "family": "gpt-5.1-codex-mini",
+    "family": "gpt-5.1-codex-max",
     "created_at": null,
     "context_window": 400000,
     "max_output_tokens": 128000,
@@ -2981,9 +2816,175 @@
     "pricing": {
       "text_tokens": {
         "standard": {
-          "input_per_million": 0.25,
-          "cached_input_per_million": 0.025,
-          "output_per_million": 2.0
+          "input_per_million": 1.25,
+          "cached_input_per_million": 0.125,
+          "output_per_million": 10.0
+        }
+      }
+    },
+    "metadata": {}
+  },
+  {
+    "id": "gpt-5.2",
+    "name": "GPT-5.2",
+    "provider": "openai",
+    "family": "gpt-5.2",
+    "created_at": null,
+    "context_window": 400000,
+    "max_output_tokens": 128000,
+    "knowledge_cutoff": null,
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "embeddings",
+        "text"
+      ]
+    },
+    "capabilities": [
+      "function_calling",
+      "structured_output"
+    ],
+    "pricing": {
+      "text_tokens": {
+        "standard": {
+          "input_per_million": 1.75,
+          "cached_input_per_million": 0.175,
+          "output_per_million": 14.0
+        }
+      }
+    },
+    "metadata": {}
+  },
+  {
+    "id": "gpt-5.2-2025-12-11",
+    "name": "GPT-5.2",
+    "provider": "openai",
+    "family": "gpt-5.2",
+    "created_at": null,
+    "context_window": 400000,
+    "max_output_tokens": 128000,
+    "knowledge_cutoff": null,
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "embeddings",
+        "text"
+      ]
+    },
+    "capabilities": [
+      "function_calling",
+      "structured_output"
+    ],
+    "pricing": {
+      "text_tokens": {
+        "standard": {
+          "input_per_million": 1.75,
+          "cached_input_per_million": 0.175,
+          "output_per_million": 14.0
+        }
+      }
+    },
+    "metadata": {}
+  },
+  {
+    "id": "gpt-5.2-chat-latest",
+    "name": "GPT-5.2 Chat",
+    "provider": "openai",
+    "family": "gpt-5.2-chat-latest",
+    "created_at": null,
+    "context_window": 128000,
+    "max_output_tokens": 16384,
+    "knowledge_cutoff": null,
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "embeddings",
+        "text"
+      ]
+    },
+    "capabilities": [
+      "function_calling",
+      "structured_output"
+    ],
+    "pricing": {
+      "text_tokens": {
+        "standard": {
+          "input_per_million": 1.75,
+          "cached_input_per_million": 0.175,
+          "output_per_million": 14.0
+        }
+      }
+    },
+    "metadata": {}
+  },
+  {
+    "id": "gpt-5.2-pro",
+    "name": "GPT-5.2 pro",
+    "provider": "openai",
+    "family": "gpt-5.2-pro",
+    "created_at": null,
+    "context_window": 400000,
+    "max_output_tokens": 128000,
+    "knowledge_cutoff": null,
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "embeddings",
+        "text"
+      ]
+    },
+    "capabilities": [
+      "function_calling"
+    ],
+    "pricing": {
+      "text_tokens": {
+        "standard": {
+          "input_per_million": 21.0,
+          "output_per_million": 168.0
+        }
+      }
+    },
+    "metadata": {}
+  },
+  {
+    "id": "gpt-5.2-pro-2025-12-11",
+    "name": "GPT-5.2 pro",
+    "provider": "openai",
+    "family": "gpt-5.2-pro",
+    "created_at": null,
+    "context_window": 400000,
+    "max_output_tokens": 128000,
+    "knowledge_cutoff": null,
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "embeddings",
+        "text"
+      ]
+    },
+    "capabilities": [
+      "function_calling"
+    ],
+    "pricing": {
+      "text_tokens": {
+        "standard": {
+          "input_per_million": 21.0,
+          "output_per_million": 168.0
         }
       }
     },
@@ -4152,8 +4153,65 @@
       ],
       "output": [
         "audio",
-        "embeddings",
-        "image"
+        "embeddings"
+      ]
+    },
+    "capabilities": [],
+    "pricing": {
+      "text_tokens": {
+        "standard": {
+          "output_per_million": 100000.0
+        }
+      }
+    },
+    "metadata": {}
+  },
+  {
+    "id": "sora-2-2025-10-06",
+    "name": "Sora 2",
+    "provider": "openai",
+    "family": "sora-2",
+    "created_at": null,
+    "context_window": null,
+    "max_output_tokens": null,
+    "knowledge_cutoff": null,
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "audio",
+        "embeddings"
+      ]
+    },
+    "capabilities": [],
+    "pricing": {
+      "text_tokens": {
+        "standard": {
+          "output_per_million": 100000.0
+        }
+      }
+    },
+    "metadata": {}
+  },
+  {
+    "id": "sora-2-pro",
+    "name": "Sora 2 Pro",
+    "provider": "openai",
+    "family": "sora-2-pro",
+    "created_at": null,
+    "context_window": null,
+    "max_output_tokens": null,
+    "knowledge_cutoff": null,
+    "modalities": {
+      "input": [
+        "image",
+        "text"
+      ],
+      "output": [
+        "audio",
+        "embeddings"
       ]
     },
     "capabilities": [],
@@ -4161,7 +4219,7 @@
     "metadata": {}
   },
   {
-    "id": "sora-2-pro",
+    "id": "sora-2-pro-2025-10-06",
     "name": "Sora 2 Pro",
     "provider": "openai",
     "family": "sora-2-pro",
@@ -4361,6 +4419,7 @@
     "knowledge_cutoff": null,
     "modalities": {
       "input": [
+        "audio",
         "text"
       ],
       "output": [
@@ -4420,7 +4479,6 @@
         "audio"
       ],
       "output": [
-        "audio",
         "embeddings",
         "text"
       ]
