@@ -207,6 +207,13 @@ module SwarmSDK
       # --- SwarmSDK Abstraction API ---
       # These methods provide SwarmSDK-specific semantics without exposing RubyLLM internals
 
+      # Check if streaming is enabled for this agent
+      #
+      # @return [Boolean] true if streaming is enabled
+      def streaming_enabled?
+        @streaming_enabled
+      end
+
       # Model information
       def model_id
         @llm_chat.model.id
@@ -681,6 +688,7 @@ module SwarmSDK
               if @streaming_enabled
                 # Reset chunk type tracking for new streaming request
                 @last_chunk_type = nil
+
                 @llm_chat.complete(**options) do |chunk|
                   emit_content_chunk(chunk)
                 end

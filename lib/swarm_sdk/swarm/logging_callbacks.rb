@@ -238,7 +238,14 @@ module SwarmSDK
         return unless LogStream.emitter
 
         metadata_without_duplicates = context.metadata.except(
-          :model, :content, :tool_calls, :finish_reason, :usage, :tool_executions
+          :model,
+          :content,
+          :tool_calls,
+          :finish_reason,
+          :usage,
+          :tool_executions,
+          :citations,
+          :search_results,
         )
 
         LogStream.emit(
@@ -251,6 +258,8 @@ module SwarmSDK
           tool_calls: context.metadata[:tool_calls],
           finish_reason: context.metadata[:finish_reason],
           usage: context.metadata[:usage],
+          citations: context.metadata[:citations],
+          search_results: context.metadata[:search_results],
           tool_executions: context.metadata[:tool_executions],
           metadata: metadata_without_duplicates,
         )
@@ -261,7 +270,14 @@ module SwarmSDK
         return unless LogStream.emitter
 
         metadata_without_duplicates = context.metadata.except(
-          :model, :content, :tool_calls, :finish_reason, :usage, :tool_executions
+          :model,
+          :content,
+          :tool_calls,
+          :finish_reason,
+          :usage,
+          :tool_executions,
+          :citations,
+          :search_results,
         )
 
         LogStream.emit(
@@ -274,6 +290,8 @@ module SwarmSDK
           tool_calls: context.metadata[:tool_calls],
           finish_reason: context.metadata[:finish_reason],
           usage: context.metadata[:usage],
+          citations: context.metadata[:citations],
+          search_results: context.metadata[:search_results],
           tool_executions: context.metadata[:tool_executions],
           metadata: metadata_without_duplicates,
         )

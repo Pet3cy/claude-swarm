@@ -82,6 +82,88 @@ module SwarmSDK
 
         private
 
+        # Format citations for appending to response content
+        #
+        # Creates a markdown-formatted citations section with numbered links.
+        #
+        # @param citations [Array<String>] Array of citation URLs
+        # @return [String] Formatted citations section
+        def format_citations(citations)
+          return "" if citations.nil? || citations.empty?
+
+          formatted = "\n\n# Citations\n"
+          citations.each_with_index do |citation, index|
+            formatted += "- [#{index + 1}] #{citation}\n"
+          end
+          formatted
+        end
+
+        # Emit citations as a content_chunk event
+        #
+        # @param formatted_citations [String] Formatted citations text
+        # @param model_id [String] Model identifier
+        # @return [void]
+        def emit_citations_chunk(formatted_citations, model_id)
+          LogStream.emit(
+            type: "content_chunk",
+            agent: @agent_context.name,
+            chunk_type: "citations",
+            content: formatted_citations,
+            tool_calls: nil,
+            model: model_id,
+          )
+        rescue StandardError => e
+          RubyLLM.logger.debug("SwarmSDK: Failed to emit citations chunk: #{e.message}")
+        end
+
+        # Extract citations and search results from an assistant message
+        #
+        # These fields are provided by some LLM providers (e.g., Perplexity's sonar models)
+        # when the model performs web search or cites sources.
+        #
+        # @param message [RubyLLM::Message] Assistant message with potential citations
+        # @return [Hash] Citations and search results (empty if not present)
+        def extract_citations_and_search(message)
+          return {} unless message.raw&.body
+
+          body = message.raw.body
+
+          # For streaming responses, body might be empty - check Fiber-local
+          # (set by LLMInstrumentationMiddleware with accumulated SSE chunks)
+          if body.is_a?(String) && body.empty?
+            fiber_body = Fiber[:last_sse_body]
+            body = fiber_body if fiber_body
+          end
+
+          return {} unless body
+
+          # Handle SSE streaming responses (body is a string starting with "data:")
+          if body.is_a?(String) && body.start_with?("data:")
+            # Parse the LAST SSE event which contains citations
+            last_data_line = body.split("\n").reverse.find { |l| l.start_with?("data:") && !l.include?("[DONE]") && !l.include?("message_stop") }
+            if last_data_line
+              body = JSON.parse(last_data_line.sub(/^data:\s*/, ""))
+            end
+          elsif body.is_a?(String)
+            # Regular JSON string response
+            body = JSON.parse(body)
+          end
+
+          # Handle Faraday::Response objects (has .body method)
+          body = body.body if body.respond_to?(:body) && !body.is_a?(Hash)
+
+          return {} unless body.is_a?(Hash)
+
+          result = {}
+          result[:citations] = body["citations"] if body["citations"]
+          result[:search_results] = body["search_results"] if body["search_results"]
+          result
+        rescue StandardError => e
+          # Includes JSON::ParserError and other parsing errors
+          RubyLLM.logger.debug("SwarmSDK: Failed to extract citations: #{e.message}")
+          {}
+        end
+
         # Extract usage information from an assistant message
         #
         # @param message [RubyLLM::Message] Assistant message with usage data
@@ -202,6 +284,7 @@ module SwarmSDK
           return unless @chat.hook_executor
 
           usage_info = extract_usage_info(message)
+          citations_data = extract_citations_and_search(message)
 
           context = Hooks::Context.new(
             event: :agent_step,
@@ -213,9 +296,11 @@ module SwarmSDK
               tool_calls: format_tool_calls(message.tool_calls),
               finish_reason: "tool_calls",
               usage: usage_info,
+              citations: citations_data[:citations],
+              search_results: citations_data[:search_results],
               tool_executions: tool_executions.empty? ? nil : tool_executions,
               timestamp: Time.now.utc.iso8601,
-            },
+            }.compact,
           )
 
           agent_hooks = @chat.hook_agent_hooks[:agent_step] || []
@@ -238,6 +323,18 @@ module SwarmSDK
           return unless @chat.hook_executor
 
           usage_info = extract_usage_info(message)
+          citations_data = extract_citations_and_search(message)
+
+          # Format content with citations appended
+          content_with_citations = message.content
+          if citations_data[:citations] && !citations_data[:citations].empty?
+            formatted_citations = format_citations(citations_data[:citations])
+            content_with_citations = message.content + formatted_citations
+
+            # Also modify the original message for Result.content
+            message.content = content_with_citations
+
+          end
 
           # Use override if set (e.g., "finish_agent"), otherwise default to "stop"
           finish_reason = @finish_reason_override || "stop"
@@ -249,13 +346,15 @@ module SwarmSDK
             swarm: @chat.hook_swarm,
             metadata: {
               model: message.model_id,
-              content: message.content,
+              content: content_with_citations, # Content with citations appended
               tool_calls: nil, # Final response has no tool calls
               finish_reason: finish_reason,
               usage: usage_info,
+              citations: citations_data[:citations],
+              search_results: citations_data[:search_results],
               tool_executions: tool_executions.empty? ? nil : tool_executions,
               timestamp: Time.now.utc.iso8601,
-            },
+            }.compact,
           )
 
           agent_hooks = @chat.hook_agent_hooks[:agent_stop] || []

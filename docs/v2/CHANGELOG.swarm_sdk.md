@@ -5,9 +5,29 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [2.7.1] - 2025-12-12
+## [2.7.1] - 2025-12-13
 
 ### Added
+
+- **Citations and Search Results Support**: Automatic extraction and formatting for LLM responses with citations
+  - **Event fields**: `citations` (array of URLs) and `search_results` (array of objects) in `agent_stop` and `agent_step` events
+  - **Content formatting**: Citations automatically appended to response content as numbered markdown list:
+    ```markdown
+    Answer based on sources...
+
+    # Citations
+    - [1] https://www.ruby-lang.org/...
+    - [2] https://en.wikipedia.org/...
+    ```
+  - **Streaming support**: Citations chunk emitted with `chunk_type: "citations"` after content streaming completes
+  - **Provider support**: Works with any provider returning citations (Perplexity sonar, etc.)
+  - **Extraction logic**:
+    - Non-streaming: Extracts from `message.raw.body["citations"]`
+    - Streaming: Falls back to `Fiber[:last_sse_body]` set by middleware
+    - Handles Hash, String JSON, and SSE formats
+    - Graceful error handling (returns empty if extraction fails)
+  - **Files**: `lib/swarm_sdk/agent/chat_helpers/context_tracker.rb`, `lib/swarm_sdk/swarm/logging_callbacks.rb`
+  - **Tests**: 13 comprehensive tests, all passing (42 assertions)
 
 - **Comprehensive Streaming Test Suite**: 41 new tests validating streaming functionality with real SSE mocking
   - **SSE Response Fixtures** (`test/fixtures/sse_responses.rb`): Realistic Server-Sent Events fixtures

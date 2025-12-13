@@ -47,7 +47,7 @@ end
 
 **Critical Insight**: RubyLLM ALREADY retries certain errors at the connection level!
 
-**Location**: `~/src/github.com/crmne/ruby_llm/lib/ruby_llm/connection.rb:73-82`
+**Location**: `~/src/github.com/parruda/ruby_llm/lib/ruby_llm/connection.rb:73-82`
 
 **Auto-retried Status Codes**: 429, 500, 502, 503, 504, 529
 
@@ -69,7 +69,7 @@ end
 
 ## RubyLLM Error Class Hierarchy
 
-From research in `~/src/github.com/crmne/ruby_llm/lib/ruby_llm/error.rb`:
+From research in `~/src/github.com/parruda/ruby_llm/lib/ruby_llm/error.rb`:
 
 ### API Errors (inherit from `RubyLLM::Error`)
 
@@ -686,8 +686,8 @@ The implementation is **backward compatible** with configuration overrides, **we
 
 ## References
 
-- RubyLLM Error Handling: `~/src/github.com/crmne/ruby_llm/lib/ruby_llm/error.rb`
-- RubyLLM Connection Retry: `~/src/github.com/crmne/ruby_llm/lib/ruby_llm/connection.rb:73-82`
+- RubyLLM Error Handling: `~/src/github.com/parruda/ruby_llm/lib/ruby_llm/error.rb`
+- RubyLLM Connection Retry: `~/src/github.com/parruda/ruby_llm/lib/ruby_llm/connection.rb:73-82`
 - Current Retry Logic: `lib/swarm_sdk/agent/chat.rb:725-793`
 - Related: Decision 003 (MCP 400 Handling)
 

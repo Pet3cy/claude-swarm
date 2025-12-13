@@ -39,8 +39,6 @@ module SwarmSDK
         emit_request_event(env, start_time)
 
         # Wrap existing on_data to capture raw SSE chunks for streaming
-        # This allows us to capture the full streaming response for instrumentation
-        # Check if env.request exists and has on_data (only set for streaming requests)
         if env.request&.on_data
           original_on_data = env.request.on_data
           env.request.on_data = proc do |chunk, bytes, response_env|
@@ -63,6 +61,11 @@ module SwarmSDK
           else
             response_env.body
           end
+
+          # Store SSE body in Fiber-local for citation extraction
+          # This allows append_citations_to_content to access the full SSE body
+          # even though response.body is empty for streaming responses
+          Fiber[:last_sse_body] = raw_body if accumulated_raw_chunks.any?
 
           # Emit response event
           emit_response_event(response_env, start_time, end_time, duration, raw_body)

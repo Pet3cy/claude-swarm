@@ -13,10 +13,15 @@ module SwarmSDK
         #
         # @return [void]
         def inject_llm_instrumentation
+          puts "=== inject_llm_instrumentation called ===" if ENV["DEBUG_CITATIONS"]
           return unless @provider
+
+          puts "=== Has provider ===" if ENV["DEBUG_CITATIONS"]
 
           faraday_conn = @provider.connection&.connection
           return unless faraday_conn
+
+          puts "=== Has faraday connection ===" if ENV["DEBUG_CITATIONS"]
           return if @llm_instrumentation_injected
 
           provider_name = @provider.class.name.split("::").last.downcase
@@ -31,8 +36,10 @@ module SwarmSDK
 
           @llm_instrumentation_injected = true
 
+          puts "=== MIDDLEWARE INJECTED ===" if ENV["DEBUG_CITATIONS"]
           RubyLLM.logger.debug("SwarmSDK: Injected LLM instrumentation middleware for agent #{@agent_name}")
         rescue StandardError => e
+          puts "=== MIDDLEWARE INJECTION ERROR: #{e.message} ===" if ENV["DEBUG_CITATIONS"]
           LogStream.emit_error(e, source: "instrumentation", context: "inject_middleware", agent: @agent_name)
           RubyLLM.logger.debug("SwarmSDK: Failed to inject LLM instrumentation: #{e.message}")
         end

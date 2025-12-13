@@ -404,7 +404,7 @@ end
 - **SwarmSDK Documentation**: See `docs/v2/` for comprehensive guides
 - **SwarmMemory Documentation**: See `docs/memory/` for memory system details
 - **SwarmCLI Documentation**: See `docs/cli/` for CLI usage and configuration
-- **RubyLLM Documentation**: ~/src/github.com/crmne/ruby_llm
+- **RubyLLM Documentation**: ~/src/github.com/parruda/ruby_llm
 - **Async Documentation**: ~/src/github.com/socketry/async
 
 ## Notes for Claude Code
