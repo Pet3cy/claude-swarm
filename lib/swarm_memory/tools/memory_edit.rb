@@ -6,7 +6,8 @@ module SwarmMemory
     #
     # Performs exact string replacements in memory content.
     # Each agent has its own isolated memory storage.
-    class MemoryEdit < RubyLLM::Tool
+    class MemoryEdit < SwarmSDK::Tools::Base
+      removable false # Memory tools are always available
       description <<~DESC
         Perform exact string replacements in memory entries (works like Edit tool but for memory content).
 

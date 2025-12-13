@@ -6,7 +6,8 @@ module SwarmMemory
     #
     # Provides defragmentation operations to maintain memory quality.
     # Each agent has its own isolated memory storage.
-    class MemoryDefrag < RubyLLM::Tool
+    class MemoryDefrag < SwarmSDK::Tools::Base
+      removable false # Memory tools are always available
       description <<~DESC
         Analyze and optimize your memory storage for better precision, recall, and organization.
 

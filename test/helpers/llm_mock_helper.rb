@@ -85,6 +85,39 @@ module LLMMockHelper
       .to_return(responses.map { |r| { status: 200, body: r.to_json, headers: { "Content-Type" => "application/json" } } })
   end
 
+  # Stub streaming LLM request with SSE (Server-Sent Events) response
+  #
+  # This enables REAL streaming tests - RubyLLM's streaming callbacks will fire!
+  #
+  # @param content_chunks [Array<String>] Content chunks to stream
+  # @param model [String] Model ID (default: "gpt-4")
+  # @param url_pattern [Regexp, String] URL pattern to match
+  # @param provider [Symbol] Provider type (:openai or :anthropic)
+  # @return [WebMock::RequestStub] Stubbed request
+  #
+  # @example Simple content streaming
+  #   stub_streaming_llm(["Hello", " world", "!"])
+  #
+  # @example With custom model
+  #   stub_streaming_llm(["Test"], model: "gpt-4o", provider: :openai)
+  def stub_streaming_llm(content_chunks, model: "gpt-4", url_pattern: nil, provider: :openai)
+    url_pattern ||= %r{https?://.*/(v1/)?chat/completions}
+
+    # Build SSE response using fixtures
+    sse_body = Fixtures::SSEResponses.simple_content_stream(content_chunks, model: model)
+
+    WebMock.stub_request(:post, url_pattern)
+      .to_return(
+        status: 200,
+        body: sse_body,
+        headers: {
+          "Content-Type" => "text/event-stream",
+          "Cache-Control" => "no-cache",
+          "Connection" => "keep-alive",
+        },
+      )
+  end
+
   # Stub LLM error response
   #
   # @param error_code [String] OpenAI error code (e.g., "rate_limit_exceeded")

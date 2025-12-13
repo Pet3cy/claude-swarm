@@ -7,7 +7,7 @@ module SwarmSDK
     # Uses exact string matching to find and replace content.
     # Requires unique matches and proper Read tool usage beforehand.
     # Enforces read-before-edit rule.
-    class Edit < RubyLLM::Tool
+    class Edit < Base
       include PathResolver
 
       # Factory pattern: declare what parameters this tool needs for instantiation

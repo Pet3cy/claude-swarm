@@ -35,6 +35,7 @@ module SwarmSDK
         @headers = nil
         @coding_agent = nil
         @disable_default_tools = nil
+        @streaming = nil
       end
 
       # Set model for all agents
@@ -89,6 +90,13 @@ module SwarmSDK
       #   - Array of symbols: Disable specific tools (e.g., [:Think, :TodoWrite])
       def disable_default_tools(value)
         @disable_default_tools = value
+      end
+
+      # Enable or disable streaming for all agents
+      #
+      # @param value [Boolean] If true, enables streaming; if false, disables it
+      def streaming(value)
+        @streaming = value
       end
 
       # Add tools that all agents will have
@@ -165,6 +173,7 @@ module SwarmSDK
           headers: @headers,
           coding_agent: @coding_agent,
           disable_default_tools: @disable_default_tools,
+          streaming: @streaming,
           tools: @tools_list,
           permissions: @permissions_config,
         }.compact

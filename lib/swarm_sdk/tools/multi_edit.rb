@@ -8,7 +8,7 @@ module SwarmSDK
     # Each edit sees the result of all previous edits, allowing for
     # coordinated multi-step transformations.
     # Enforces read-before-edit rule.
-    class MultiEdit < RubyLLM::Tool
+    class MultiEdit < Base
       include PathResolver
 
       # Factory pattern: declare what parameters this tool needs for instantiation

@@ -5,6 +5,67 @@ All notable changes to SwarmMemory will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2025-12-11
+
+### Added
+
+- **Plan 025 Integration**: SwarmMemory now integrates with lazy tool activation architecture
+  - **SkillState Class**: New `lib/swarm_memory/skill_state.rb` - Immutable skill state representation
+    - Encapsulates skill file path, tools, and permissions
+    - Provides `restricts_tools?`, `allows_tool?`, `permissions_for()` methods
+    - Frozen/immutable to prevent accidental mutations
+  - **Skills Can Control All Tool Types**: Skills can now list delegation and MCP tools
+    ```yaml
+    ---
+    type: skill
+    tools: [Read, Edit, WorkWithBackend, SearchCode]  # All tool types!
+    ---
+    ```
+  - **SDK Plugin Updated**: Uses SwarmSDK::Agent::ToolRegistry for tool management
+  - **Test Coverage**: Added `test/swarm_memory/skill_state_test.rb` (17 tests, all passing)
+
+### Changed
+
+- **ALL Memory Tools**: Now inherit from `SwarmSDK::Tools::Base` with `removable false`
+  - MemoryRead, MemoryWrite, MemoryEdit, MemoryDelete, MemoryGlob, MemoryGrep, MemorySearch, MemoryDefrag
+  - LoadSkill marked `removable false`
+  - Ensures memory tools always available regardless of skill toolset
+
+- **LoadSkill Tool**: Completely rewritten for Plan 025 (80% code reduction!)
+  - **Before**: 291 lines with complex tool swapping logic
+  - **After**: 60 lines with simple validation and skill state creation
+  - No longer swaps tools directly - creates SkillState and lets registry handle activation
+  - Activates tools only if skill restricts them (tools: nil or [] = keep unchanged)
+  - **Files**: `lib/swarm_memory/tools/load_skill.rb`
+
+- **SDK Plugin**: Updated `on_agent_initialized` to use tool_registry.register()
+  - Registers tools in registry instead of calling `agent.add_tool()`
+  - Unregisters mode-filtered tools using `agent.tool_registry.unregister()`
+  - No longer calls `mark_tools_immutable()` (tools declare it themselves)
+  - **Files**: `lib/swarm_memory/integration/sdk_plugin.rb`
+
+### Removed
+
+- **`memory.loadskill_preserve_delegation` Configuration**: Removed from DSL and YAML support
+  - **Migration**: Remove from configs, list delegation tools explicitly in skills
+  - Delegation tools are no longer auto-preserved when loading skills
+  - Skills must explicitly list delegation tools in their `tools:` array
+  - **Files**: `lib/swarm_memory/dsl/memory_config.rb`, `lib/swarm_memory/integration/sdk_plugin.rb`
+  - **Tests Deleted**: 6 delegation preservation tests, 7 config tests (13 total)
+
+- **`immutable_tools_for_mode()` Method**: Removed from SDK plugin
+  - Tools now declare removability via `removable false` in class
+
+### Fixed
+
+- **Skill Tool Validation**: LoadSkill now validates against tool registry
+  - Better error messages listing available tools when validation fails
+  - Prevents loading skills that require unavailable tools
+
+### Dependencies
+
+- Updated `swarm_sdk` to `~> 2.7`
+
 ## [2.2.7] - 2025-12-10
 
 ### Dependencies

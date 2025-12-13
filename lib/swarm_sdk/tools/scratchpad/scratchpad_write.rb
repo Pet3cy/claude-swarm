@@ -8,7 +8,7 @@ module SwarmSDK
       # Stores content in volatile, shared storage for temporary communication.
       # All agents in the swarm share the same scratchpad.
       # Data is lost when the process ends (not persisted).
-      class ScratchpadWrite < RubyLLM::Tool
+      class ScratchpadWrite < Base
         define_method(:name) { "ScratchpadWrite" }
 
         description <<~DESC

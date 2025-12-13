@@ -13,7 +13,8 @@ module SwarmMemory
     # - Have type: 'skill' in metadata
     # - Include tools array in metadata (optional)
     # - Include permissions hash in metadata (optional)
-    class LoadSkill < RubyLLM::Tool
+    class LoadSkill < SwarmSDK::Tools::Base
+      removable false # LoadSkill is always available
       description <<~DESC
         Load a skill from memory and dynamically adapt your toolset to execute it.
 
@@ -127,33 +128,20 @@ module SwarmMemory
         desc: "Path to skill - MUST start with 'skill/' (one of 4 fixed memory categories). Examples: 'skill/debugging/api-errors.md', 'skill/meta/deep-learning.md'",
         required: true
 
-      # Initialize with all context needed for tool swapping
+      # Initialize with storage and chat context
       #
       # @param storage [Core::Storage] Memory storage
       # @param agent_name [Symbol] Agent identifier
       # @param chat [SwarmSDK::Agent::Chat] The agent's chat instance
-      # @param tool_configurator [SwarmSDK::ToolConfigurator] For creating tools
-      # @param agent_definition [SwarmSDK::Agent::Definition] For permissions
-      def initialize(storage:, agent_name:, chat:, tool_configurator:, agent_definition:)
+      # @param tool_configurator [SwarmSDK::ToolConfigurator] For creating tools (unused in Plan 025)
+      # @param agent_definition [SwarmSDK::Agent::Definition] For permissions (unused in Plan 025)
+      def initialize(storage:, agent_name:, chat:, tool_configurator: nil, agent_definition: nil)
         super()
         @storage = storage
         @agent_name = agent_name
         @chat = chat
-        @tool_configurator = tool_configurator
-        @agent_definition = agent_definition
-
-        # Mark memory tools and LoadSkill as immutable
-        # This ensures they won't be removed during skill swapping
-        @chat.mark_tools_immutable(
-          "MemoryWrite",
-          "MemoryRead",
-          "MemoryEdit",
-          "MemoryDelete",
-          "MemoryGlob",
-          "MemoryGrep",
-          "MemoryDefrag",
-          "LoadSkill",
-        )
+        # NOTE: tool_configurator and agent_definition kept for API compatibility
+        # but unused in Plan 025 (tools come from registry, not recreation)
       end
 
       # Override name to return simple "LoadSkill"
@@ -161,7 +149,7 @@ module SwarmMemory
         "LoadSkill"
       end
 
-      # Execute the tool
+      # Execute the tool (Plan 025: Simplified - no tool swapping)
       #
       # @param file_path [String] Path to skill in memory
       # @return [String] Skill content with line numbers, or error message
@@ -184,30 +172,42 @@ module SwarmMemory
           return validation_error("memory://#{file_path} is not a skill (type: #{type})")
         end
 
-        # 4. Extract tool requirements
+        # 4. Extract tool requirements and permissions
         required_tools = entry.metadata["tools"]
         permissions = entry.metadata["permissions"] || {}
 
-        # 5. Validate and swap tools (only if tools are specified)
+        # 5. Validate tools exist in registry (only if tools are specified and non-empty)
         if required_tools && !required_tools.empty?
           begin
-            swap_tools(required_tools, permissions)
+            validate_skill_tools(required_tools)
           rescue ArgumentError => e
             return validation_error(e.message)
           end
         end
-        # If no tools specified (nil or []), keep current tools (no swap)
 
-        # 6. Mark skill as loaded
-        @chat.mark_skill_loaded(file_path)
+        # 6. Create and set skill state
+        # Note: tools: nil or tools: [] both mean "no restriction" (keep all tools)
+        skill_state = SwarmMemory::SkillState.new(
+          file_path: file_path,
+          tools: required_tools, # May be nil or [] (no restriction)
+          permissions: permissions,
+        )
+        @chat.load_skill_state(skill_state)
 
-        # 7. Return content with confirmation message
+        # 7. Activate tools if skill restricts them
+        # If no restriction (nil or []), tools remain unchanged
+        if skill_state.restricts_tools?
+          @chat.activate_tools_for_prompt
+        end
+        # Otherwise, tools stay as-is (no swap)
+
+        # 8. Return content with confirmation message
         title = entry.title || "Untitled Skill"
         result = "Loaded skill: #{title}\n\n"
         result += format_with_line_numbers(entry.content)
 
-        # 8. Add system reminder if tools were swapped
-        if required_tools && !required_tools.empty?
+        # 9. Add system reminder if tools were restricted
+        if skill_state.restricts_tools?
           result += "\n\n"
           result += build_toolset_update_reminder(required_tools)
         end
@@ -217,73 +217,44 @@ module SwarmMemory
 
       private
 
-      # Build system reminder for toolset updates
+      # Validate tools exist in registry (Plan 025)
       #
-      # @param new_tools [Array<String>] Tools that were added
+      # @param required_tools [Array<String>] Tools needed by the skill
+      # @raise [ArgumentError] If any tool is not available
+      # @return [void]
+      def validate_skill_tools(required_tools)
+        required_tools.each do |tool_name|
+          next if @chat.tool_registry.has_tool?(tool_name)
+
+          available = @chat.tool_registry.tool_names.join(", ")
+          raise ArgumentError,
+            "Skill requires tool '#{tool_name}' but it's not available for this agent. " \
+              "Available tools: #{available}"
+        end
+      end
+
+      # Build system reminder for toolset updates (Plan 025)
+      #
+      # @param new_tools [Array<String>] Tools that were loaded
       # @return [String] System reminder message
       def build_toolset_update_reminder(new_tools)
-        # Get current tool list from chat
-        # Handle both real Chat (hash) and MockChat (array)
-        tools_collection = @chat.tools
-        current_tools = if tools_collection.is_a?(Hash)
-          tools_collection.values.map(&:name).sort
-        else
-          tools_collection.map(&:name).sort
-        end
+        # Get non-removable tools that are always included
+        non_removable = @chat.tool_registry.non_removable_tool_names.sort
 
         reminder = "<system-reminder>\n"
-        reminder += "Your available tools have been updated.\n\n"
-        reminder += "New tools loaded from skill:\n"
+        reminder += "Your available tools have been updated by loading this skill.\n\n"
+        reminder += "Tools specified by skill:\n"
         new_tools.each do |tool_name|
           reminder += "  - #{tool_name}\n"
         end
-        reminder += "\nYour complete toolset is now:\n"
-        current_tools.each do |tool_name|
+        reminder += "\nNon-removable tools (always available):\n"
+        non_removable.each do |tool_name|
           reminder += "  - #{tool_name}\n"
         end
-        reminder += "\nOnly use tools from this list. Do not attempt to use tools that are not listed here.\n"
+        reminder += "\nOnly use tools from these lists. Other tools have been deactivated for this skill.\n"
         reminder += "</system-reminder>"
 
         reminder
-      end
-
-      # Swap agent tools to match skill requirements
-      #
-      # @param required_tools [Array<String>] Tools needed by the skill
-      # @param permissions [Hash] Tool permissions from skill metadata
-      # @return [void]
-      # @raise [ArgumentError] If validation fails
-      def swap_tools(required_tools, permissions)
-        # Future: Could validate tool availability against agent's configured tools
-        # For now, all tools in SwarmSDK are available (unless bypassed by permissions)
-
-        # Remove all mutable tools (keeps immutable tools)
-        @chat.remove_mutable_tools
-
-        # Add required tools from skill
-        required_tools.each do |tool_name|
-          tool_sym = tool_name.to_sym
-
-          # Get permissions for this tool (skill overrides agent permissions)
-          tool_permissions = permissions[tool_name] || permissions[tool_sym.to_s]
-
-          # Create tool instance
-          tool_instance = @tool_configurator.create_tool_instance(
-            tool_sym,
-            @agent_name,
-            @agent_definition.directory,
-          )
-
-          # Wrap with permissions (unless bypassed)
-          tool_instance = @tool_configurator.wrap_tool_with_permissions(
-            tool_instance,
-            tool_permissions,
-            @agent_definition,
-          )
-
-          # Add to chat
-          @chat.add_tool(tool_instance)
-        end
       end
 
       # Format validation error message

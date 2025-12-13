@@ -5,6 +5,134 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2025-12-11
+
+### Added
+
+- **LLM Response Streaming**: Real-time content delivery with intelligent chunk type detection
+  - **Enabled by default**: `streaming: true` prevents timeout errors on long responses
+  - **Per-agent configuration**: Override via YAML (`streaming: false`) or DSL (`streaming false`)
+  - **Global configuration**: `SwarmSDK.config.streaming = false` or `SWARM_SDK_STREAMING=false`
+  - **New `content_chunk` event**: Emitted for each streaming chunk with enhanced metadata
+    - `chunk_type`: `"content"` (text), `"tool_call"` (tool invocation), or `"separator"` (transition marker)
+    - `content`: Text content (nil for tool_call chunks)
+    - `tool_calls`: Partial tool call data (nil for content chunks) - **arguments are string fragments!**
+    - `model`: Model identifier
+    - Auto-injected: `execution_id`, `swarm_id`, `parent_swarm_id`, `timestamp`
+  - **Transition detection**: Automatic `separator` event when content chunks switch to tool_call chunks
+    - Helps UI distinguish "thinking" text from tool execution
+    - Only fires for providers that emit content before tool calls (Anthropic, DeepSeek, Gemini)
+    - OpenAI jumps directly to tool_calls, no separator emitted
+  - **API compatibility**: `ask()` still returns complete `RubyLLM::Message` after streaming
+  - **Subscription example**:
+    ```ruby
+    LogCollector.subscribe(filter: { type: "content_chunk" }) do |event|
+      case event[:chunk_type]
+      when "content"
+        print event[:content]
+      when "separator"
+        puts "\n" # Visual break between thinking and tools
+      when "tool_call"
+        puts "🔧 #{event[:tool_calls].values.first[:name]}"
+      end
+    end
+    ```
+  - **YAML configuration**:
+    ```yaml
+    agents:
+      backend:
+        model: claude-sonnet-4
+        streaming: true  # Enable (default)
+      fast_agent:
+        model: gpt-4o-mini
+        streaming: false  # Disable for fast models
+    ```
+  - **Files**: `lib/swarm_sdk/agent/chat.rb`, `lib/swarm_sdk/agent/definition.rb`, `lib/swarm_sdk/agent/builder.rb`, `lib/swarm_sdk/config.rb`, `lib/swarm_sdk/configuration/translator.rb`, `lib/swarm_sdk/agent/llm_instrumentation_middleware.rb`
+  - **Tests**: All 1969 tests pass with streaming disabled in test suite (WebMock doesn't support SSE)
+
+### Changed
+
+- **`llm_api_response` event enhanced for streaming**:
+  - New `streaming: true|false` field indicates response type
+  - `status`: HTTP status code now included
+  - `body`: Contains full raw SSE stream for streaming responses (all `data:` lines)
+  - `body`: Contains JSON response for non-streaming responses (unchanged)
+  - Usage/model extracted from last SSE event for streaming responses
+  - Middleware wraps `on_data` callback to capture raw chunks before RubyLLM processes them
+
+### Fixed
+
+- **Ephemeral content cleanup on streaming failure**: Now uses `begin/ensure` block
+  - **Issue**: Ephemeral content (system reminders) could leak if streaming failed and retries exhausted
+  - **Fix**: Moved `clear_ephemeral` to `ensure` block in `setup_llm_request_hook`
+  - **Impact**: Prevents memory leaks and stale content in subsequent requests
+  - **Benefit**: Improves reliability regardless of streaming (general bug fix)
+  - **Location**: `lib/swarm_sdk/agent/chat.rb:789-799`
+
+### Notes
+
+- **Streaming with WebMock**: Tests disable streaming via `SwarmSDK.config.streaming = false` because WebMock returns JSON, not SSE
+- **Chunk type mutually exclusive**: Content and tool_calls never appear in same chunk
+- **Partial tool call arguments**: `chunk.tool_calls` arguments are raw string fragments during streaming - use `tool_call` event (emitted after streaming completes) for complete parsed data
+- **Timeout prevention**: Main benefit of streaming is keeping HTTP connection alive during long responses
+- **Known behavior**: Retry may emit duplicate `content_chunk` events (final Message is always correct)
+
+- **Plan 025: Lazy Tool Activation Architecture** - Revolutionary redesign enabling skills to control ALL tool types
+  - **Tool Registry System**: Per-agent registry with lazy activation before each LLM request
+  - **BaseTool Class**: New base class with `removable` DSL attribute for declarative tool control
+  - **ToolRegistry**: Registry-based tool management with source tracking (builtin, delegation, MCP, plugin)
+  - **MCP Boot Optimization**: Skip tools/list RPC when tools specified (~300-500ms faster per server)
+  - **Symbol Key Support**: `chat.tools[:ToolName]` and `chat.tools["ToolName"]` both work via SymbolKeyHash wrapper
+  - **6-Pass Initialization**: Added Pass 6 for tool activation after all plugins registered
+  - **Files Added**:
+    - `lib/swarm_sdk/tools/base.rb` - Base class with removable DSL
+    - `lib/swarm_sdk/agent/tool_registry.rb` - Per-agent tool registry
+    - `lib/swarm_sdk/tools/mcp_tool_stub.rb` - Lazy MCP schema loading
+    - `test/swarm_sdk/tools/base_test.rb`
+    - `test/swarm_sdk/agent/tool_registry_test.rb`
+    - `test/swarm_sdk/tools/mcp_tool_stub_test.rb`
+
+- **MCP Server `tools:` Parameter**: Optional tool filtering for faster boot and controlled exposure
+  ```yaml
+  mcp_servers:
+    - name: codebase
+      tools: [search_code, list_files]  # Instant boot, lazy schema
+  ```
+
+### Changed
+
+- **ALL SDK Tools**: Now inherit from `SwarmSDK::Tools::Base` instead of `RubyLLM::Tool`
+  - Think, Clock, TodoWrite marked `removable false` (always available)
+  - Read, Write, Edit, Bash, Grep, Glob, WebFetch, Delegate remain removable
+  - Scratchpad tools (ScratchpadWrite/Read/List) remain removable
+
+- **Delegation Tool Names**: Now use proper PascalCase for multi-word agent names
+  - `slack_agent` → `WorkWithSlackAgent` (was `WorkWithSlack_agent`)
+  - `web_scraper` → `WorkWithWebScraper` (was `WorkWithWeb_scraper`)
+  - Single-word names unchanged: `backend` → `WorkWithBackend`
+
+- **Tool Activation**: Moved to `around_llm_request` hook (before each LLM request)
+  - Ensures tools match current skill state
+  - Critical: RubyLLM requires symbol keys for tool lookup
+
+- **ToolConfigurator**: Updated to register tools in registry instead of direct `add_tool()`
+  - Tracks tool source (builtin, delegation, MCP, plugin)
+  - Stores base_instance for skill permission override
+
+- **AgentInitializer**: Updated to 6-pass initialization
+  - Pass 6 activates tools after all plugins have registered
+  - Ensures LoadSkill tool is available when activation happens
+
+### Removed
+
+- **`chat.mark_tools_immutable(*tool_names)`**: Tools now declare `removable false` themselves
+- **`chat.remove_mutable_tools()`**: Use `chat.clear_skill()` instead
+
+### Fixed
+
+- **Symbol Key Compatibility**: Tools now stored with symbol keys as required by RubyLLM
+- **Tool Execution**: Tool instances properly activated before LLM requests
+- **Event Emission**: tool_result events now fire correctly
 
 ## [2.6.2] - 2025-12-10
 

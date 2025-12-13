@@ -6,7 +6,8 @@ module SwarmMemory
     #
     # Stores content and metadata in persistent, per-agent memory storage.
     # Each agent has its own isolated memory storage that persists across sessions.
-    class MemoryWrite < RubyLLM::Tool
+    class MemoryWrite < SwarmSDK::Tools::Base
+      removable false # Memory tools are always available
       description <<~DESC
         Store content in persistent memory with structured metadata for semantic search and retrieval.
 

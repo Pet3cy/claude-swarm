@@ -788,6 +788,68 @@ Plugin storage (like SwarmMemory) is always shared by base agent name:
 
 ---
 
+### streaming
+
+**Type:** Boolean (optional)
+**Default:** `true`
+**Description:** Enable or disable LLM response streaming for this agent.
+
+**Values:**
+- `true` (default): Enable streaming for real-time content delivery
+- `false`: Disable streaming (wait for complete response)
+
+**Global Default:** Inherits from `SWARM_SDK_STREAMING` environment variable or global config (default: `true`)
+
+**Purpose:**
+
+Streaming prevents HTTP timeout errors on long responses by keeping the connection alive. It also enables real-time UI updates via `content_chunk` events.
+
+**Example:**
+```yaml
+agents:
+  backend:
+    model: claude-sonnet-4
+    streaming: true  # Enable (default) - prevents timeouts
+
+  quick_agent:
+    model: gpt-4o-mini
+    streaming: false  # Disable for fast models
+```
+
+**Global Configuration:**
+```yaml
+# Disable streaming for all agents by default
+all_agents:
+  streaming: false
+
+agents:
+  backend:
+    streaming: true  # Override for specific agent
+```
+
+**Event Subscription:**
+
+When streaming is enabled, subscribe to `content_chunk` events:
+```ruby
+LogCollector.subscribe(filter: { type: "content_chunk" }) do |event|
+  case event[:chunk_type]
+  when "content"
+    print event[:content]
+  when "separator"
+    puts "\n"  # Visual break
+  when "tool_call"
+    puts "🔧 #{event[:tool_calls].values.first[:name]}"
+  end
+end
+```
+
+**Important:**
+- `chunk_type`: `"content"` (text), `"separator"` (transition), or `"tool_call"` (tool invocation)
+- Tool call arguments in chunks are **partial string fragments** - use `tool_call` event for complete data
+- See event_payload_structures.md for complete `content_chunk` event details
+
+---
+
 ### memory
 
 **Type:** Object (optional)

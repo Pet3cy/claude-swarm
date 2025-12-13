@@ -300,12 +300,13 @@ class SkillWorkflowTest < Minitest::Test
     load_skill.execute(file_path: "skill/minimal.md")
     tools_after_load = agent.tools.values.map(&:name).sort
 
-    # All tools should be kept (no swap when tools is [])
-    assert_equal(initial_tools, tools_after_load)
+    # tools: [] means "no restriction" - keep all tools unchanged
+    assert_equal(initial_tools, tools_after_load, "tools: [] should keep all tools unchanged")
 
     # Verify specific tools are still present
-    assert_includes(tools_after_load, "Read")
-    assert_includes(tools_after_load, "Write")
-    assert_includes(tools_after_load, "Edit")
+    assert_includes(tools_after_load, "Read", "Read should still be present")
+    assert_includes(tools_after_load, "Write", "Write should still be present")
+    assert_includes(tools_after_load, "Edit", "Edit should still be present")
+    assert_includes(tools_after_load, "MemoryRead", "MemoryRead should still be present")
   end
 end

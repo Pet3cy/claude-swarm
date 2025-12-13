@@ -6,7 +6,7 @@ module SwarmSDK
     #
     # Executes commands in a persistent shell session with timeout support.
     # Provides comprehensive guidance on proper usage patterns.
-    class Bash < RubyLLM::Tool
+    class Bash < Base
       # Factory pattern: declare what parameters this tool needs for instantiation
       class << self
         def creation_requirements

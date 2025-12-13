@@ -159,6 +159,37 @@ Settings for WebFetch tool's optional LLM content processing.
 
 ---
 
+## LLM Response Behavior
+
+Control how LLM API responses are delivered.
+
+| Environment Variable | Config Key | Description | Default |
+|---------------------|------------|-------------|---------|
+| `SWARM_SDK_STREAMING` | `streaming` | Enable real-time content delivery via streaming (prevents timeouts) | `true` |
+
+**Benefits of Streaming (enabled by default):**
+- Prevents HTTP timeout errors on long responses
+- Enables real-time UI updates via `content_chunk` events
+- Better UX (users see progress immediately)
+
+**When to Disable:**
+- Fast models where streaming overhead isn't needed
+- Batch processing without real-time requirements
+- Testing with WebMock (doesn't support SSE)
+
+**Per-Agent Override:**
+```ruby
+agent :backend do
+  streaming false  # Override global setting
+end
+```
+
+**Boolean Environment Variable Values:**
+- True: `true`, `yes`, `1`, `on`, `enabled`
+- False: `false`, `no`, `0`, `off`, `disabled`
+
+---
+
 ## Security Settings
 
 Security-related configuration options.

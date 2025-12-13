@@ -219,9 +219,17 @@ module SwarmSDK
       # @param permissions_config [Hash, nil] Permissions configuration
       # @param agent_definition [Agent::Definition] Agent definition
       # @return [void]
-      def wrap_and_add_tool(chat, tool_instance, permissions_config, agent_definition)
-        tool_instance = wrap_tool_with_permissions(tool_instance, permissions_config, agent_definition)
-        chat.add_tool(tool_instance)
+      def wrap_and_add_tool(chat, tool_instance, permissions_config, agent_definition, source: :builtin, metadata: {})
+        base_tool = tool_instance # Keep reference to unwrapped tool
+        wrapped_tool = wrap_tool_with_permissions(tool_instance, permissions_config, agent_definition)
+
+        # Register in tool registry (Plan 025)
+        chat.tool_registry.register(
+          wrapped_tool,
+          base_tool: base_tool,
+          source: source,
+          metadata: metadata.merge(permissions: permissions_config),
+        )
       end
 
       # Resolve permissions for a default/plugin tool
@@ -301,7 +309,14 @@ module SwarmSDK
 
             permissions_config = resolve_default_permissions(tool_name, agent_definition)
 
-            wrap_and_add_tool(chat, tool_instance, permissions_config, agent_definition)
+            wrap_and_add_tool(
+              chat,
+              tool_instance,
+              permissions_config,
+              agent_definition,
+              source: :plugin,
+              metadata: { plugin_name: plugin.class.name },
+            )
           end
         end
       end
@@ -364,7 +379,12 @@ module SwarmSDK
             delegating_chat: chat,
           )
 
-          chat.add_tool(tool)
+          # Register in tool registry (Plan 025)
+          chat.tool_registry.register(
+            tool,
+            source: :delegation,
+            metadata: { delegate_name: delegate_name },
+          )
         end
       end
     end

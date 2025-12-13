@@ -99,6 +99,7 @@ module SwarmSDK
           headers(all_agents_cfg[:headers]) if all_agents_cfg[:headers]
           coding_agent(all_agents_cfg[:coding_agent]) unless all_agents_cfg[:coding_agent].nil?
           disable_default_tools(all_agents_cfg[:disable_default_tools]) unless all_agents_cfg[:disable_default_tools].nil?
+          streaming(all_agents_cfg[:streaming]) unless all_agents_cfg[:streaming].nil?
 
           if all_agents_hks.any?
             all_agents_hks.each do |event, hook_specs|
@@ -162,6 +163,7 @@ module SwarmSDK
           bypass_permissions(config[:bypass_permissions]) if config[:bypass_permissions]
           disable_default_tools(config[:disable_default_tools]) unless config[:disable_default_tools].nil?
           shared_across_delegations(config[:shared_across_delegations]) unless config[:shared_across_delegations].nil?
+          streaming(config[:streaming]) unless config[:streaming].nil?
 
           if config[:tools]&.any?
             tool_names = config[:tools].map { |t| t.is_a?(Hash) ? t[:name] : t }

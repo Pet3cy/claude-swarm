@@ -22,16 +22,34 @@ require "minitest/autorun"
 require "webmock/minitest"
 
 require_relative "fixtures/swarm_configs"
+require_relative "fixtures/sse_responses"
 require_relative "helpers/test_helpers"
 require_relative "helpers/llm_mock_helper"
 
 # Configure WebMock to block all external HTTP requests except localhost
 WebMock.disable_net_connect!(allow_localhost: true)
 
+# Disable streaming by default in tests (WebMock doesn't support SSE)
+# Tests can explicitly enable streaming: true if they want to test streaming behavior
+SwarmSDK.configure do |config|
+  config.streaming = false
+end
+
 # Include LLM mocking helpers in all tests
 module Minitest
   class Test
     include LLMMockHelper
+
+    # Ensure streaming is disabled for all tests after each test's setup runs
+    # This is important because some tests call SwarmSDK.reset_config! in their setup
+    # which would otherwise reset streaming back to true (the production default)
+    #
+    # NOTE: This runs AFTER each individual test's setup method
+    def after_setup
+      super
+      # Disable streaming for tests (WebMock doesn't support SSE)
+      SwarmSDK.config.streaming = false
+    end
   end
 end
 

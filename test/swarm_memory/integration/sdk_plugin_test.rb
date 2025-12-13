@@ -416,6 +416,69 @@ module SwarmMemory
         end
       end
 
+      # translate_yaml_config tests for loadskill_preserve_delegation
+
+      def test_translate_yaml_config_with_loadskill_preserve_delegation_true
+        builder = MockBuilder.new
+        agent_config = {
+          memory: {
+            directory: "/tmp/memory",
+            loadskill_preserve_delegation: true,
+          },
+        }
+
+        @plugin.translate_yaml_config(builder, agent_config)
+
+        assert_equal("/tmp/memory", builder.memory_config[:directory])
+        assert(builder.memory_config[:loadskill_preserve_delegation])
+      end
+
+      def test_translate_yaml_config_with_loadskill_preserve_delegation_false
+        builder = MockBuilder.new
+        agent_config = {
+          memory: {
+            directory: "/tmp/memory",
+            loadskill_preserve_delegation: false,
+          },
+        }
+
+        @plugin.translate_yaml_config(builder, agent_config)
+
+        assert_equal("/tmp/memory", builder.memory_config[:directory])
+        refute(builder.memory_config[:loadskill_preserve_delegation])
+      end
+
+      def test_translate_yaml_config_with_string_key_loadskill_preserve_delegation
+        builder = MockBuilder.new
+        agent_config = {
+          memory: {
+            directory: "/tmp/memory",
+            "loadskill_preserve_delegation" => false, # String key from YAML
+          },
+        }
+
+        @plugin.translate_yaml_config(builder, agent_config)
+
+        assert_equal("/tmp/memory", builder.memory_config[:directory])
+        refute(builder.memory_config[:loadskill_preserve_delegation])
+      end
+
+      def test_translate_yaml_config_without_loadskill_preserve_delegation_omits_it
+        builder = MockBuilder.new
+        agent_config = {
+          memory: {
+            directory: "/tmp/memory",
+            # No loadskill_preserve_delegation specified - should use DSL default
+          },
+        }
+
+        @plugin.translate_yaml_config(builder, agent_config)
+
+        assert_equal("/tmp/memory", builder.memory_config[:directory])
+        # Key should NOT be present - will use MemoryConfig default
+        refute(builder.memory_config.key?(:loadskill_preserve_delegation))
+      end
+
       # serialize_config tests
 
       def test_serialize_config_with_memory
@@ -474,6 +537,10 @@ module SwarmMemory
             @config[:mode] = value
           end
 
+          def loadskill_preserve_delegation(value)
+            @config[:loadskill_preserve_delegation] = value
+          end
+
           def option(key, value)
             @config[key] = value
           end
@@ -507,9 +574,11 @@ module SwarmMemory
       end
 
       class MockAgent
-        def remove_tool(_name); end
-        def add_tool(_tool); end
-        def mark_tools_immutable(*_tool_names); end
+        attr_reader :tool_registry
+
+        def initialize
+          @tool_registry = SwarmSDK::Agent::ToolRegistry.new
+        end
       end
     end
   end

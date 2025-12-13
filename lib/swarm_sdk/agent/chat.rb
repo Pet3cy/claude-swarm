@@ -99,7 +99,8 @@ module SwarmSDK
         :context_manager,
         :agent_context,
         :last_todowrite_message_index,
-        :active_skill_path,
+        :tool_registry,
+        :skill_state,
         :provider # Extracted from RubyLLM::Chat for instrumentation (not publicly accessible)
 
       # Setters for snapshot/restore
@@ -134,6 +135,10 @@ module SwarmSDK
         # Turn timeout (external timeout for entire ask() call)
         @turn_timeout = definition[:turn_timeout]
 
+        # Streaming configuration
+        @streaming_enabled = definition[:streaming]
+        @last_chunk_type = nil # Track chunk type transitions
+
         # Context manager for ephemeral messages
         @context_manager = ContextManager.new
 
@@ -153,11 +158,15 @@ module SwarmSDK
         # Context tracker (created after agent_context is set)
         @context_tracker = nil
 
-        # Track immutable tools
-        @immutable_tool_names = Set.new(["Think", "Clock", "TodoWrite"])
+        # Tool registry for lazy tool activation (Phase 3 - Plan 025)
+        @tool_registry = Agent::ToolRegistry.new
 
-        # Track active skill (only used if memory enabled)
-        @active_skill_path = nil
+        # Track loaded skill state (Phase 2 - Plan 025)
+        @skill_state = nil
+
+        # Tool activation dependencies (set by setup_tool_activation after initialization)
+        @tool_configurator = nil
+        @agent_definition = nil
 
         # Create internal RubyLLM::Chat instance
         @llm_chat = create_llm_chat(
@@ -233,11 +242,28 @@ module SwarmSDK
       # Use with caution - prefer has_tool?, tool_names, remove_tool for most cases.
       # This is provided for:
       # - Direct tool execution in tests
-      # - Advanced tool manipulation (remove_mutable_tools)
+      # - Advanced tool manipulation
       #
-      # @return [Hash] Tool name to tool instance mapping
+      # Returns a hash wrapper that supports both string and symbol keys for test convenience.
+      #
+      # @return [Hash] Tool name to tool instance mapping (supports symbol and string keys)
       def tools
-        @llm_chat.tools
+        # Return a fresh wrapper each time (since @llm_chat.tools may change)
+        SymbolKeyHash.new(@llm_chat.tools)
+      end
+
+      # Hash wrapper that supports both string and symbol keys
+      #
+      # This allows tests to use tools[:ToolName] or tools["ToolName"]
+      # while RubyLLM internally uses string keys.
+      class SymbolKeyHash < SimpleDelegator
+        def [](key)
+          __getobj__[key.to_s] || __getobj__[key.to_sym]
+        end
+
+        def key?(key)
+          __getobj__.key?(key.to_s) || __getobj__.key?(key.to_sym)
+        end
       end
 
       # Message introspection
@@ -341,6 +367,18 @@ module SwarmSDK
         inject_llm_instrumentation
       end
 
+      # Setup tool activation dependencies (Plan 025)
+      #
+      # Must be called after tool registration to enable permission wrapping during activation.
+      #
+      # @param tool_configurator [ToolConfigurator] Tool configuration helper
+      # @param agent_definition [Agent::Definition] Agent definition object
+      # @return [void]
+      def setup_tool_activation(tool_configurator:, agent_definition:)
+        @tool_configurator = tool_configurator
+        @agent_definition = agent_definition
+      end
+
       # Emit model lookup warning if one occurred during initialization
       #
       # @param agent_name [Symbol, String] The agent name for logging context
@@ -410,33 +448,33 @@ module SwarmSDK
         end
       end
 
-      # Mark tools as immutable (cannot be removed by dynamic tool swapping)
+      # Load skill state (called by LoadSkill tool)
       #
-      # @param tool_names [Array<String>] Tool names to mark as immutable
-      def mark_tools_immutable(*tool_names)
-        @immutable_tool_names.merge(tool_names.flatten.map(&:to_s))
+      # @param state [Object, nil] Skill state object (from SwarmMemory), or nil to clear
+      # @return [void]
+      def load_skill_state(state)
+        @skill_state = state
       end
 
-      # Remove all mutable tools (keeps immutable tools)
+      # Clear loaded skill (return to all tools)
       #
       # @return [void]
-      def remove_mutable_tools
-        mutable_tool_names = tools.keys.reject { |name| @immutable_tool_names.include?(name.to_s) }
-        mutable_tool_names.each { |name| tools.delete(name) }
-      end
-
-      # Mark skill as loaded (tracking for debugging/logging)
-      #
-      # @param file_path [String] Path to loaded skill
-      def mark_skill_loaded(file_path)
-        @active_skill_path = file_path
+      def clear_skill
+        @skill_state = nil
       end
 
       # Check if a skill is currently loaded
       #
       # @return [Boolean] True if a skill has been loaded
       def skill_loaded?
-        !@active_skill_path.nil?
+        !@skill_state.nil?
+      end
+
+      # Get active skill path (for backward compatibility)
+      #
+      # @return [String, nil] Path to loaded skill
+      def active_skill_path
+        @skill_state&.file_path
       end
 
       # Clear conversation history
@@ -445,6 +483,33 @@ module SwarmSDK
       def clear_conversation
         @llm_chat.reset_messages!
         @context_manager&.clear_ephemeral
+      end
+
+      # Activate tools for the current prompt (Plan 025: Lazy Tool Activation)
+      #
+      # Called before each LLM request to set active toolset based on skill state.
+      # Replaces @llm_chat.tools with active subset from registry.
+      #
+      # This is public so it can be called during initialization to populate tools.
+      #
+      # Logic:
+      # - If no skill loaded: ALL tools from registry
+      # - If skill restricts tools: skill's tools + non-removable tools
+      # - Skill permissions applied during activation (wrapping base_instance)
+      #
+      # @return [void]
+      def activate_tools_for_prompt
+        # Get active tools based on skill state
+        active = @tool_registry.active_tools(
+          skill_state: @skill_state,
+          tool_configurator: @tool_configurator,
+          agent_definition: @agent_definition,
+        )
+
+        # Replace RubyLLM::Chat tools with active subset
+        # CRITICAL: RubyLLM looks up tools by SYMBOL keys, must store with symbols!
+        @llm_chat.tools.clear
+        active.each { |name, instance| @llm_chat.tools[name.to_sym] = instance }
       end
 
       # --- Core Conversation Methods ---
@@ -613,7 +678,15 @@ module SwarmSDK
         response = execute_with_global_semaphore do
           catch(:finish_agent) do
             catch(:finish_swarm) do
-              @llm_chat.complete(**options)
+              if @streaming_enabled
+                # Reset chunk type tracking for new streaming request
+                @last_chunk_type = nil
+                @llm_chat.complete(**options) do |chunk|
+                  emit_content_chunk(chunk)
+                end
+              else
+                @llm_chat.complete(**options)
+              end
             end
           end
         end
@@ -703,25 +776,30 @@ module SwarmSDK
       # Setup around_llm_request hook for ephemeral message injection
       #
       # This hook intercepts all LLM API calls to:
+      # - Activate tools based on skill state (Plan 025: Lazy Tool Activation)
       # - Inject ephemeral content (system reminders) that shouldn't be persisted
       # - Clear ephemeral content after each LLM call
       # - Add retry logic for transient failures
       def setup_llm_request_hook
         @llm_chat.around_llm_request do |_messages, &send_request|
+          # Activate tools for this LLM request (Plan 025)
+          # This happens before each LLM request to ensure tools match current skill state
+          activate_tools_for_prompt
+
           # Make the actual LLM API call with retry logic
           # NOTE: prepare_for_llm must be called INSIDE the retry block so that
           # ephemeral content is recalculated after orphan tool call pruning
-          response = call_llm_with_retry do
-            # Inject ephemeral content fresh for each attempt
-            # Use @llm_chat.messages to get current state (may have been modified by pruning)
-            prepared_messages = @context_manager.prepare_for_llm(@llm_chat.messages)
-            send_request.call(prepared_messages)
+          begin
+            call_llm_with_retry do
+              # Inject ephemeral content fresh for each attempt
+              # Use @llm_chat.messages to get current state (may have been modified by pruning)
+              prepared_messages = @context_manager.prepare_for_llm(@llm_chat.messages)
+              send_request.call(prepared_messages)
+            end
+          ensure
+            # Always clear ephemeral content, even if streaming fails
+            @context_manager.clear_ephemeral
           end
-
-          # Clear ephemeral content after successful call
-          @context_manager.clear_ephemeral
-
-          response
         end
       end
 
@@ -1035,6 +1113,72 @@ module SwarmSDK
           status_code: error.respond_to?(:response) ? error.response&.status : nil,
           retryable: false,
         )
+      end
+
+      # Emit content_chunk event during streaming
+      #
+      # This method is called for each chunk received during streaming.
+      # It emits a content_chunk event with the chunk's content and metadata.
+      #
+      # Additionally detects transitions from content → tool_call chunks and emits
+      # a separator event to help UI layers distinguish "thinking" from tool execution.
+      #
+      # IMPORTANT: chunk.tool_calls contains PARTIAL data during streaming:
+      # - tool_call.id and tool_call.name are available once the tool call starts
+      # - tool_call.arguments are RAW STRING FRAGMENTS, not parsed JSON
+      # Users should use `tool_call` events (after streaming) for complete data.
+      #
+      # @param chunk [RubyLLM::Chunk] A streaming chunk from the LLM
+      # @return [void]
+      def emit_content_chunk(chunk)
+        # Determine chunk type using RubyLLM's tool_call? method
+        # Content and tool_calls are mutually exclusive in chunks
+        is_tool_call_chunk = chunk.tool_call?
+        has_content = !chunk.content.nil?
+
+        # Only emit if there's content or tool calls
+        return unless is_tool_call_chunk || has_content
+
+        # Detect transition from content chunks to tool_call chunks
+        # This happens when the LLM finishes "thinking" text and starts calling tools
+        current_chunk_type = is_tool_call_chunk ? "tool_call" : "content"
+        if @last_chunk_type == "content" && current_chunk_type == "tool_call"
+          # Emit separator event to signal end of thinking text
+          LogStream.emit(
+            type: "content_chunk",
+            agent: @agent_name,
+            chunk_type: "separator",
+            content: nil,
+            tool_calls: nil,
+            model: chunk.model_id,
+          )
+        end
+        @last_chunk_type = current_chunk_type
+
+        # Transform tool_calls to serializable format
+        # NOTE: arguments are partial strings during streaming!
+        tool_calls_data = if is_tool_call_chunk
+          chunk.tool_calls.transform_values do |tc|
+            {
+              id: tc.id,
+              name: tc.name,
+              arguments: tc.arguments, # PARTIAL string fragments!
+            }
+          end
+        end
+
+        LogStream.emit(
+          type: "content_chunk",
+          agent: @agent_name,
+          chunk_type: current_chunk_type,
+          content: chunk.content,
+          tool_calls: tool_calls_data,
+          model: chunk.model_id,
+        )
+      rescue StandardError => e
+        # Never interrupt streaming due to event emission failure
+        # LogCollector already isolates subscriber errors, but we're defensive here
+        RubyLLM.logger.error("SwarmSDK: Failed to emit content_chunk: #{e.message}")
       end
 
       # Recover from 400 Bad Request by pruning orphan tool calls

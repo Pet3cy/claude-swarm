@@ -6,7 +6,9 @@ module SwarmMemory
     #
     # Searches content stored in memory entries using regex patterns.
     # Each agent has its own isolated memory storage.
-    class MemoryGrep < RubyLLM::Tool
+    class MemoryGrep < SwarmSDK::Tools::Base
+      removable false  # Memory tools are always available
+
       include TitleLookup
 
       description <<~DESC

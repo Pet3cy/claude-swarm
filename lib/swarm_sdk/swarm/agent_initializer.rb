@@ -25,12 +25,13 @@ module SwarmSDK
 
       # Initialize all agents with their chat instances and tools
       #
-      # This implements a 5-pass algorithm:
+      # This implements a 6-pass algorithm:
       # 1. Create all Agent::Chat instances
       # 2. Register delegation tools (agents can call each other)
       # 3. Setup agent contexts for tracking
       # 4. Configure hook system
       # 5. Apply YAML hooks (if loaded from YAML)
+      # 6. Activate tools (Plan 025: populate @llm_chat.tools from registry after plugins)
       #
       # @return [Hash] agents hash { agent_name => Agent::Chat }
       def initialize_all
@@ -39,6 +40,7 @@ module SwarmSDK
         pass_3_setup_contexts
         pass_4_configure_hooks
         pass_5_apply_yaml_hooks
+        pass_6_activate_tools # Plan 025: Activate tools after all plugins registered
 
         @agents
       end
@@ -261,7 +263,12 @@ module SwarmSDK
           custom_tool_name: custom_tool_name,
         )
 
-        delegator_chat.add_tool(tool)
+        # Register in tool registry (Plan 025)
+        delegator_chat.tool_registry.register(
+          tool,
+          source: :delegation,
+          metadata: { delegate_name: swarm_name, delegation_type: :swarm },
+        )
       end
 
       # Wire delegation to a local agent
@@ -311,7 +318,15 @@ module SwarmSDK
           custom_tool_name: custom_tool_name,
         )
 
-        delegator_chat.add_tool(tool)
+        # Register in tool registry (Plan 025)
+        delegator_chat.tool_registry.register(
+          tool,
+          source: :delegation,
+          metadata: {
+            delegate_name: delegate_name_sym,
+            delegation_mode: delegate_definition.shared_across_delegations ? :shared : :isolated,
+          },
+        )
       end
 
       # Pass 3: Setup agent contexts
@@ -447,6 +462,22 @@ module SwarmSDK
         Hooks::Adapter.apply_agent_hooks(chat, agent_name, hooks, @swarm.name)
       end
 
+      # Pass 6: Activate tools after all plugins have registered (Plan 025)
+      #
+      # This must be the LAST pass because:
+      # - Plugins register tools in on_agent_initialized (e.g., LoadSkill from memory plugin)
+      # - Tools must be activated AFTER all registration is complete
+      # - This populates @llm_chat.tools from the registry
+      #
+      # @return [void]
+      def pass_6_activate_tools
+        # Activate tools for PRIMARY agents
+        @agents.each_value(&:activate_tools_for_prompt)
+
+        # Activate tools for DELEGATION instances
+        @swarm.delegation_instances.each_value(&:activate_tools_for_prompt)
+      end
+
       # Create Agent::Chat instance with rate limiting
       #
       # @param agent_name [Symbol] Agent name
@@ -475,6 +506,15 @@ module SwarmSDK
           mcp_configurator = McpConfigurator.new(@swarm)
           mcp_configurator.register_mcp_servers(chat, agent_definition.mcp_servers, agent_name: agent_name)
         end
+
+        # Setup tool activation dependencies (Plan 025)
+        chat.setup_tool_activation(
+          tool_configurator: tool_configurator,
+          agent_definition: agent_definition,
+        )
+
+        # NOTE: activate_tools_for_prompt is called in Pass 5 after all plugins
+        # have registered their tools (e.g., LoadSkill from memory plugin)
 
         chat
       end
@@ -517,8 +557,16 @@ module SwarmSDK
           )
         end
 
+        # Setup tool activation dependencies (Plan 025)
+        chat.setup_tool_activation(
+          tool_configurator: tool_configurator,
+          agent_definition: agent_definition,
+        )
+
         # Notify plugins (use instance_name, plugins extract base_name if needed)
         notify_plugins_agent_initialized(instance_name.to_sym, chat, agent_definition, tool_configurator)
+
+        # NOTE: activate_tools_for_prompt is called in Pass 6 after all plugins
 
         chat
       end
