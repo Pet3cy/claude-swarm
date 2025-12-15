@@ -125,8 +125,8 @@ module SwarmSDK
       # Verify full config is preserved
       assert_equal(
         [
-          { agent: :frontend, tool_name: "AskFrontendTeam" },
-          { agent: :backend, tool_name: nil },
+          { agent: :frontend, tool_name: "AskFrontendTeam", preserve_context: true },
+          { agent: :backend, tool_name: nil, preserve_context: true },
         ],
         hash[:delegates_to],
       )

@@ -325,16 +325,20 @@ module SwarmSDK
           delegation_config.flat_map do |item|
             case item
             when Symbol, String
-              # Simple format: :frontend → {agent: :frontend, tool_name: nil}
-              [{ agent: item.to_sym, tool_name: nil }]
+              # Simple format: :frontend → {agent: :frontend, tool_name: nil, preserve_context: true}
+              [{ agent: item.to_sym, tool_name: nil, preserve_context: true }]
             when Hash
               # Could be already normalized or hash format
               if item.key?(:agent)
-                # Already normalized: {agent: :frontend, tool_name: "Custom"}
-                [item]
+                # Already normalized: {agent: :frontend, tool_name: "Custom", preserve_context: false}
+                [{
+                  agent: item[:agent].to_sym,
+                  tool_name: item[:tool_name],
+                  preserve_context: item.fetch(:preserve_context, true),
+                }]
               else
                 # Hash format in array: {frontend: "AskFrontend"}
-                item.map { |agent, tool_name| { agent: agent.to_sym, tool_name: tool_name } }
+                item.map { |agent, tool_name| { agent: agent.to_sym, tool_name: tool_name, preserve_context: true } }
               end
             else
               raise ConfigurationError, "Invalid delegation config format: #{item.inspect}"
@@ -343,7 +347,7 @@ module SwarmSDK
         elsif delegation_config.is_a?(Hash)
           # Hash format: {frontend: "AskFrontend", backend: nil}
           delegation_config.map do |agent, tool_name|
-            { agent: agent.to_sym, tool_name: tool_name }
+            { agent: agent.to_sym, tool_name: tool_name, preserve_context: true }
           end
         else
           raise ConfigurationError, "delegates_to must be an Array or Hash, got #{delegation_config.class}"

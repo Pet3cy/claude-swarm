@@ -37,7 +37,7 @@ module SwarmSDK
         end
       end
 
-      attr_reader :delegate_name, :delegate_target, :tool_name
+      attr_reader :delegate_name, :delegate_target, :tool_name, :preserve_context
 
       # Initialize a delegation tool
       #
@@ -48,6 +48,7 @@ module SwarmSDK
       # @param swarm [Swarm] The swarm instance (provides hook_registry, delegation_call_stack, swarm_registry)
       # @param delegating_chat [Agent::Chat, nil] The chat instance of the agent doing the delegating (for accessing hooks)
       # @param custom_tool_name [String, nil] Optional custom tool name (overrides auto-generated name)
+      # @param preserve_context [Boolean] Whether to preserve conversation context between delegations (default: true)
       def initialize(
         delegate_name:,
         delegate_description:,
@@ -55,7 +56,8 @@ module SwarmSDK
         agent_name:,
         swarm:,
         delegating_chat: nil,
-        custom_tool_name: nil
+        custom_tool_name: nil,
+        preserve_context: true
       )
         super()
 
@@ -65,6 +67,7 @@ module SwarmSDK
         @agent_name = agent_name
         @swarm = swarm
         @delegating_chat = delegating_chat
+        @preserve_context = preserve_context
 
         # Use custom tool name if provided, otherwise generate using canonical method
         @tool_name = custom_tool_name || self.class.tool_name_for(delegate_name)
@@ -224,6 +227,9 @@ module SwarmSDK
         # Push delegate target onto call stack to track delegation chain
         call_stack.push(@delegate_target)
         begin
+          # Clear conversation if preserve_context is false
+          @delegate_chat.clear_conversation unless @preserve_context
+
           response = @delegate_chat.ask(message, source: "delegation")
           response.content
         ensure

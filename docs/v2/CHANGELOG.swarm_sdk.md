@@ -5,6 +5,33 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.3] - 2025-12-14
+
+### Added
+
+- **Delegation `preserve_context` Option**: Control whether delegated agents preserve conversation history between delegations
+  - **Default behavior (`true`)**: Delegated agent preserves conversation history across multiple delegations (existing behavior)
+  - **New option (`false`)**: Clears delegated agent's conversation before each delegation call
+  - **Use case**: Stateless delegation where each call should start fresh without prior context
+  - **DSL syntax**:
+    ```ruby
+    delegates_to :backend  # preserve_context: true (default)
+    delegates_to({ agent: :backend, preserve_context: false })
+    delegates_to :frontend, { agent: :backend, preserve_context: false, tool_name: "AskBackend" }
+    ```
+  - **YAML syntax**:
+    ```yaml
+    delegates_to:
+      - agent: backend
+        preserve_context: false
+      - agent: frontend
+        tool_name: AskFrontend
+      - database  # preserve_context: true (default)
+    ```
+  - **Backward compatible**: All existing delegation formats work unchanged with `preserve_context: true` default
+  - **Files**: `lib/swarm_sdk/agent/builder.rb`, `lib/swarm_sdk/agent/definition.rb`, `lib/swarm_sdk/tools/delegate.rb`, `lib/swarm_sdk/swarm/agent_initializer.rb`
+  - **Tests**: 9 comprehensive tests covering DSL, YAML, and tool behavior
+
 ## [2.7.2] - 2025-12-13
 
 ### Fixed

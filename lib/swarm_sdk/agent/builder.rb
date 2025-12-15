@@ -275,6 +275,10 @@ module SwarmSDK
       #                backend: "GetBackendHelp",
       #                :qa
       #
+      # @example With delegation options (preserve_context controls context persistence)
+      #   delegates_to :frontend,
+      #                { agent: :backend, tool_name: "AskBackend", preserve_context: false }
+      #
       # @param agent_names_and_options [Array<Symbol, Hash>] Agent names and/or hash with custom tool names
       # @return [void]
       def delegates_to(*agent_names_and_options)
@@ -282,11 +286,20 @@ module SwarmSDK
           case item
           when Symbol, String
             # Simple format: :frontend
-            @delegates_to << { agent: item.to_sym, tool_name: nil }
+            @delegates_to << { agent: item.to_sym, tool_name: nil, preserve_context: true }
           when Hash
-            # Hash format: { frontend: "AskFrontend", backend: nil }
-            item.each do |agent, tool_name|
-              @delegates_to << { agent: agent.to_sym, tool_name: tool_name }
+            if item.key?(:agent)
+              # Full config format: { agent: :backend, tool_name: "Custom", preserve_context: false }
+              @delegates_to << {
+                agent: item[:agent].to_sym,
+                tool_name: item[:tool_name],
+                preserve_context: item.fetch(:preserve_context, true),
+              }
+            else
+              # Hash format: { frontend: "AskFrontend", backend: nil }
+              item.each do |agent, tool_name|
+                @delegates_to << { agent: agent.to_sym, tool_name: tool_name, preserve_context: true }
+              end
             end
           else
             raise ConfigurationError, "delegates_to accepts Symbols or Hashes, got #{item.class}"

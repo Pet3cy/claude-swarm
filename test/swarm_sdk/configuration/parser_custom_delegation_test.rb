@@ -89,6 +89,63 @@ module SwarmSDK
         assert_nil(backend_config[:tool_name])
       end
 
+      def test_yaml_with_preserve_context_option
+        yaml = <<~YAML
+          version: 2
+          swarm:
+            name: "Preserve Context Test"
+            lead: coordinator
+            agents:
+              coordinator:
+                description: "Coordinator"
+                model: gpt-5-mini
+                system_prompt: "Coordinator"
+                delegates_to:
+                  - agent: backend
+                    preserve_context: false
+                  - agent: frontend
+                    tool_name: AskFrontend
+                  - frontend_readonly
+
+              frontend:
+                description: "Frontend"
+                model: gpt-5-mini
+                system_prompt: "Frontend"
+
+              frontend_readonly:
+                description: "Frontend readonly"
+                model: gpt-5-mini
+                system_prompt: "Frontend readonly"
+
+              backend:
+                description: "Backend"
+                model: gpt-5-mini
+                system_prompt: "Backend"
+        YAML
+
+        swarm = SwarmSDK.load(yaml)
+        coordinator_def = swarm.agent_definition(:coordinator)
+
+        # Verify preserve_context is parsed correctly
+        assert_equal(3, coordinator_def.delegation_configs.length)
+
+        backend_config = coordinator_def.delegation_configs.find { |c| c[:agent] == :backend }
+
+        refute(backend_config[:preserve_context])
+        assert_nil(backend_config[:tool_name])
+
+        frontend_config = coordinator_def.delegation_configs.find { |c| c[:agent] == :frontend }
+
+        assert(frontend_config[:preserve_context])
+        assert_equal("AskFrontend", frontend_config[:tool_name])
+
+        # Simple symbol format defaults to preserve_context: true
+        readonly_config = coordinator_def.delegation_configs.find { |c| c[:agent] == :frontend_readonly }
+
+        assert(readonly_config[:preserve_context])
+        assert_nil(readonly_config[:tool_name])
+      end
+
       def test_circular_dependency_detection_with_hash_format
         yaml = <<~YAML
           version: 2

@@ -246,7 +246,7 @@ module SwarmSDK
       assert_equal(agent_def.directory, hash[:directory])
       assert_equal([{ name: :Read, permissions: nil }], hash[:tools])
       # delegates_to now serializes full config to preserve custom tool names
-      assert_equal([{ agent: :backend, tool_name: nil }], hash[:delegates_to])
+      assert_equal([{ agent: :backend, tool_name: nil, preserve_context: true }], hash[:delegates_to])
       assert_equal([{ type: :stdio }], hash[:mcp_servers])
     end
 
