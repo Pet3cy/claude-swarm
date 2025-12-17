@@ -5,6 +5,37 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.4] - 2025-12-17
+
+### Added
+
+- **Delegation `reset_context` Parameter**: Dynamic per-call context reset for recovering from errors
+  - **New optional parameter**: `reset_context` (boolean, defaults to `false`) on delegation tool calls
+  - **Use case**: Recover from "prompt too long" errors or other 4XX errors by resetting child agent's conversation history
+  - **Description**: "Reset the agent's conversation history before sending the message. Use it to recover from 'prompt too long' errors or other 4XX errors."
+  - **Runtime override**: Takes precedence over `preserve_context` configuration when explicitly set to `true`
+  - **Backward compatible**: Omitting parameter maintains existing behavior (respects `preserve_context` setting)
+  - **Parent agent pattern**: Parent receives error message explaining context overflow, can reset and retry with adjusted instructions
+  - **Usage example**:
+    ```ruby
+    # First attempt hits context limit
+    WorkWithBackend(message: "Analyze all files")
+    # Returns: "This agent exceeded its context window limit..."
+
+    # Parent resets and retries with better guidance
+    WorkWithBackend(
+      message: "Analyze files, but use fewer parallel tool calls",
+      reset_context: true
+    )
+    ```
+  - **Logic**:
+    - `reset_context: true` → Always clears conversation (explicit reset)
+    - `reset_context: false` + `preserve_context: true` → Preserves conversation (default)
+    - `reset_context: false` + `preserve_context: false` → Clears conversation (standard behavior)
+  - **Supports both delegation types**: Works with agent-to-agent and swarm-to-swarm delegation
+  - **Files**: `lib/swarm_sdk/tools/delegate.rb` (updated `execute`, `delegate_to_agent`, `delegate_to_swarm` methods)
+  - **Tests**: 8 comprehensive tests covering parameter schema, behavior with various `preserve_context` settings, multiple resets, and backward compatibility
+
 ## [2.7.3] - 2025-12-14
 
 ### Added

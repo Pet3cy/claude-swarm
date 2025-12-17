@@ -84,6 +84,11 @@ module SwarmSDK
         desc: "Message to send to the agent - can be a work request, question, or collaboration message",
         required: true
 
+      param :reset_context,
+        type: "boolean",
+        desc: "Reset the agent's conversation history before sending the message. Use it to recover from 'prompt too long' errors or other 4XX errors.",
+        required: false
+
       # Override name to return custom delegation tool name
       def name
         @tool_name
@@ -92,8 +97,9 @@ module SwarmSDK
       # Execute delegation with pre/post hooks
       #
       # @param message [String] Message to send to the agent
+      # @param reset_context [Boolean] Whether to reset the agent's conversation history before delegation
       # @return [String] Result from delegate agent or error message
-      def execute(message:)
+      def execute(message:, reset_context: false)
         # Access swarm infrastructure
         call_stack = @swarm.delegation_call_stack
         hook_registry = @swarm.hook_registry
@@ -140,10 +146,10 @@ module SwarmSDK
         # Determine delegation type and proceed
         delegation_result = if @delegate_chat
           # Delegate to agent
-          delegate_to_agent(message, call_stack)
+          delegate_to_agent(message, call_stack, reset_context: reset_context)
         elsif swarm_registry&.registered?(@delegate_target)
           # Delegate to registered swarm
-          delegate_to_swarm(message, call_stack, swarm_registry)
+          delegate_to_swarm(message, call_stack, swarm_registry, reset_context: reset_context)
         else
           raise ConfigurationError, "Unknown delegation target: #{@delegate_target}"
         end
@@ -222,13 +228,15 @@ module SwarmSDK
       #
       # @param message [String] Message to send to the agent
       # @param call_stack [Array] Delegation call stack for circular dependency detection
+      # @param reset_context [Boolean] Whether to reset the agent's conversation history before delegation
       # @return [String] Result from agent
-      def delegate_to_agent(message, call_stack)
+      def delegate_to_agent(message, call_stack, reset_context: false)
         # Push delegate target onto call stack to track delegation chain
         call_stack.push(@delegate_target)
         begin
-          # Clear conversation if preserve_context is false
-          @delegate_chat.clear_conversation unless @preserve_context
+          # Clear conversation if reset_context is true OR if preserve_context is false
+          # reset_context takes precedence as it's an explicit request
+          @delegate_chat.clear_conversation if reset_context || !@preserve_context
 
           response = @delegate_chat.ask(message, source: "delegation")
           response.content
@@ -243,20 +251,24 @@ module SwarmSDK
       # @param message [String] Message to send to the swarm
       # @param call_stack [Array] Delegation call stack for circular dependency detection
       # @param swarm_registry [SwarmRegistry] Registry for sub-swarms
+      # @param reset_context [Boolean] Whether to reset the swarm's conversation history before delegation
       # @return [String] Result from swarm's lead agent
-      def delegate_to_swarm(message, call_stack, swarm_registry)
+      def delegate_to_swarm(message, call_stack, swarm_registry, reset_context: false)
         # Load sub-swarm (lazy load + cache)
         subswarm = swarm_registry.load_swarm(@delegate_target)
 
         # Push delegate target onto call stack to track delegation chain
         call_stack.push(@delegate_target)
         begin
+          # Reset swarm if reset_context is true
+          swarm_registry.reset(@delegate_target) if reset_context
+
           # Execute sub-swarm's lead agent
           lead_agent = subswarm.agents[subswarm.lead_agent]
           response = lead_agent.ask(message, source: "delegation")
           result = response.content
 
-          # Reset if keep_context: false
+          # Reset if keep_context: false (standard behavior)
           swarm_registry.reset_if_needed(@delegate_target)
 
           result

@@ -722,7 +722,7 @@ agents:
 **Default:** `[]`
 **Description:** List of agent names this agent can delegate to.
 
-**Behavior:** Creates a `delegate_to_{agent}` tool for each target
+**Behavior:** Creates a `WorkWith{Agent}` tool for each target (e.g., `WorkWithDatabase`)
 
 ```yaml
 agents:
@@ -731,6 +731,36 @@ agents:
   coordinator:
     delegates_to: [frontend, backend, reviewer]
 ```
+
+**Delegation Tool Usage:**
+
+Each delegation tool accepts these parameters:
+
+- `message` (String, required): Message to send to the delegate agent
+- `reset_context` (Boolean, optional, default: `false`): Reset the delegate's conversation history before sending
+
+**Example usage from parent agent:**
+```ruby
+# Normal delegation (preserves context)
+WorkWithDatabase(message: "Create users table")
+
+# Reset context before delegating (useful for error recovery)
+WorkWithDatabase(
+  message: "Try again with fewer parallel operations",
+  reset_context: true
+)
+```
+
+**When to use `reset_context: true`:**
+- Recovering from "prompt too long" errors
+- Recovering from other 4XX errors
+- Starting a fresh task with a delegate agent
+- Clearing problematic context
+
+**Reset behavior:**
+- `reset_context: true` → Always clears conversation
+- `reset_context: false` + `preserve_context: true` → Preserves conversation (default)
+- `reset_context: false` + `preserve_context: false` → Clears conversation
 
 ---
 

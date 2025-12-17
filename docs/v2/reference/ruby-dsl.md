@@ -1401,6 +1401,36 @@ delegates_to :tester, :reviewer
 delegates_to :frontend  # Cumulative - adds to existing list
 ```
 
+**Delegation Tool Usage:**
+
+Each `delegates_to` declaration creates a delegation tool (e.g., `WorkWithDatabase`) that accepts these parameters:
+
+- `message` (String, required): Message to send to the delegate agent
+- `reset_context` (Boolean, optional, default: `false`): Reset the delegate's conversation history before sending
+
+**Example - Using delegation tools:**
+```ruby
+# Normal delegation (preserves context)
+WorkWithDatabase(message: "Create users table")
+
+# Reset context before delegating (useful for error recovery)
+WorkWithDatabase(
+  message: "Try again with fewer parallel operations",
+  reset_context: true
+)
+```
+
+**When to use `reset_context: true`:**
+- Recovering from "prompt too long" errors
+- Recovering from other 4XX errors
+- Starting a fresh task with a delegate agent
+- Clearing problematic context that's causing issues
+
+**Behavior:**
+- `reset_context: true` → Always clears conversation (explicit reset)
+- `reset_context: false` + `preserve_context: true` → Preserves conversation (default)
+- `reset_context: false` + `preserve_context: false` → Clears conversation
+
 ---
 
 ### shared_across_delegations
