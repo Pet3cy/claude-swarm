@@ -5,6 +5,22 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.14]
+
+### Added
+
+- **`disable_environment_info` agent config option**: New boolean option (default `false`) that controls whether environment information (date, platform, OS version, working directory) is included in agent system prompts. Supported in Ruby DSL, YAML configuration, and `all_agents` defaults with agent-level override.
+  - **Files**: `lib/swarm_sdk/agent/definition.rb`, `lib/swarm_sdk/agent/builder.rb`, `lib/swarm_sdk/swarm/all_agents_builder.rb`, `lib/swarm_sdk/builders/base_builder.rb`, `lib/swarm_sdk/configuration/translator.rb`, `lib/swarm_sdk/agent/system_prompt_builder.rb`, `lib/swarm_sdk/prompts/base_system_prompt.md.erb`
+- **Hard stop mechanism (`swarm.stop`)**: Thread-safe cancellation of running swarms using IO.pipe signaling + Async::Barrier. Calling `swarm.stop` from any thread (including signal trap handlers) writes to a pipe that wakes the Async scheduler's stop listener, which cancels all running tasks. Results from stopped swarms have `interrupted?` set to `true`.
+  - **Files**: `lib/swarm_sdk/swarm.rb`, `lib/swarm_sdk/swarm/executor.rb`, `lib/swarm_sdk/result.rb`, `lib/swarm_sdk/agent/chat.rb`, `lib/swarm_sdk/observer/manager.rb`, `lib/swarm_sdk/concerns/cleanupable.rb`, `lib/swarm_sdk/swarm/hook_triggers.rb`, `lib/swarm_sdk/swarm/logging_callbacks.rb`
+- **MCP SSL CRL patch**: Fix for OpenSSL 3.6 CRL enforcement breaking HTTPS MCP connections. Defaults to `VERIFY_PEER` without CRL checks, configurable via `mcp_ssl_verify` option.
+  - **Files**: `lib/swarm_sdk/ruby_llm_patches/mcp_ssl_patch.rb`, `lib/swarm_sdk/swarm/mcp_configurator.rb`, `lib/swarm_sdk/config.rb`
+
+### Fixed
+
+- **Stack overflow risk in multi-round tool calls**: Converted the mutual recursion between `complete()` and `handle_tool_calls()` to a trampoline loop. Previously each tool-call round added ~15-25 stack frames via `complete → handle_tool_calls → complete → ...`, risking fiber stack overflow in deep delegation chains with heavy tool usage. Stack usage is now O(1) regardless of the number of tool-call rounds. No behavioral change — same events, halt semantics, and tool execution order.
+  - **Files**: `lib/swarm_sdk/ruby_llm_patches/chat_callbacks_patch.rb`, `lib/swarm_sdk/ruby_llm_patches/tool_concurrency_patch.rb`
+
 ## [2.7.13]
 
 ### Added

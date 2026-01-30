@@ -63,6 +63,7 @@ module SwarmSDK
         @shared_across_delegations = nil # nil = not set (will default to false in Definition)
         @streaming = nil # nil = not set (will use global config default)
         @thinking = nil # nil = not set (extended thinking disabled)
+        @disable_environment_info = nil # nil = not set (will default to false in Definition)
         @context_management_config = nil # Context management DSL hooks
       end
 
@@ -529,6 +530,29 @@ module SwarmSDK
         !@coding_agent.nil?
       end
 
+      # Disable environment info (date, platform, OS, working directory) in system prompt
+      #
+      # When true, omits the environment information section from the agent's system prompt.
+      # Defaults to false if not set.
+      #
+      # @param enabled [Boolean] Whether to disable environment info
+      # @return [void]
+      #
+      # @example
+      #   disable_environment_info true  # Omit environment info from prompt
+      def disable_environment_info(enabled)
+        @disable_environment_info = enabled
+      end
+
+      # Check if disable_environment_info has been explicitly set
+      #
+      # Used by Swarm::Builder to determine if all_agents disable_environment_info should apply.
+      #
+      # @return [Boolean] true if disable_environment_info was explicitly set
+      def disable_environment_info_set?
+        !@disable_environment_info.nil?
+      end
+
       # Check if parameters have been set
       #
       # Used by Swarm::Builder for merging all_agents parameters.
@@ -586,6 +610,7 @@ module SwarmSDK
         agent_config[:shared_across_delegations] = @shared_across_delegations unless @shared_across_delegations.nil?
         agent_config[:streaming] = @streaming unless @streaming.nil?
         agent_config[:thinking] = @thinking if @thinking
+        agent_config[:disable_environment_info] = @disable_environment_info unless @disable_environment_info.nil?
 
         # Convert DSL hooks to HookDefinition format
         agent_config[:hooks] = convert_hooks_to_definitions if @hooks.any?

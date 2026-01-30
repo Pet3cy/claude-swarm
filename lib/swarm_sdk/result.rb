@@ -23,6 +23,35 @@ module SwarmSDK
       !success?
     end
 
+    # Check if execution was interrupted via swarm.stop
+    #
+    # @return [Boolean] true if execution was interrupted
+    #
+    # @example
+    #   result = swarm.execute("Build auth")
+    #   result.interrupted?  # => false
+    #
+    #   # After calling swarm.stop during execution:
+    #   result.interrupted?  # => true
+    def interrupted?
+      @metadata[:interrupted] == true
+    end
+
+    # Get the reason execution finished
+    #
+    # Possible values:
+    # - "finished" - Normal completion
+    # - "interrupted" - Stopped via swarm.stop
+    # - "error" - Execution failed with an error
+    #
+    # @return [String] The finish reason
+    #
+    # @example
+    #   result.finish_reason  # => "finished"
+    def finish_reason
+      @metadata[:finish_reason] || (success? ? "finished" : "error")
+    end
+
     # Calculate total cost from logs
     #
     # Delegates to total_cost for consistency. This attribute is calculated

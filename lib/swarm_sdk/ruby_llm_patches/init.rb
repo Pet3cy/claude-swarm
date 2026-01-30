@@ -39,3 +39,6 @@ require_relative "message_management_patch"
 
 # 7. Responses API patch (depends on configuration, uses error classes)
 require_relative "responses_api_patch"
+
+# 8. MCP SSL patch (configures SSL for HTTPX connections in ruby_llm-mcp)
+require_relative "mcp_ssl_patch"

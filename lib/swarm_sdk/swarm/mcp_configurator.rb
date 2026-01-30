@@ -129,6 +129,9 @@ module SwarmSDK
       # @param config [Hash] MCP server configuration
       # @return [RubyLLM::MCP::Client] Initialized MCP client
       def initialize_mcp_client(config)
+        # Configure SSL before creating the client so HTTPX connections use the right options
+        configure_mcp_ssl(config)
+
         # Convert timeout from seconds to milliseconds
         # Use explicit config[:timeout] if provided, otherwise use global default
         timeout_seconds = config[:timeout] || SwarmSDK.config.mcp_request_timeout
@@ -228,6 +231,23 @@ module SwarmSDK
           reconnection_delay_grow_factor: reconnection_config[:delay_grow_factor] || Defaults::McpReconnection::DELAY_GROW_FACTOR,
           max_reconnection_delay: reconnection_config[:max_delay] || Defaults::McpReconnection::MAX_DELAY_MS,
         }
+      end
+
+      # Configure SSL options for MCP HTTPX connections
+      #
+      # Sets McpSslPatch.ssl_options based on per-server ssl_verify config
+      # or global SwarmSDK.config.mcp_ssl_verify. Resets the thread-local
+      # connection cache so build_connection picks up the new options.
+      #
+      # @param config [Hash] MCP server configuration
+      # @option config [Boolean] :ssl_verify Override global SSL verify setting
+      # @return [void]
+      def configure_mcp_ssl(config)
+        ssl_verify = config.fetch(:ssl_verify, SwarmSDK.config.mcp_ssl_verify)
+        verify_mode = ssl_verify ? OpenSSL::SSL::VERIFY_PEER : OpenSSL::SSL::VERIFY_NONE
+
+        McpSslPatch.ssl_options = { verify_mode: verify_mode }
+        McpSslPatch.reset_connection!
       end
 
       # Emit MCP server initialization start event

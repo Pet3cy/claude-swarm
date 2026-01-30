@@ -91,6 +91,9 @@ module SwarmSDK
   # Raised when agent turn exceeds turn_timeout
   class TurnTimeoutError < TimeoutError; end
 
+  # Raised when swarm execution is interrupted via swarm.stop
+  class InterruptedError < Error; end
+
   # Base class for MCP-related errors (provides context about server/tool)
   class MCPError < Error; end
 

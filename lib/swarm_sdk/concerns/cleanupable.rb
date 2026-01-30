@@ -31,6 +31,9 @@ module SwarmSDK
 
         @mcp_clients.clear
 
+        # Shutdown sub-swarms if registry exists
+        @swarm_registry&.shutdown_all
+
         # Clear delegation instances
         delegation_instances_hash&.clear
       end

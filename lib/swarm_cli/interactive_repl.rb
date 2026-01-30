@@ -6,7 +6,6 @@ require "tty-markdown"
 require "tty-box"
 require "pastel"
 require "async"
-require "async/condition"
 
 module SwarmCLI
   # InteractiveREPL provides a professional, interactive terminal interface
@@ -91,54 +90,26 @@ module SwarmCLI
     # Execute a message with Ctrl+C cancellation support
     # Public for testing
     #
+    # Uses swarm.stop for thread-safe cancellation via IO.pipe signaling.
+    # The INT trap handler calls swarm.stop which writes to the pipe,
+    # waking the Async scheduler's stop listener to cancel all tasks.
+    #
     # @param input [String] User input to execute
     # @return [SwarmSDK::Result, nil] Result or nil if cancelled
     def execute_with_cancellation(input, &log_callback)
-      cancelled = false
-      result = nil
+      # Install trap ONLY during execution
+      # swarm.stop is safe to call from trap context (IO.pipe write)
+      old_trap = trap("INT") do
+        @swarm.stop
+      end
 
-      # Execute in Async block to enable Ctrl+C cancellation
-      Async do |task|
-        # Use Async::Condition for trap-safe cancellation
-        # (Condition#signal uses Thread::Queue which is safe from trap context)
-        cancel_condition = Async::Condition.new
+      result = @swarm.execute(input, &log_callback)
 
-        # Install trap ONLY during execution
-        # When Ctrl+C is pressed, signal the condition instead of calling task.stop
-        old_trap = trap("INT") do
-          cancel_condition.signal(:cancel)
-        end
-
-        begin
-          # Execute swarm in async task
-          llm_task = task.async do
-            @swarm.execute(input, &log_callback)
-          end
-
-          # Monitor task - watches for cancellation signal
-          # Must be created AFTER llm_task so it can reference it
-          monitor_task = task.async do
-            if cancel_condition.wait == :cancel
-              cancelled = true
-              llm_task.stop
-            end
-          end
-
-          result = llm_task.wait
-        rescue Async::Stop
-          # Task was stopped by Ctrl+C
-          cancelled = true
-        ensure
-          # Clean up monitor task
-          monitor_task&.stop if monitor_task&.alive?
-
-          # CRITICAL: Restore old trap when done
-          # This ensures Ctrl+C at the prompt still exits the REPL
-          trap("INT", old_trap)
-        end
-      end.wait
-
-      cancelled ? nil : result
+      result&.interrupted? ? nil : result
+    ensure
+      # CRITICAL: Restore old trap when done
+      # This ensures Ctrl+C at the prompt still exits the REPL
+      trap("INT", old_trap)
     end
 
     # Handle slash commands

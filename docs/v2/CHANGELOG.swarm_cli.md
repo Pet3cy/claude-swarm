@@ -5,6 +5,13 @@ All notable changes to SwarmCLI will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.13]
+
+### Changed
+
+- **Simplified Ctrl+C cancellation in Interactive REPL**: Replaced the `Async::Condition`-based cancellation with `swarm.stop` (new SwarmSDK hard stop mechanism). The REPL now calls `@swarm.stop` directly from the INT trap handler, which is safe from signal context (IO.pipe write). Removed `Async::Condition`, monitor task, and nested `Async` block — `execute_with_cancellation` is now a simple `trap` + `@swarm.execute` + `trap restore`. Cancelled results are detected via `result.interrupted?` instead of a local `cancelled` flag.
+  - **Files**: `lib/swarm_cli/interactive_repl.rb`
+
 ## [2.1.12] - 2025-12-12
 
 ### Changed
