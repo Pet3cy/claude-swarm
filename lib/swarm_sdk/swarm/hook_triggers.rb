@@ -63,6 +63,16 @@ module SwarmSDK
       # @param result [Result] Execution result
       # @return [Hooks::Context] Hook context for swarm_stop event
       def build_swarm_stop_context(result)
+        finish_reason = if @stop_requested
+          "interrupted"
+        elsif result&.error.is_a?(ExecutionTimeoutError)
+          "timeout"
+        elsif result&.success?
+          "finished"
+        else
+          "error"
+        end
+
         Hooks::Context.new(
           event: :swarm_stop,
           agent_name: @lead_agent.to_s,
@@ -79,6 +89,7 @@ module SwarmSDK
             agents_involved: result.agents_involved,
             per_agent_usage: result.per_agent_usage,
             result: result,
+            finish_reason: finish_reason,
             timestamp: Time.now.utc.iso8601,
           },
         )

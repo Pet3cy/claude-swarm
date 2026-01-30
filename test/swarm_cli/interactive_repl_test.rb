@@ -51,30 +51,38 @@ class InteractiveREPLTest < Minitest::Test
     assert_includes(SwarmCLI::InteractiveREPL::COMMANDS, "/exit")
   end
 
-  def test_execute_with_cancellation_returns_nil_on_async_stop
-    # Test that execute_with_cancellation returns nil when Async::Stop is raised
+  def test_execute_with_cancellation_returns_nil_when_interrupted
+    # Test that execute_with_cancellation returns nil when result is interrupted
     repl = SwarmCLI::InteractiveREPL.new(swarm: @swarm, options: @options)
 
-    # Mock swarm to raise Async::Stop (simulating cancellation)
-    @swarm.expect(:execute, nil) do |_input, &_block|
-      raise Async::Stop
+    # Mock an interrupted result (as returned by swarm.stop)
+    interrupted_result = SwarmSDK::Result.new(
+      content: nil,
+      agent: "test",
+      error: SwarmSDK::InterruptedError.new("Swarm execution was interrupted"),
+      metadata: { interrupted: true, finish_reason: "interrupted" },
+    )
+
+    @swarm.expect(:execute, interrupted_result) do |_input, &_block|
+      interrupted_result
     end
 
     result = repl.execute_with_cancellation("test input")
 
-    # Should return nil when cancelled
-    assert_nil(result, "execute_with_cancellation should return nil when cancelled")
+    # Should return nil when interrupted
+    assert_nil(result, "execute_with_cancellation should return nil when interrupted")
   end
 
   def test_execute_with_cancellation_returns_result_on_success
     # Test that execute_with_cancellation returns the result on successful execution
     repl = SwarmCLI::InteractiveREPL.new(swarm: @swarm, options: @options)
 
-    # Use a simple string as result to avoid mock complexity
-    success_result = "execution completed"
+    success_result = SwarmSDK::Result.new(
+      content: "execution completed",
+      agent: "test",
+    )
 
     @swarm.expect(:execute, success_result) do |_input, &block|
-      # Simulate a log entry
       block&.call({ type: "agent_start", agent: :test })
       success_result
     end
@@ -93,12 +101,14 @@ class InteractiveREPLTest < Minitest::Test
     original_trap = trap("INT", "DEFAULT")
 
     begin
-      # Mock successful execution
-      result_mock = Minitest::Mock.new
+      success_result = SwarmSDK::Result.new(
+        content: "done",
+        agent: "test",
+      )
 
-      @swarm.expect(:execute, result_mock) do |_input, &block|
+      @swarm.expect(:execute, success_result) do |_input, &block|
         block&.call({ type: "agent_start", agent: :test })
-        result_mock
+        success_result
       end
 
       repl.execute_with_cancellation("test")
@@ -109,6 +119,19 @@ class InteractiveREPLTest < Minitest::Test
     ensure
       trap("INT", original_trap)
     end
+  end
+
+  def test_execute_with_cancellation_returns_nil_for_nil_result
+    # Test that execute_with_cancellation handles nil result (edge case)
+    repl = SwarmCLI::InteractiveREPL.new(swarm: @swarm, options: @options)
+
+    @swarm.expect(:execute, nil) do |_input, &_block|
+      true
+    end
+
+    result = repl.execute_with_cancellation("test input")
+
+    assert_nil(result, "execute_with_cancellation should return nil for nil result")
   end
 
   private

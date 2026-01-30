@@ -72,7 +72,7 @@ module SwarmSDK
     # Default tools available to all agents
     DEFAULT_TOOLS = ToolConfigurator::DEFAULT_TOOLS
 
-    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions, :swarm_id, :parent_swarm_id, :swarm_registry, :scratchpad_storage, :allow_filesystem_tools, :hook_registry, :global_semaphore, :plugin_storages, :config_for_hooks, :observer_configs, :execution_timeout
+    attr_reader :name, :agents, :lead_agent, :mcp_clients, :delegation_instances, :agent_definitions, :swarm_id, :parent_swarm_id, :swarm_registry, :scratchpad_storage, :allow_filesystem_tools, :hook_registry, :global_semaphore, :plugin_storages, :config_for_hooks, :observer_configs, :execution_timeout, :stop_signal_read
 
     # Check if scratchpad tools are enabled
     #
@@ -217,6 +217,13 @@ module SwarmSDK
       # Observer agent configurations
       @observer_configs = []
       @observer_manager = nil
+
+      # Stop mechanism state
+      @stop_requested = false
+      @execution_barrier = nil
+      @stop_signal_read = nil
+      @stop_signal_write = nil
+      @active_agent_chats = {}
     end
 
     # Add an agent to the swarm
@@ -471,12 +478,17 @@ module SwarmSDK
 
     # Wait for all observer tasks to complete
     #
+    # If a stop was requested, stops observer tasks immediately instead of waiting.
     # Called by Executor to wait for observer agents before cleanup.
     # Safe to call even if no observers are configured.
     #
     # @return [void]
     def wait_for_observers
-      @observer_manager&.wait_for_completion
+      if @stop_requested
+        stop_observers
+      else
+        @observer_manager&.wait_for_completion
+      end
     end
 
     # Cleanup observer subscriptions
@@ -488,6 +500,124 @@ module SwarmSDK
     def cleanup_observers
       @observer_manager&.cleanup
       @observer_manager = nil
+    end
+
+    # Stop all swarm execution immediately
+    #
+    # Thread-safe method that signals the execution to stop. Uses IO.pipe
+    # for cross-thread signaling, which wakes the Async scheduler from any
+    # thread. The stop listener task then calls barrier.stop within the
+    # reactor to cancel all executing tasks.
+    #
+    # Safe to call from event callbacks, other threads, or signal handlers.
+    # No-op if no execution is in progress or stop was already requested.
+    #
+    # @return [void]
+    #
+    # @example Stop from event callback
+    #   swarm.execute("Build auth") do |event|
+    #     swarm.stop if event[:type] == "tool_call" && event[:tool] == "Dangerous"
+    #   end
+    #
+    # @example Stop from another thread
+    #   Thread.new { swarm.execute("Build auth") }
+    #   sleep 10
+    #   swarm.stop
+    def stop
+      return if @stop_requested
+
+      @stop_requested = true
+      begin
+        @stop_signal_write&.write("x") unless @stop_signal_write&.closed?
+        @stop_signal_write&.close unless @stop_signal_write&.closed?
+      rescue IOError, Errno::EPIPE
+        # Pipe already closed - normal during cleanup
+      end
+    end
+
+    # Check if a stop has been requested
+    #
+    # @return [Boolean] true if stop was requested
+    def stop_requested?
+      @stop_requested
+    end
+
+    # Prepare stop signaling for a new execution
+    #
+    # Resets the stop flag and creates a new IO.pipe for signaling.
+    # Called by Executor at the start of each execution.
+    #
+    # @return [void]
+    def prepare_for_execution
+      @stop_requested = false
+      @stop_signal_read, @stop_signal_write = IO.pipe
+      @active_agent_chats = {}
+    end
+
+    # Close the stop signal pipe
+    #
+    # Called by Executor after execution completes.
+    #
+    # @return [void]
+    def cleanup_stop_signal
+      @stop_signal_read&.close unless @stop_signal_read&.closed?
+      @stop_signal_write&.close unless @stop_signal_write&.closed?
+      @stop_signal_read = nil
+      @stop_signal_write = nil
+    end
+
+    # Register the execution barrier for stop cancellation
+    #
+    # @param barrier [Async::Barrier] The barrier wrapping execution tasks
+    # @return [void]
+    def register_execution_barrier(barrier)
+      @execution_barrier = barrier
+    end
+
+    # Clear the execution barrier reference
+    #
+    # @return [void]
+    def clear_execution_barrier
+      @execution_barrier = nil
+    end
+
+    # Mark an agent as actively executing an LLM call
+    #
+    # Called by Agent::Chat#execute_ask to track which agents are mid-execution.
+    # Used during interruption to emit agent_stop events for active agents.
+    #
+    # @param name [Symbol] Agent name
+    # @param chat [Agent::Chat] Agent chat instance
+    # @return [void]
+    def mark_agent_active(name, chat)
+      @active_agent_chats[name] = chat
+    end
+
+    # Mark an agent as no longer actively executing
+    #
+    # @param name [Symbol] Agent name
+    # @return [void]
+    def mark_agent_inactive(name)
+      @active_agent_chats.delete(name)
+    end
+
+    # Get a snapshot of currently active agent chats
+    #
+    # Returns a copy to avoid concurrent modification issues.
+    #
+    # @return [Hash{Symbol => Agent::Chat}] Copy of active agent chats
+    def active_agent_chats
+      @active_agent_chats.dup
+    end
+
+    # Stop all observer tasks immediately
+    #
+    # Interrupts in-flight observer LLM calls.
+    # Called during swarm interruption instead of wait_for_completion.
+    #
+    # @return [void]
+    def stop_observers
+      @observer_manager&.stop
     end
 
     # Create snapshot of current conversation state

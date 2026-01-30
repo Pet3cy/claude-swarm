@@ -658,57 +658,63 @@ module SwarmSDK
 
       # Execute ask without timeout (original ask implementation)
       def execute_ask(prompt, options)
-        is_first = first_message?
+        @hook_swarm&.mark_agent_active(@agent_name, self)
 
-        # Collect system reminders to inject as ephemeral content
-        reminders = collect_system_reminders(prompt, is_first)
+        begin
+          is_first = first_message?
 
-        # Trigger user_prompt hook (with clean prompt, not reminders)
-        source = options.delete(:source) || "user"
-        final_prompt = prompt
-        if @hook_executor
-          hook_result = trigger_user_prompt(prompt, source: source)
+          # Collect system reminders to inject as ephemeral content
+          reminders = collect_system_reminders(prompt, is_first)
 
-          if hook_result[:halted]
-            return RubyLLM::Message.new(
-              role: :assistant,
-              content: hook_result[:halt_message],
-              model_id: model_id,
-            )
+          # Trigger user_prompt hook (with clean prompt, not reminders)
+          source = options.delete(:source) || "user"
+          final_prompt = prompt
+          if @hook_executor
+            hook_result = trigger_user_prompt(prompt, source: source)
+
+            if hook_result[:halted]
+              return RubyLLM::Message.new(
+                role: :assistant,
+                content: hook_result[:halt_message],
+                model_id: model_id,
+              )
+            end
+
+            final_prompt = hook_result[:modified_prompt] if hook_result[:modified_prompt]
           end
 
-          final_prompt = hook_result[:modified_prompt] if hook_result[:modified_prompt]
-        end
+          # Add CLEAN user message to history (no reminders embedded)
+          @llm_chat.add_message(role: :user, content: final_prompt)
 
-        # Add CLEAN user message to history (no reminders embedded)
-        @llm_chat.add_message(role: :user, content: final_prompt)
+          # Track reminders as ephemeral content for this LLM call only
+          # They'll be injected by around_llm_request hook but not stored
+          reminders.each do |reminder|
+            @context_manager.add_ephemeral_reminder(reminder, messages_array: @llm_chat.messages)
+          end
 
-        # Track reminders as ephemeral content for this LLM call only
-        # They'll be injected by around_llm_request hook but not stored
-        reminders.each do |reminder|
-          @context_manager.add_ephemeral_reminder(reminder, messages_array: @llm_chat.messages)
-        end
+          # Execute complete() which handles tool loop and ephemeral injection
+          response = execute_with_global_semaphore do
+            catch(:finish_agent) do
+              catch(:finish_swarm) do
+                if @streaming_enabled
+                  # Reset chunk type tracking for new streaming request
+                  @last_chunk_type = nil
 
-        # Execute complete() which handles tool loop and ephemeral injection
-        response = execute_with_global_semaphore do
-          catch(:finish_agent) do
-            catch(:finish_swarm) do
-              if @streaming_enabled
-                # Reset chunk type tracking for new streaming request
-                @last_chunk_type = nil
-
-                @llm_chat.complete(**options) do |chunk|
-                  emit_content_chunk(chunk)
+                  @llm_chat.complete(**options) do |chunk|
+                    emit_content_chunk(chunk)
+                  end
+                else
+                  @llm_chat.complete(**options)
                 end
-              else
-                @llm_chat.complete(**options)
               end
             end
           end
-        end
 
-        # Handle finish markers from hooks
-        handle_finish_marker(response)
+          # Handle finish markers from hooks
+          handle_finish_marker(response)
+        ensure
+          @hook_swarm&.mark_agent_inactive(@agent_name)
+        end
       end
 
       # --- Tool Execution Hook ---

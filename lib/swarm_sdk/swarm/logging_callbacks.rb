@@ -204,6 +204,7 @@ module SwarmSDK
           last_agent: context.metadata[:last_agent],
           content: context.metadata[:content],
           success: context.metadata[:success],
+          finish_reason: context.metadata[:finish_reason] || "finished",
           duration: context.metadata[:duration],
           total_cost: context.metadata[:total_cost],
           total_tokens: context.metadata[:total_tokens],

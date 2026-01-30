@@ -75,6 +75,18 @@ module SwarmSDK
         end
       end
 
+      # Stop all observer tasks immediately
+      #
+      # Interrupts in-flight observer LLM calls by stopping the barrier.
+      # Called during swarm interruption instead of wait_for_completion.
+      #
+      # @return [void]
+      def stop
+        @barrier&.stop
+      rescue StandardError => e
+        RubyLLM.logger.debug("SwarmSDK: Error stopping observer barrier: #{e.message}")
+      end
+
       # Cleanup all subscriptions
       #
       # Unsubscribes from LogCollector to prevent memory leaks.
