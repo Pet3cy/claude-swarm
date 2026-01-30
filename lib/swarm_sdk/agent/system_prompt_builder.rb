@@ -28,24 +28,29 @@ module SwarmSDK
         # @param disable_default_tools [Boolean, Array, nil] Default tools disable configuration
         # @param directory [String] Agent's working directory
         # @param definition [Definition] Full definition for plugin contributions
+        # @param disable_environment_info [Boolean] Whether to omit environment info from prompt
         # @return [String] Complete system prompt
-        def build(custom_prompt:, coding_agent:, disable_default_tools:, directory:, definition:)
+        def build(custom_prompt:, coding_agent:, disable_default_tools:, directory:, definition:,
+          disable_environment_info: false)
           new(
             custom_prompt: custom_prompt,
             coding_agent: coding_agent,
             disable_default_tools: disable_default_tools,
             directory: directory,
             definition: definition,
+            disable_environment_info: disable_environment_info,
           ).build
         end
       end
 
-      def initialize(custom_prompt:, coding_agent:, disable_default_tools:, directory:, definition:)
+      def initialize(custom_prompt:, coding_agent:, disable_default_tools:, directory:, definition:,
+        disable_environment_info: false)
         @custom_prompt = custom_prompt
         @coding_agent = coding_agent
         @disable_default_tools = disable_default_tools
         @directory = directory
         @definition = definition
+        @disable_environment_info = disable_environment_info
       end
 
       def build
@@ -80,7 +85,11 @@ module SwarmSDK
         non_coding_base = render_non_coding_base_prompt
 
         if @custom_prompt && !@custom_prompt.strip.empty?
-          "#{non_coding_base}\n\n#{@custom_prompt}"
+          if non_coding_base.empty?
+            @custom_prompt.to_s
+          else
+            "#{non_coding_base}\n\n#{@custom_prompt}"
+          end
         else
           non_coding_base
         end
@@ -91,6 +100,7 @@ module SwarmSDK
       end
 
       def render_base_system_prompt
+        disable_environment_info = @disable_environment_info
         cwd = @directory || Dir.pwd
         platform = RUBY_PLATFORM
         os_version = begin
@@ -105,6 +115,8 @@ module SwarmSDK
       end
 
       def render_non_coding_base_prompt
+        return "" if @disable_environment_info
+
         cwd = @directory || Dir.pwd
         platform = RUBY_PLATFORM
         os_version = begin

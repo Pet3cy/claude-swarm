@@ -265,6 +265,7 @@ module SwarmSDK
         builder.parameters(config[:parameters]) if config[:parameters]
         builder.headers(config[:headers]) if config[:headers]
         builder.coding_agent(config[:coding_agent]) unless config[:coding_agent].nil?
+        builder.disable_environment_info(config[:disable_environment_info]) unless config[:disable_environment_info].nil?
         builder.bypass_permissions(config[:bypass_permissions]) if config[:bypass_permissions]
         builder.disable_default_tools(config[:disable_default_tools]) unless config[:disable_default_tools].nil?
 
@@ -449,6 +450,10 @@ module SwarmSDK
 
         if !all_agents_hash[:streaming].nil? && !agent_builder.streaming_set?
           agent_builder.streaming(all_agents_hash[:streaming])
+        end
+
+        if !all_agents_hash[:disable_environment_info].nil? && !agent_builder.disable_environment_info_set?
+          agent_builder.disable_environment_info(all_agents_hash[:disable_environment_info])
         end
 
         if all_agents_hash[:thinking] && !agent_builder.thinking_set?

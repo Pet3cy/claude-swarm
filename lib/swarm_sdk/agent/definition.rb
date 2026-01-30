@@ -43,7 +43,8 @@ module SwarmSDK
         :plugin_configs,
         :shared_across_delegations,
         :streaming,
-        :thinking
+        :thinking,
+        :disable_environment_info
 
       attr_accessor :bypass_permissions, :max_concurrent_tools
 
@@ -117,6 +118,9 @@ module SwarmSDK
 
         # Extended thinking configuration (nil = disabled)
         @thinking = config[:thinking]
+
+        # When true, omits date/platform/OS/working directory from system prompts
+        @disable_environment_info = config.fetch(:disable_environment_info, false)
 
         # Build system prompt after directory and memory are set
         @system_prompt = build_full_system_prompt(config[:system_prompt])
@@ -201,6 +205,7 @@ module SwarmSDK
           hooks: @hooks,
           shared_across_delegations: @shared_across_delegations,
           streaming: @streaming,
+          disable_environment_info: @disable_environment_info,
           # Permissions are core SDK functionality (not plugin-specific)
           default_permissions: @default_permissions,
           permissions: @agent_permissions,
@@ -301,6 +306,7 @@ module SwarmSDK
           disable_default_tools: @disable_default_tools,
           directory: @directory,
           definition: self,
+          disable_environment_info: @disable_environment_info,
         )
       end
 
@@ -394,6 +400,7 @@ module SwarmSDK
           :shared_across_delegations,
           :streaming,
           :directories,
+          :disable_environment_info,
         ]
 
         config.reject { |k, _| standard_keys.include?(k.to_sym) }

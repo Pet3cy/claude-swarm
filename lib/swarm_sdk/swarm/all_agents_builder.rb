@@ -37,6 +37,7 @@ module SwarmSDK
         @disable_default_tools = nil
         @streaming = nil
         @thinking = nil
+        @disable_environment_info = nil
       end
 
       # Set model for all agents
@@ -98,6 +99,13 @@ module SwarmSDK
       # @param value [Boolean] If true, enables streaming; if false, disables it
       def streaming(value)
         @streaming = value
+      end
+
+      # Disable environment info for all agents
+      #
+      # @param enabled [Boolean] Whether to disable environment info in system prompts
+      def disable_environment_info(enabled)
+        @disable_environment_info = enabled
       end
 
       # Configure extended thinking for all agents
@@ -186,6 +194,7 @@ module SwarmSDK
           disable_default_tools: @disable_default_tools,
           streaming: @streaming,
           thinking: @thinking,
+          disable_environment_info: @disable_environment_info,
           tools: @tools_list,
           permissions: @permissions_config,
         }.compact

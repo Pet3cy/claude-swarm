@@ -100,6 +100,7 @@ module SwarmSDK
           coding_agent(all_agents_cfg[:coding_agent]) unless all_agents_cfg[:coding_agent].nil?
           disable_default_tools(all_agents_cfg[:disable_default_tools]) unless all_agents_cfg[:disable_default_tools].nil?
           streaming(all_agents_cfg[:streaming]) unless all_agents_cfg[:streaming].nil?
+          disable_environment_info(all_agents_cfg[:disable_environment_info]) unless all_agents_cfg[:disable_environment_info].nil?
           thinking(**all_agents_cfg[:thinking]) if all_agents_cfg[:thinking]
 
           if all_agents_hks.any?
@@ -165,6 +166,7 @@ module SwarmSDK
           disable_default_tools(config[:disable_default_tools]) unless config[:disable_default_tools].nil?
           shared_across_delegations(config[:shared_across_delegations]) unless config[:shared_across_delegations].nil?
           streaming(config[:streaming]) unless config[:streaming].nil?
+          disable_environment_info(config[:disable_environment_info]) unless config[:disable_environment_info].nil?
           thinking(**config[:thinking]) if config[:thinking]
 
           if config[:tools]&.any?
