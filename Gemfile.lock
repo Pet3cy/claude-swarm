@@ -10,7 +10,7 @@ PATH
       ruby-openai (>= 7.0, < 9.0)
       thor (~> 1.3)
       zeitwerk (~> 2.6)
-    swarm_cli (2.1.12)
+    swarm_cli (2.1.13)
       csv
       docx (~> 0.10)
       fast-mcp (~> 1.6)
@@ -35,7 +35,7 @@ PATH
       ruby_llm (~> 1.11)
       swarm_sdk (~> 2.7)
       zeitwerk (~> 2.6)
-    swarm_sdk (2.7.13)
+    swarm_sdk (2.7.14)
       async (~> 2.0)
       async-http-faraday (~> 0.22)
       faraday-follow_redirects (~> 0.4)

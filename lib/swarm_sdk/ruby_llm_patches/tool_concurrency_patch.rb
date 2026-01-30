@@ -149,14 +149,13 @@ module RubyLLM
 
       private
 
-      # Override handle_tool_calls to support concurrent execution
-      # This method is called when tool_concurrency is set
+      # Override handle_tool_calls to support concurrent execution.
+      # Returns halt result or nil — the trampoline loop in complete() handles the next iteration.
       def handle_tool_calls(response, &block)
         return super unless @tool_concurrency
 
         tool_calls = response.tool_calls
-        halt_result = execute_tools_concurrently(tool_calls)
-        halt_result || complete(&block)
+        execute_tools_concurrently(tool_calls)
       end
 
       def execute_tools_concurrently(tool_calls)

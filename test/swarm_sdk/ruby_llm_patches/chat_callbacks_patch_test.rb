@@ -371,6 +371,83 @@ module SwarmSDK
         assert_equal("callback test result", received[0][1])
       end
 
+      # ========== Trampoline Loop (Multi-Round Tool Calls) ==========
+
+      def test_multi_round_tool_calls_complete_without_stack_growth
+        chat = build_chat_with_tool
+        tool_call_count = 0
+        end_message_count = 0
+
+        chat.on_tool_call { |_| tool_call_count += 1 }
+        chat.on_end_message { |_| end_message_count += 1 }
+
+        stub_multi_round_tool_call_response(rounds: 3)
+        _out, _err = capture_io { chat.ask("use tool repeatedly") }
+
+        # 3 tool call rounds + 1 final response = 4 assistant messages
+        # Each round: 1 end_message for assistant + 1 end_message for tool result = 2
+        # Final round: 1 end_message for assistant = 1
+        # Total: 3*2 + 1 = 7
+        assert_equal(3, tool_call_count)
+        assert_equal(7, end_message_count)
+
+        # Verify final response is the text response
+        final_message = chat.messages.select { |m| m.role == :assistant }.last
+
+        assert_equal("All done!", final_message.content)
+      end
+
+      def test_multi_round_tool_calls_emit_events_in_correct_order
+        chat = build_chat_with_tool
+        events = []
+
+        chat.on_new_message { events << :new_message }
+        chat.on_end_message { |_| events << :end_message }
+        chat.on_tool_call { |_| events << :tool_call }
+        chat.on_tool_result { |*_| events << :tool_result }
+
+        stub_multi_round_tool_call_response(rounds: 2)
+        _out, _err = capture_io { chat.ask("use tool") }
+
+        # Each tool round: new_message(assistant), end_message(assistant),
+        #   new_message(tool), tool_call, tool_result, end_message(tool)
+        # Final: new_message(assistant), end_message(assistant)
+        expected = [
+          # Round 1
+          :new_message,
+          :end_message, # assistant tool_call message
+          :new_message,
+          :tool_call,
+          :tool_result,
+          :end_message, # tool execution
+          # Round 2
+          :new_message,
+          :end_message, # assistant tool_call message
+          :new_message,
+          :tool_call,
+          :tool_result,
+          :end_message, # tool execution
+          # Final
+          :new_message,
+          :end_message, # final text response
+        ]
+
+        assert_equal(expected, events)
+      end
+
+      def test_halt_during_multi_round_tool_calls_stops_loop
+        chat = build_chat_with_tool_and_halt_tool
+        tool_call_count = 0
+
+        chat.on_tool_call { |_| tool_call_count += 1 }
+
+        stub_halt_tool_call_response
+        _out, _err = capture_io { chat.ask("use halt tool") }
+
+        # Only 1 tool call should fire — the halt tool stops the loop
+        assert_equal(1, tool_call_count)
+      end
+
       # ========== Event Emission Integration ==========
 
       def test_new_message_fires_on_non_streaming_ask
@@ -417,6 +494,12 @@ module SwarmSDK
       def build_chat_with_tool
         chat = build_chat
         chat.with_tool(CallbackTestTool)
+        chat
+      end
+
+      def build_chat_with_tool_and_halt_tool
+        chat = build_chat
+        chat.with_tool(CallbackHaltTool)
         chat
       end
 
@@ -479,6 +562,85 @@ module SwarmSDK
         @tool_function_name ||= CallbackTestTool.new.name
       end
 
+      def stub_multi_round_tool_call_response(rounds:)
+        responses = []
+
+        rounds.times do |i|
+          responses << {
+            status: 200,
+            headers: { "Content-Type" => "application/json" },
+            body: {
+              id: "chatcmpl-tool-#{i}",
+              object: "chat.completion",
+              model: "gpt-4o-mini",
+              choices: [{
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: nil,
+                  tool_calls: [{
+                    id: "call_#{i}",
+                    type: "function",
+                    function: { name: tool_function_name, arguments: "{\"input\":\"round_#{i}\"}" },
+                  }],
+                },
+                finish_reason: "tool_calls",
+              }],
+              usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+            }.to_json,
+          }
+        end
+
+        # Final text response
+        responses << {
+          status: 200,
+          headers: { "Content-Type" => "application/json" },
+          body: {
+            id: "chatcmpl-final",
+            object: "chat.completion",
+            model: "gpt-4o-mini",
+            choices: [{
+              index: 0,
+              message: { role: "assistant", content: "All done!" },
+              finish_reason: "stop",
+            }],
+            usage: { prompt_tokens: 30, completion_tokens: 5, total_tokens: 35 },
+          }.to_json,
+        }
+
+        stub_request(:post, "https://api.openai.com/v1/chat/completions")
+          .to_return(*responses)
+      end
+
+      def stub_halt_tool_call_response
+        halt_tool_name = CallbackHaltTool.new.name
+
+        stub_request(:post, "https://api.openai.com/v1/chat/completions")
+          .to_return(
+            status: 200,
+            headers: { "Content-Type" => "application/json" },
+            body: {
+              id: "chatcmpl-halt",
+              object: "chat.completion",
+              model: "gpt-4o-mini",
+              choices: [{
+                index: 0,
+                message: {
+                  role: "assistant",
+                  content: nil,
+                  tool_calls: [{
+                    id: "call_halt",
+                    type: "function",
+                    function: { name: halt_tool_name, arguments: '{"reason":"stop now"}' },
+                  }],
+                },
+                finish_reason: "tool_calls",
+              }],
+              usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
+            }.to_json,
+          )
+      end
+
       def stub_tool_call_response
         stub_request(:post, "https://api.openai.com/v1/chat/completions")
           .to_return(
@@ -531,6 +693,16 @@ module SwarmSDK
 
       def execute(input:)
         "callback test result"
+      end
+    end
+
+    class CallbackHaltTool < RubyLLM::Tool
+      description "A test tool that halts execution"
+
+      param :reason, type: :string, desc: "Reason for halting"
+
+      def execute(reason:)
+        RubyLLM::Tool::Halt.new("halted: #{reason}")
       end
     end
   end

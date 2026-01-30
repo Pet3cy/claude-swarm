@@ -153,30 +153,34 @@ module RubyLLM
         end
       end
 
-      # Override complete to use emit() and support around_llm_request hook
-      # Follows fork pattern: tool call handling wraps message addition
+      # Override complete to use emit() and support around_llm_request hook.
+      # Uses a trampoline loop instead of mutual recursion with handle_tool_calls
+      # to avoid stack growth during multi-round tool-call conversations.
       def complete(&block)
-        # Execute LLM request (potentially wrapped by around_llm_request hook)
-        response = execute_llm_request(&block)
+        loop do
+          response = execute_llm_request(&block)
 
-        emit(:new_message) unless block_given?
+          emit(:new_message) unless block_given?
 
-        if @schema && response.content.is_a?(String)
-          begin
-            response.content = JSON.parse(response.content)
-          rescue JSON::ParserError
-            # If parsing fails, keep content as string
+          if @schema && response.content.is_a?(String)
+            begin
+              response.content = JSON.parse(response.content)
+            rescue JSON::ParserError
+              # If parsing fails, keep content as string
+            end
           end
-        end
 
-        add_message(response)
-        emit(:end_message, response)
-        if response.tool_call?
-          # For tool calls: add message, emit end_message, then handle tools
-          handle_tool_calls(response, &block)
-        else
-          # For final responses: add message and emit end_message
-          response
+          add_message(response)
+          emit(:end_message, response)
+
+          if response.tool_call?
+            halt_result = handle_tool_calls(response, &block)
+            return halt_result if halt_result
+
+            # Loop continues: next LLM call with zero stack growth
+          else
+            return response
+          end
         end
       end
 
@@ -238,8 +242,9 @@ module RubyLLM
         end
       end
 
-      # Override handle_tool_calls to use emit and support around_tool_execution hook
-      def handle_tool_calls(response, &block)
+      # Execute tool calls and return halt result (or nil to continue the loop).
+      # Does NOT recurse back into complete() — the trampoline loop handles that.
+      def handle_tool_calls(response, &_block)
         halt_result = nil
 
         response.tool_calls.each_value do |tool_call|
@@ -259,7 +264,7 @@ module RubyLLM
           halt_result = result if result.is_a?(Tool::Halt)
         end
 
-        halt_result || complete(&block)
+        halt_result
       end
 
       # Execute tool with around_tool_execution hook if set
