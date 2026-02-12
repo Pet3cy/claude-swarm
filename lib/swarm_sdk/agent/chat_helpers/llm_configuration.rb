@@ -155,6 +155,10 @@ module SwarmSDK
           when "ollama"
             config.ollama_api_base = base_url
             # Ollama doesn't need an API key
+          when "gemini"
+            config.gemini_api_base = base_url
+            api_key = SwarmSDK.config.gemini_api_key
+            config.gemini_api_key = api_key if api_key
           when "gpustack"
             config.gpustack_api_base = base_url
             api_key = SwarmSDK.config.gpustack_api_key

@@ -5,6 +5,19 @@ All notable changes to SwarmSDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.15]
+
+### Added
+
+- **Gemini provider support in `configure_provider_base_url`**: Added missing `"gemini"` case to the provider base URL configuration, mapping to `config.gemini_api_base` and `SwarmSDK.config.gemini_api_key`. Previously, using a Gemini model with a custom `base_url` would raise `ArgumentError`.
+  - **Files**: `lib/swarm_sdk/agent/chat_helpers/llm_configuration.rb`
+- **Backtrace in `llm_request_failed` events**: The `llm_request_failed` event now includes a `backtrace` field (top 20 frames) for easier debugging of LLM API errors.
+  - **Files**: `lib/swarm_sdk/agent/chat.rb`
+- **Streaming error parsing hardening** (RubyLLM patch): `parse_streaming_error` now handles non-standard error response shapes from OpenAI-compatible proxies (e.g. Gemini via Vertex AI). Adds type guards for String error values (`{"error": "message"}`) and Array top-level responses that previously caused `TypeError: no implicit conversion of String into Integer`.
+  - **Files**: `lib/swarm_sdk/ruby_llm_patches/streaming_error_patch.rb`
+- **OpenAI thought_signature preservation** (RubyLLM patch): Vertex AI Gemini 3 models with thinking enabled return a `thought_signature` in tool call responses that must be echoed back in subsequent requests. Patches `parse_tool_calls` to extract `thought_signature` from `extra_content.google.thought_signature` and `format_tool_calls` to serialize it back. The rest of the pipeline (`StreamAccumulator`, `ToolCall`) already supported `thought_signature` — the OpenAI provider was the only gap.
+  - **Files**: `lib/swarm_sdk/ruby_llm_patches/openai_thought_signature_patch.rb`
+
 ## [2.7.14]
 
 ### Added

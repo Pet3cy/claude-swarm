@@ -1140,6 +1140,7 @@ module SwarmSDK
           error_message: error.message,
           status_code: error.respond_to?(:response) ? error.response&.status : nil,
           retryable: false,
+          backtrace: error.backtrace&.first(20),
         )
       end
 
