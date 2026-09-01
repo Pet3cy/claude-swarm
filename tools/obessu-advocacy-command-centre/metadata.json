@@ -1,0 +1,5 @@
+{
+  "name": "OBESSU Advocacy Command Centre (Local Edition)",
+  "description": "Action-driven policy and advocacy command center for OBESSU featuring Next Best Action (NBA) scoring, opportunity workflows, Google Workspace integration, stakeholder intelligence, audio debrief transcription, and strategic high-thinking advocacy drafting. Runs fully locally on a free, open-source LLM (via Ollama) with no cloud AI dependency.",
+  "requestFramePermissions": ["microphone"]
+}
