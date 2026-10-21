@@ -7,11 +7,11 @@ import { Ollama } from 'ollama';
  *
  * Prerequisites (documented in README.md):
  *   1. Install Ollama and run `ollama serve`.
- *   2. Pull a model, e.g. `ollama pull llama3.1`.
+ *   2. Pull a model, e.g. `ollama pull qwen2.5:3b`.
  */
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://127.0.0.1:11434';
-const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'llama3.1';
+const DEFAULT_MODEL = process.env.OLLAMA_MODEL || 'qwen2.5:3b';
 // Keep the model resident in memory between requests so repeated calls
 // don't pay the multi-second model-load cost every time.
 const KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || '30m';

@@ -29,10 +29,12 @@ optional Google Workspace calls you explicitly opt into.
 2. **[Ollama](https://ollama.com)** installed and running (`ollama serve`),
    with a model pulled:
    ```bash
-   ollama pull llama3.1
+   ollama pull qwen2.5:3b
    ```
-   Any reasonably capable instruction-tuned model works (e.g. `qwen2.5`,
-   `mistral`) — set `OLLAMA_MODEL` in `.env.local` to match.
+   `qwen2.5:3b` is the default: it is small enough to respond quickly on a
+   CPU-only laptop with 16 GB RAM. With a capable GPU you can use a larger
+   instruction-tuned model (e.g. `qwen2.5:7b`, `llama3.1`) — set
+   `OLLAMA_MODEL` in `.env.local` to match.
 3. **ffmpeg** is bundled automatically via the `ffmpeg-static` npm package —
    no separate install needed. It's used to convert recorded voice memos to
    the format the local Whisper model expects.
